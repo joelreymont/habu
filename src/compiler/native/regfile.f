@@ -1,4 +1,3 @@
-split-str
 \ regfile.f - one machine's register files as the register allocator asks of
 \ them: each file's size, the registers the virtual machine reserved, those a
 \ call destroys, and the spill-slot width. Reserved and destroyed are stored;

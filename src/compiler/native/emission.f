@@ -1,4 +1,3 @@
-split-str
 \ emission.f - one sealed transient emission: bytes, function starts, call and
 \ address sites and the trailing return, in no machine's terms. publish.f reads
 \ the rows while they stand sealed and decodes nothing; the backend decodes its
@@ -151,16 +150,16 @@ ADDR-CODE constant ADDR-KIND-MAX
 \ The bytes stay the backend's: they are read in place until CLEAR. OPEN over
 \ uncleared rows is rejected, and the architecture it names makes a reader for
 \ another machine reject before copying a byte.
-: OPEN ( str n CTARGET:arch -- ) {: p:^ size:n ret:n a:CTARGET:arch :}
+: OPEN ( str n CTARGET:arch -- ) {: s:str ret:n a:CTARGET:arch :}
    ST @
    MATCH state
       empty OF ENDOF
       open OF E-NEMIT-STATE throw ENDOF
       sealed OF E-NEMIT-STATE throw ENDOF
    ;MATCH
-   size 1 < if E-NEMIT-ROW throw then
-   ret 0 <  ret size > or if E-NEMIT-ROW throw then
-   p CODE-AT !  size CODE-N !  ret RET-N !
+   s STR:LEN 1 < if E-NEMIT-ROW throw then
+   ret 0 <  ret s STR:LEN > or if E-NEMIT-ROW throw then
+   s STR:DATA CODE-AT !  s STR:LEN CODE-N !  ret RET-N !
    -1 PATCH-AT !
    a ARCH-AT !
    construct state open ST ! ;

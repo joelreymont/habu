@@ -1,4 +1,3 @@
-split-str
 \ publish.f - commit one sealed native emission to its pending dictionary record.
 \ Every rejection precedes the code window; the commit only copies accepted bytes
 \ and publishes the record. The code region is the running engine's: an emission
@@ -28,8 +27,8 @@ private
 EXPORT CHECK:DOES-PUBLISHED
 EXPORT CHECK:CHECKER-NATIVE-DOES-COMMIT
 
-: CODE-WINDOW ( str n -- )
-   code-publish ;
+: CODE-WINDOW ( str n -- ) {: s:str dst:n :}
+   s STR:DATA dst s STR:LEN code-publish ;
 
 : PUBLISH-REC ( n n n -- )
    xref-retarget ;
@@ -43,7 +42,8 @@ EXPORT CHECK:CHECKER-NATIVE-DOES-COMMIT
 \ Rejects size bytes of code the ceiling has no room for at cp@, the pending
 \ definition's name copied before it.
 : CODE-ROOM ( n -- ) {: size:n :}
-   NULL-PTR 0 ndict@ XREF-REC XREF-NAME$ size CODE-SPACE:ROOM ;
+   NULL-PTR 0 ndict@ XREF-REC XREF-NAME$ dup STR:DATA swap STR:LEN
+   size CODE-SPACE:ROOM ;
 
 \ The code slot size bytes go to.
 : ROOM-CK ( n -- n )
@@ -59,7 +59,7 @@ EXPORT CHECK:CHECKER-NATIVE-DOES-COMMIT
    fn ;
 
 : PLACE ( n n -- ) {: fn:n size:n :}
-   NEMIT:BYTES fn size CODE-WINDOW ;
+   NEMIT:BYTES size >str fn CODE-WINDOW ;
 
 : COMMIT ( n n n -- ) {: idx:n fn:n size:n :}
    fn size PLACE
@@ -80,7 +80,7 @@ create TRAILER TRAILER-BYTES allot
 : TRAILER-PLACE ( n n -- ) {: cell:n slot:n :}
    DEFER-MAGIC TRAILER !
    cell TRAILER CELL + !
-   TRAILER slot TRAILER-BYTES CODE-WINDOW ;
+   TRAILER TRAILER-BYTES >str slot CODE-WINDOW ;
 
 \ A record a trailer follows ends at it, so the span is the slot and not the
 \ emission's return-trimmed length.
@@ -95,21 +95,21 @@ create TRAILER TRAILER-BYTES allot
    cell  idx fn TRAILED  TRAILER-PLACE ;
 
 \ A copy word's trailer holds its steps.
-: STEPS-TRAILER ( n n str -- ) {: idx:n fn:n a:^ u:n :}
-   a  idx fn TRAILED  u CODE-WINDOW
+: STEPS-TRAILER ( n n str -- ) {: idx:n fn:n s:str :}
+   s  idx fn TRAILED  CODE-WINDOW
    idx XREF-REC XREF:MARK-COPY ;
 
 : COMMIT-DEFER ( n n n n -- ) {: idx:n fn:n size:n cell:n :}
    fn size PLACE
    idx fn cell DEFER-TRAILER ;
 
-: COMMIT-COPY ( n n n str -- ) {: idx:n fn:n size:n a:^ u:n :}
+: COMMIT-COPY ( n n n str -- ) {: idx:n fn:n size:n s:str :}
    fn size PLACE
-   idx fn a u STEPS-TRAILER ;
+   idx fn s STEPS-TRAILER ;
 
 : COMMIT-HELD ( -- )
    HELD-STEPS-U @ 0<> if
-      HELD-IDX @ HELD-FN @ HELD-SIZE @  HELD-STEPS @ HELD-STEPS-U @
+      HELD-IDX @ HELD-FN @ HELD-SIZE @  HELD-STEPS @ HELD-STEPS-U @ >str
       COMMIT-COPY exit
    then
    HELD-DEFER @ 0<> if
@@ -123,9 +123,9 @@ create TRAILER TRAILER-BYTES allot
 
 \ The held routine is cleared on every exit, so a rejected commit leaves nothing
 \ the next one could read.
-: COMMIT-OWNED ( n n n n str -- ) {: idx:n fn:n size:n cell:n a:^ u:n :}
+: COMMIT-OWNED ( n n n n str -- ) {: idx:n fn:n size:n cell:n s:str :}
    idx HELD-IDX !  fn HELD-FN !  size HELD-SIZE !
-   cell HELD-DEFER !  a HELD-STEPS !  u HELD-STEPS-U !
+   cell HELD-DEFER !  s STR:DATA HELD-STEPS !  s STR:LEN HELD-STEPS-U !
    [: COMMIT-OWNED-BODY ;]
    [: 0 HELD-IDX !  0 HELD-FN !  0 HELD-SIZE !  0 HELD-DEFER !
       0 HELD-STEPS-U ! ;] finally ;
@@ -157,7 +157,8 @@ create TRAILER TRAILER-BYTES allot
    3 + -4 and ;
 
 : DOES-NAME-PAD ( n -- n )
-   XREF-REC XREF-NAME$ nip DOES-CLAUSE:SUFFIX$ nip + PAD-INSTRUCTION ;
+   XREF-REC XREF-NAME$ STR:LEN
+   DOES-CLAUSE:SUFFIX$ STR:LEN + PAD-INSTRUCTION ;
 
 \ The definer's `does>` rejected a clause with no record left.
 : DOES-PROVE ( n -- n n n n ) {: fun:n :}
@@ -172,7 +173,7 @@ create TRAILER TRAILER-BYTES allot
 : PUBLISH-CODE ( -- n )
    PENDING-PROVE {: idx:n fn:n size:n :}
    fn NSHADOW:SOURCE-FUNS
-   idx fn size 0 NULL-PTR 0 COMMIT-OWNED
+   idx fn size 0 NULL-PTR 0 >str COMMIT-OWNED
    idx NSHADOW:PUBLISH
    idx APPEND-PENDING
    idx ;
@@ -193,17 +194,17 @@ public
    PENDING-PROVE {: idx:n fn:n size:n :}
    size TRAILER-BYTES + CODE-ROOM
    fn NSHADOW:SOURCE-FUNS
-   idx fn size cell NULL-PTR 0 COMMIT-OWNED
+   idx fn size cell NULL-PTR 0 >str COMMIT-OWNED
    idx NSHADOW:PUBLISH
    idx APPEND-PENDING
    REC-WIDE-PUBLISH ;
 
 \ A copy word with its steps' trailer, whole instructions.
-: PUBLISH-PENDING-COPY ( str -- ) {: a:^ u:n :}
+: PUBLISH-PENDING-COPY ( str -- ) {: s:str :}
    PENDING-PROVE {: idx:n fn:n size:n :}
-   size u + CODE-ROOM
+   size s STR:LEN + CODE-ROOM
    fn NSHADOW:SOURCE-FUNS
-   idx fn size 0 a u COMMIT-OWNED
+   idx fn size 0 s COMMIT-OWNED
    idx NSHADOW:PUBLISH
    idx APPEND-PENDING
    REC-WIDE-PUBLISH ;
@@ -211,7 +212,7 @@ public
 : PUBLISH-PENDING-DOES ( n -- ) {: fun:n :}
    fun DOES-PROVE {: idx:n fn:n size:n off:n :}
    fn NSHADOW:SOURCE-FUNS
-   idx fn size 0 NULL-PTR 0 COMMIT-OWNED
+   idx fn size 0 NULL-PTR 0 >str COMMIT-OWNED
    idx NSHADOW:PUBLISH
    fn off + size off - NEMIT:RET-BYTES CODE-SPAN:RECORDED does-record
    idx APPEND-PENDING
@@ -239,14 +240,15 @@ private
 \ Place a prepared body after the pending row's checks; `pad` is room the
 \ caller writes past the body.
 : IMPORT-CODE ( str n n -- n n )
-   {: code:^ size:n recorded:n pad:n :}
+   {: code:str recorded:n pad:n :}
+   code STR:LEN {: size:n :}
    PENDING-IDX {: idx:n :}
    idx PENDING-CK
    size 0 <= size IMPORT-ALIGNED? 0= or if E-NPUB-RELOC throw then
    recorded CODE-SPAN:VALID? 0= if E-NPUB-RELOC throw then
    recorded CODE-SPAN:BYTES size <> if E-NPUB-RELOC throw then
    size pad + ROOM-CK {: fn:n :}
-   code fn size CODE-WINDOW
+   code fn CODE-WINDOW
    fn recorded idx PUBLISH-REC
    idx fn ;
 
@@ -259,8 +261,8 @@ public
 \ wordlist the source definition wrote. All references are prepared before
 \ this call.
 : IMPORT-PENDING ( str n bool -- n )
-   {: code:^ size:n recorded:n wide:bool :}
-   code size recorded 0 IMPORT-CODE drop {: idx:n :}
+   {: code:str recorded:n wide:bool :}
+   code recorded 0 IMPORT-CODE drop {: idx:n :}
    idx APPEND-PENDING
    wide IMPORT-MARKS
    idx ;
@@ -270,11 +272,11 @@ public
 \ The checker slice installed beside it carries the clause's checker facts.
 \ PART-FRESH? links a part only when its records fit, so the clause has its record.
 : IMPORT-PENDING-DOES ( str n bool n -- n )
-   {: code:^ size:n recorded:n wide:bool off:n :}
-   off 0 <= off size >= or off IMPORT-ALIGNED? 0= or
+   {: code:str recorded:n wide:bool off:n :}
+   off 0 <= off code STR:LEN >= or off IMPORT-ALIGNED? 0= or
    if E-NPUB-RELOC throw then
    PENDING-IDX {: idx:n :}
-   code size recorded idx DOES-NAME-PAD IMPORT-CODE
+   code recorded idx DOES-NAME-PAD IMPORT-CODE
       {: at:n fn:n :}
    fn off + recorded off - does-record
    at APPEND-PENDING
@@ -284,8 +286,8 @@ public
 
 \ The trailer follows the host's aligned code slot, as for a fresh defer.
 : IMPORT-PENDING-DEFER ( str bool n -- n )
-   {: code:^ size:n wide:bool cell:n :}
-   code size  size CODE-SPAN:EXACT  TRAILER-BYTES IMPORT-CODE
+   {: code:str wide:bool cell:n :}
+   code  code STR:LEN CODE-SPAN:EXACT  TRAILER-BYTES IMPORT-CODE
       {: idx:n fn:n :}
    idx fn cell DEFER-TRAILER
    idx APPEND-PENDING
@@ -294,9 +296,9 @@ public
 
 \ The steps' trailer follows the host's code slot, as for a fresh copy word.
 : IMPORT-PENDING-COPY ( str bool str -- n )
-   {: code:^ size:n wide:bool a:^ u:n :}
-   code size  size CODE-SPAN:EXACT  u IMPORT-CODE {: idx:n fn:n :}
-   idx fn a u STEPS-TRAILER
+   {: code:str wide:bool s:str :}
+   code  code STR:LEN CODE-SPAN:EXACT  s STR:LEN IMPORT-CODE {: idx:n fn:n :}
+   idx fn s STEPS-TRAILER
    idx APPEND-PENDING
    wide IMPORT-MARKS
    idx ;

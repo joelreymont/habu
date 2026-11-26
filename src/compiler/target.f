@@ -1,4 +1,3 @@
-split-str
 \ target.f - the immutable compiler target contract: architecture, ABI, byte
 \ order, pointer width and feature set, carried by the compilation context. No
 \ pass reads target facts out of globals. Every field is its own closed family,

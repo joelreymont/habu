@@ -1,4 +1,3 @@
-split-str
 require src/core/exit-status.f
 require src/compiler/target/model.f
 require src/compiler/numeric-policy.f

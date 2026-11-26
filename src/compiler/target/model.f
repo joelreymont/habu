@@ -1,4 +1,3 @@
-split-str
 \ Fixed build target and action values. CTARGET remains the wire and digest owner.
 require src/core/exit-status.f
 require src/lib/string.f
@@ -203,17 +202,17 @@ private
 
 \ The profile found and true; else p and true when NAMES spells p as the name.
 : FIND-STEP ( profile-id bool profile-id str [ profile-id -- str ] -- profile-id bool )
-   {: found:profile-id hit:bool p:profile-id name:^ size:n names :}
+   {: found:profile-id hit:bool p:profile-id name:str names :}
    hit if found true exit then
-   p names execute {: a:^ u:n :}
-   u 0<> a u name size NAME? and if p true exit then
+   p names execute {: s:str :}
+   s STR:LEN 0<> s name NAME? and if p true exit then
    found false ;
 
 \ The profile NAMES spells as the name and true; else false over a filler.
 : FIND ( str [ profile-id -- str ] -- profile-id bool )
-   {: name:^ size:n names :}
+   {: name:str names :}
    RTARGET-PROFILE--ID:AARCH64-APPLE-DARWIN false
-   [: name size names FIND-STEP ;] EACH-PROFILE ;
+   [: name names FIND-STEP ;] EACH-PROFILE ;
 
 \ A platform name's profile and true; else false over a filler profile the caller drops.
 : PLATFORM ( str -- profile-id bool )
@@ -221,16 +220,16 @@ private
 
 \ A platform name's or a triple's profile and true; else false over a filler.
 : PROFILE ( str -- profile-id bool )
-   {: name:^ size:n :}
-   name size PLATFORM if true exit then drop
-   name size ['] LABEL FIND ;
+   {: name:str :}
+   name PLATFORM if true exit then drop
+   name ['] LABEL FIND ;
 
 \ Writes a comma before the name unless it is the first; an empty name is skipped.
 : SAY-ITEM ( bool str -- bool )
-   {: more:bool a:^ u:n :}
-   u 0= if more exit then
+   {: more:bool s:str :}
+   s STR:LEN 0= if more exit then
    more if s" , " REJECTION:EMIT-STR then
-   a u REJECTION:EMIT-STR true ;
+   s REJECTION:EMIT-STR true ;
 
 : SAY-NAMES ( -- )
    false [: PLATFORM-NAME SAY-ITEM ;] EACH-PROFILE
@@ -238,9 +237,9 @@ private
 
 \ The name came from a caller at run time, so the rejection has no source token.
 : UNKNOWN ( str -- )
-   {: name:^ size:n :}
+   {: name:str :}
    s" E-UNKNOWN-TARGET" REJECTION:OPEN
-   96 REJECTION:EMIT1  name size REJECTION:EMIT-STR  96 REJECTION:EMIT1
+   96 REJECTION:EMIT1  name REJECTION:EMIT-STR  96 REJECTION:EMIT1
    s"  is not a target Habu knows" REJECTION:EMIT-STR
    s" targets" REJECTION:NOTE  SAY-NAMES
    REJECTION:HELP
@@ -285,8 +284,8 @@ public
 : PLATFORM? ( str -- bool ) PLATFORM nip ;
 
 : RESOLVE ( str -- resolved-target )
-   {: name:^ size:n :}
-   name size PROFILE 0= if drop name size UNKNOWN then
+   {: name:str :}
+   name PROFILE 0= if drop name UNKNOWN then
    dup DEFAULT-FEATURES RTARGET-RESOLVED--TARGET:MAKE ;
 
 : PROFILE@ ( resolved-target -- profile-id )

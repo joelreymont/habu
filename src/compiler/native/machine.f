@@ -1,4 +1,3 @@
-split-str
 \ machine.f - what one target machine is, as far as a routine contract and the
 \ passes over it need, declared once by its backend. The register files are part
 \ of it (NMACH:REGFILE is the allocator's view), so the allocator and the

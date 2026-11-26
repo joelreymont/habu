@@ -1,4 +1,3 @@
-split-str
 \ workspace.f - fixed compiler working storage in one transient mapping. Capture
 \ releases it; the next access maps a fresh one and stores the defaults (OPEN).
 \ The mapping's record is laid by hand, head then control cells, both scratch.
@@ -85,11 +84,11 @@ CAST: AS-WORKS-ENTRY ( [ n ^n -- ^u8 ] -- n )
 : CHILD ( str n n str -- n )
    data-base PROVIDED-XT:CHILD-CELL + @ AS-CHILD-RUN execute ;
 
-: ACCESSOR ( str str n -- ) {: na:^ nu:n ta:^ tu:n kind:n :}
+: ACCESSOR ( str str n -- ) {: ns:str ts:str kind:n :}
    kind BUFFER-KIND = if
-      na nu CHILD-ABI:WORKS ['] WORK-AT AS-WORKS-ENTRY ta tu CHILD drop exit
+      ns CHILD-ABI:WORKS ['] WORK-AT AS-WORKS-ENTRY ts CHILD drop exit
    then
-   na nu CHILD-ABI:WORK ['] WORK AS-WORK-ENTRY ta tu CHILD drop ;
+   ns CHILD-ABI:WORK ['] WORK AS-WORK-ENTRY ts CHILD drop ;
 
 \ A variable's element is whole cells, a buffer's or span's may be a byte.
 \ The line reader reports a rejected type and answers 0 bytes.
@@ -97,7 +96,7 @@ CAST: AS-WORKS-ENTRY ( [ n ^n -- ^u8 ] -- n )
    kind VARIABLE-KIND = if PROVIDED-XT:CELL-LINE-CELL
    else PROVIDED-XT:STORAGE-LINE-CELL then {: reader:n :}
    kind DEFINER$ data-base reader + @
-   AS-STORAGE-LINE execute {: na:^ nu:n ta:^ tu:n w:n :}
+   AS-STORAGE-LINE execute {: ns:str ts:str w:n :}
    w 0= if exit then
    operand kind w EXTENT {: bytes:n :}
    kind VARIABLE-KIND = operand 0<> and
@@ -106,7 +105,7 @@ CAST: AS-WORKS-ENTRY ( [ n ^n -- ^u8 ] -- n )
       EXIT-STATUS:FULL die
    then
    bytes FIT {: off:n :}
-   na nu ta tu kind ACCESSOR
+   ns ts kind ACCESSOR
    off ,  w ,
    off bytes + USED !
    kind VARIABLE-KIND = operand 0<> and if off operand DEFAULT then ;
