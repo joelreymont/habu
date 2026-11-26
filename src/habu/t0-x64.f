@@ -25,14 +25,20 @@
 \
 \ AHEAD says by how many cells the data stack's top lies above rbx, negative
 \ below: x86-64 has no writeback, so a push or pop moves AHEAD and SETTLE emits
-\ the sum as one lea, which keeps the codes, wherever control arrives or
-\ leaves. A byte displacement reaches 16 cells below rbx to 15 above; an access
-\ past it first moves rbx by the whole reach toward it, by a lea too, when the
-\ access is then within reach: a disp32 costs three bytes more at each access,
-\ the lea four once, and a run's accesses lie near one another. A copy between
-\ cells too far apart for one reach would move rbx back and forth, so the access
-\ after one that moved it does not. A word that compares and branches settles
-\ before its compare, since the CPU fuses the two only when they are adjacent.
+\ the sum as one lea, which keeps the codes, where rbx must be exact: a call, a
+\ return, a loop head, a backward branch and `?do`'s entry, whose head follows.
+\ A forward branch carries its AHEAD to its label (BR-AHEAD): code falling into
+\ the label moves rbx to it, and code after a jump or return (GONE) adopts it,
+\ so every arrival at a label has one AHEAD. CMP and CMP-LIT settle before their
+\ compare, since the branch that reads it may be a backward one and the CPU
+\ fuses the two only when they are adjacent.
+\
+\ A byte displacement reaches 16 cells below rbx to 15 above; an access past it
+\ first moves rbx by the whole reach toward it, by a lea too, when the access
+\ is then within reach: a disp32 costs three bytes more at each access, the lea
+\ four once, and a run's accesses lie near one another. A copy between cells
+\ too far apart for one reach would move rbx back and forth, so the access
+\ after one that moved it does not.
 \ Cells above rbx may hold live values until SETTLE, so nothing asynchronous may
 \ write there.
 \
@@ -86,6 +92,8 @@ variable FLAGS                        \ nonzero while the condition codes are he
 variable HELD                         \ nonzero while r12 holds the index
 variable AHEAD
 variable STEPPED                      \ nonzero when the last access moved rbx
+variable GONE                         \ nonzero while the code emitted next is unreachable
+DYNAMIC-BUFFER BR-AHEAD n             \ the AHEAD each forward branch carries
 
 0 constant FORM-JMP
 1 constant FORM-JCC
@@ -184,7 +192,7 @@ variable STEPPED                      \ nonzero when the last access moved rbx
    DSP AHEAD @ k + CELL * MEM-OFF ;
 
 \ ---- PLACE's hooks -----------------------------------------------------------
-: UNIT-RESET ( -- ) 0 FLAGS !  0 HELD !  0 AHEAD !  0 STEPPED ! ;
+: UNIT-RESET ( -- ) 0 FLAGS !  0 HELD !  0 AHEAD !  0 STEPPED !  0 GONE ! ;
 
 : PROLOGUE ( n ^VEC:vector<u8> -- ) {: bytes:n buf:^ :}
    bytes 0= if exit then
@@ -220,7 +228,7 @@ variable STEPPED                      \ nonzero when the last access moved rbx
 \ until PATCH measures it from its placed end; an address site is movabs r64,
 \ imm64, whose imm64 starts two bytes past the row's offset. A quotation's
 \ RIP-relative lea names its unit inside the emission and needs no row.
-: RETURN ( -- ) SETTLE EPI+  SINK ENC-RET ;
+: RETURN ( -- ) SETTLE EPI+  SINK ENC-RET  1 GONE ! ;
 
 \ The return is the kernel's does> patch slot, `jmp rel32` and the `ret` it
 \ falls through to, filed at the jump's offset.
@@ -629,7 +637,8 @@ variable STEPPED                      \ nonzero when the last access moved rbx
 : TAIL ( n n -- ) {: to:n loc:n :}
    SETTLE EPI+
    HERE-OFF NEMIT:TAIL to loc PCALL+
-   0 >REL SINK ENC-JMP-REL32 ;
+   0 >REL SINK ENC-JMP-REL32
+   1 GONE ! ;
 
 : CALL-SELF ( -- )
    SETTLE
@@ -642,13 +651,25 @@ variable STEPPED                      \ nonzero when the last access moved rbx
 \ in the open unit's list, and a head a raw offset.
 
 \ A branch of the form, with its condition or 0, to a raw offset or -1.
-: BRANCH ( n n n -- LABEL:branch ) SETTLE BRANCH-HOLE BR+ ;
+: BRANCH ( n n n -- LABEL:branch ) {: form:n arg:n to:n :}
+   to 0 >= if SETTLE then
+   form arg to BRANCH-HOLE BR+ {: b:LABEL:branch :}
+   b LABEL:BRANCH>N {: k:n :}
+   k 1 + BR-AHEAD-RESERVE
+   AHEAD @ k BR-AHEAD !
+   b ;
 
-: RESOLVE ( LABEL:branch -- ) SETTLE PLACE:RESOLVE  0 HELD ! ;
+: RESOLVE ( LABEL:branch -- ) {: b:LABEL:branch :}
+   b LABEL:BRANCH>N BR-AHEAD @ {: a:n :}
+   GONE @ if a AHEAD ! else AHEAD @ a - RBX+ then
+   0 GONE !
+   b PLACE:RESOLVE  0 HELD ! ;
 
-: MARK ( -- LABEL:head ) SETTLE 0 HELD !  PLACE:MARK ;
+: MARK ( -- LABEL:head )
+   GONE @ if 0 AHEAD ! else SETTLE then
+   0 HELD !  0 GONE !  PLACE:MARK ;
 
-: FWD-JUMP ( -- LABEL:branch ) FORM-JMP 0 -1 BRANCH ;
+: FWD-JUMP ( -- LABEL:branch ) FORM-JMP 0 -1 BRANCH  1 GONE ! ;
 
 : FWD-JCC ( condition -- LABEL:branch ) {: c:condition :}
    FORM-JCC c CONDITION>N -1 BRANCH ;
@@ -657,17 +678,15 @@ variable STEPPED                      \ nonzero when the last access moved rbx
    {: c:vreg :}
    c REG c REG SINK ENC-TEST-RR ;
 
-: FWD-ZERO ( vreg -- LABEL:branch ) SETTLE TEST C-E FWD-JCC ;
+: FWD-ZERO ( vreg -- LABEL:branch ) TEST C-E FWD-JCC ;
 
 : FWD-NE ( vreg vreg -- LABEL:branch )
    {: sel:vreg v:vreg :}
-   SETTLE
    sel REG v REG SINK ENC-CMP-RR
    C-NE FWD-JCC ;
 
 : FWD-NE-LIT ( vreg n -- LABEL:branch )
    {: sel:vreg v:n :}
-   SETTLE
    sel REG v CMP-R
    C-NE FWD-JCC ;
 
@@ -685,7 +704,7 @@ variable STEPPED                      \ nonzero when the last access moved rbx
 : ENTRY-EQ ( LABEL:branch -- ) LABEL:BRANCH>N {: k:n :}
    C-E CONDITION>N k BR-ARG ! ;
 
-: BACK-JUMP ( LABEL:head -- ) LABEL:HEAD>N FORM-JMP 0 rot BRANCH drop ;
+: BACK-JUMP ( LABEL:head -- ) LABEL:HEAD>N FORM-JMP 0 rot BRANCH drop  1 GONE ! ;
 
 : BACK-JCC ( condition LABEL:head -- )
    LABEL:HEAD>N {: c:condition m:n :}
