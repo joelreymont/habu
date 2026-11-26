@@ -1700,8 +1700,6 @@ s" ;package" TOP-KEYWORD-ID constant KW-END-PACKAGE
 s" host" TOP-KEYWORD-ID constant KW-HOST
 s" target" TOP-KEYWORD-ID constant KW-TARGET
 s" seal-package" TOP-KEYWORD-ID constant KW-SEAL
-s" using" TOP-KEYWORD-ID constant KW-USING
-s" ;using" TOP-KEYWORD-ID constant KW-END-USING
 s" export" TOP-KEYWORD-ID constant KW-EXPORT
 s" split-str" TOP-KEYWORD-ID constant KW-SPLIT-STR
 s" :" TOP-KEYWORD-ID constant KW-COLON
@@ -2317,9 +2315,7 @@ PTR-VARIABLE HOLDER-FIRST
    THEN
    t CODE-SPAN  s"  is public in " REJECTION:EMIT-STR
    HOLDER-N @ 1 = IF
-      HOLDER-FIRST @ HOLDER-NAME  s" : write " REJECTION:EMIT-STR  t QUALIFIED
-      s" , or call it inside `using " REJECTION:EMIT-STR
-      HOLDER-FIRST @ CK-REC-NAME$ REJECTION:EMIT-STR  s" ` … `;using`" REJECTION:EMIT-STR EXIT
+      HOLDER-FIRST @ HOLDER-NAME  s" : write " REJECTION:EMIT-STR  t QUALIFIED EXIT
    THEN
    t RES-TRUE HOLDER-SCAN  s" : write it qualified, as " REJECTION:EMIT-STR  t QUALIFIED ;
 

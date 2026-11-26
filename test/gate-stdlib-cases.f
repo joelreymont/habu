@@ -242,10 +242,6 @@ TEST:SUITE compiler-native-local-case
    test/compiler/native-local-case.f
 TEST:;SUITE
 
-TEST:SUITE compiler-native-local-ambiguity
-   test/compiler/native-local-ambiguity.f
-TEST:;SUITE
-
 TEST:SUITE compiler-native-product-locals
    test/compiler/native-product-locals.f
 TEST:;SUITE

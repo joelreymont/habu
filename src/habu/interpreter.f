@@ -1039,18 +1039,6 @@ CAST: PKG-AS-PACKAGE-ACTION ( n -- [ str str -- ] )
    xt 0= if exit then
    TOKEN$ t xt PKG-AS-PACKAGE-ACTION execute ;
 
-\ `using` notifies the active checker, then the target checker unless its
-\ operation is the same one. Each records the name at the using depth before it
-\ grows.
-: PKG-NOTIFY-USING ( -- )
-   SOURCE-OWNER-A @ NCOMP-DISPATCH:DECL-USING-OFF PKG-OPERATION
-   {: own:n :}
-   own 0<> if TOKEN$ own PKG-AS-NAME-ACTION execute then
-   NCOMP-DISPATCH:DECL-USING-OFF PKG-TARGET {: target:n :}
-   target 0= if exit then
-   target own = if exit then
-   TOKEN$ target PKG-AS-NAME-ACTION execute ;
-
 \ An actual export names the source checker's declaration callback. A direct
 \ call only adds a checker row and has no engine alias to bind.
 : PKG-CHECK-EXPORT ( -- )
@@ -1203,63 +1191,10 @@ EXPORT CHECKER-RESOLVE:PART-GUARD
    then
    NCOMP-DISPATCH:DECL-PKG-RESYNC-OFF PKG-NOTIFY ;
 
-: USING-UNKNOWN ( -- )
-   s" E-USING-UNKNOWN" REJECTION:OPEN
-   s" no package is named " SAY  TOKEN$ TICKS
-   TOKEN$ REJECTION:AT  s" unknown package" SAY
-   REJECTION:HELP  s" load the file that defines " SAY  TOKEN$ TICKS
-   s"  before this using, or check its spelling" SAY
-   EXIT-STATUS:REJECTED REJECTION:STOP ;
-
 EXPORT CHECKER-RESOLVE:HEAD-ROW
-
-: PKG-USED-WID ( -- n )
-   TOKEN 0= if s" using" NAME-MISSING then
-   TOKEN$ 0 COLON-AT 0 >= if
-      TOKEN$ REJECTION:USING-BAD-NAME  EXIT-STATUS:REJECTED REJECTION:STOP
-   then
-   TOKEN$ HEAD-ROW {: row:^ :}
-   row XREF-FOUND? 0= if USING-UNKNOWN then
-   row XREF-PKG-PUBLIC ;
-
-: USING-OVERFLOW ( -- )
-   s" E-USING-OVERFLOW" REJECTION:OPEN
-   s" using " SAY  TOKEN$ TICKS
-   s"  opens more usings than may be open at once" SAY
-   TOKEN$ REJECTION:AT  s" one using too many" SAY
-   USE-MAX s" " REJECTION:LIMIT
-   REJECTION:HELP  s" close a using with " SAY  s" ;using" TICKS
-   s"  before opening another" SAY
-   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ The using depth the buffer may close down to: its entry depth.
 variable USE-FLOOR
-
-: PKG-USING ( -- )
-   PKG-USED-WID {: wid:n :}
-   USE-DEPTH-CELL CELL@ {: d:n :}
-   d USE-MAX >= if USING-OVERFLOW then
-   wid  d cells USE-WIDS-OFF +  CELL!
-   PKG-NOTIFY-USING
-   d 1+ USE-DEPTH-CELL CELL! ;
-
-\ In an open package the most recent using must be the package's own: one
-\ opened before `package` sits at or below the depth `;package` restores, so
-\ closing it here would come undone there. Nor may a buffer close a using its
-\ includer opened, at or below the buffer's floor: it would come back open
-\ when the buffer ends.
-: PKG-END-USING ( -- )
-   USE-DEPTH-CELL CELL@ {: d:n :}
-   d 0= if
-      TOKEN$ REJECTION:USING-UNBALANCED  EXIT-STATUS:REJECTED REJECTION:STOP
-   then
-   PKG-PUB-CELL CELL@ 0<>  d USE-PKG-SAVE-CELL CELL@ <=  and if
-      TOKEN$ s" package" REJECTION:USING-OUTER  EXIT-STATUS:REJECTED REJECTION:STOP
-   then
-   d USE-FLOOR @ <= if
-      TOKEN$ s" file" REJECTION:USING-OUTER  EXIT-STATUS:REJECTED REJECTION:STOP
-   then
-   d 1- USE-DEPTH-CELL CELL! ;
 
 : PKG-TAIL ( -- str )
    TOKEN$ {: t:str :}
@@ -2843,8 +2778,6 @@ EXPORT CHECK:KW-END-PACKAGE
 EXPORT CHECK:KW-HOST
 EXPORT CHECK:KW-TARGET
 EXPORT CHECK:KW-SEAL
-EXPORT CHECK:KW-USING
-EXPORT CHECK:KW-END-USING
 EXPORT CHECK:KW-EXPORT
 EXPORT CHECK:KW-SPLIT-STR
 EXPORT CHECK:KW-COLON
@@ -2885,8 +2818,6 @@ EXPORT CHECK:KW-IMMEDIATE
       endof
       KW-END-PACKAGE of PKG-END-PACKAGE endof
       KW-SEAL of PKG-SEAL endof
-      KW-USING of PKG-USING endof
-      KW-END-USING of PKG-END-USING endof
       KW-EXPORT of PKG-EXPORT endof
       KW-SPLIT-STR of
          CHECKER-SPLIT-STR @ 0= if
@@ -2954,9 +2885,7 @@ EXPORT SOURCE-ROOT:TEXT-UNWOUND
    s" public" TOKEN-IS? if true exit then
    s" private" TOKEN-IS? if true exit then
    s" global" TOKEN-IS? if true exit then
-   s" ;package" TOKEN-IS? if true exit then
-   s" using" TOKEN-IS? if true exit then
-   s" ;using" TOKEN-IS? ;
+   s" ;package" TOKEN-IS? ;
 
 : POLICY-PRE ( -- bool )
    POLICY-NDICT-CELL CELL@ 0= if false exit then

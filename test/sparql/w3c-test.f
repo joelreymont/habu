@@ -40,7 +40,6 @@ require src/lib/json/value.f
 require src/lib/json/equal.f
 require src/lib/vector.f
 
-using SPARQL-TEST
 package W3C-TEST
 private
 
@@ -229,8 +228,8 @@ STRUCTURE row DERIVE addr FIELD value JSON:value FIELD used bool ;STRUCTURE
 : SAME? ( str str bool ^ARENA:arena -- bool )
    {: g:str w:str ordered:bool a:^ :}
    g JSON:PARSE {: got :}  w JSON:PARSE {: want :}
-   want s" boolean" HAS? {: ask:bool :}
-   got s" boolean" HAS? ask xor if false exit then
+   want s" boolean" SPARQL-TEST:HAS? {: ask:bool :}
+   got s" boolean" SPARQL-TEST:HAS? ask xor if false exit then
    ask if got s" boolean" JSON:GET want s" boolean" JSON:GET SAME-TEXT? exit then
    want got VARS-SAME? 0= if false exit then
    want a ROWS got a ROWS ordered a ROWS-SAME? ;
@@ -254,50 +253,50 @@ STRUCTURE row DERIVE addr FIELD value JSON:value FIELD used bool ;STRUCTURE
 \ The text of the case's file with the extension, in buf.
 : READ ( str str ^u8 ^ARENA:arena -- str )
    {: name:str ext:str buf:^ a:^ :}
-   a TEXT-VEC {: path:^ :}
+   a SPARQL-TEST:TEXT-VEC {: path:^ :}
    s" test/sparql/w3c/" path VEC:APPEND
    name path VEC:APPEND  ext path VEC:APPEND
-   path $ buf FILE-CAP FS:READ-ALL buf swap >str ;
+   path SPARQL-TEST:$ buf FILE-CAP FS:READ-ALL buf swap >str ;
 
 \ Replaces the dataset with the quads; true with the store description in
 \ out, else the failure there.
 : LOAD ( str ^VEC:vector<u8> -- bool ) {: q:str out:^ :}
-   s" select sparql_w3c.load($1)::text" q out RUN-TEXT ;
+   s" select sparql_w3c.load($1)::text" q out SPARQL-TEST:RUN-TEXT ;
 
 \ COMPILE over the description: true with the statement in sql, else the
 \ rejection text goes to answer.
 : COMPILED ( str ^VEC:vector<u8> ^VEC:vector<u8> ^VEC:vector<u8> -- bool )
    {: q:str store:^ sql:^ answer:^ :}
-   q store $ sql COMPILE dup if exit then
-   sql $ answer VEC:APPEND ;
+   q store SPARQL-TEST:$ sql SPARQL-TEST:COMPILE dup if exit then
+   sql SPARQL-TEST:$ answer VEC:APPEND ;
 
 \ The document with each number in one form per value, in out; false
 \ with the failure there and after the answer.
 : NUMBER-FORMS ( str ^VEC:vector<u8> ^VEC:vector<u8> -- bool )
    {: d:str out:^ answer:^ :}
-   s" select sparql_w3c.number_forms($1::jsonb)::text" d out RUN-TEXT
-   dup 0= if out $ answer VEC:APPEND then ;
+   s" select sparql_w3c.number_forms($1::jsonb)::text" d out SPARQL-TEST:RUN-TEXT
+   dup 0= if out SPARQL-TEST:$ answer VEC:APPEND then ;
 
 \ Whether the answer agrees with the case's expected document.
 : AGREES? ( str ^VEC:vector<u8> n ^ARENA:arena -- bool )
    {: name:str answer:^ kind:n a:^ :}
-   a TEXT-VEC {: got:^ :}  a TEXT-VEC {: want:^ :}
-   answer $ got answer NUMBER-FORMS 0= if false exit then
+   a SPARQL-TEST:TEXT-VEC {: got:^ :}  a SPARQL-TEST:TEXT-VEC {: want:^ :}
+   answer SPARQL-TEST:$ got answer NUMBER-FORMS 0= if false exit then
    name s" .srj" WANT a READ want answer NUMBER-FORMS
    0= if false exit then
-   got $ want $ kind ORDERED = a SAME? ;
+   got SPARQL-TEST:$ want SPARQL-TEST:$ kind ORDERED = a SAME? ;
 
 \ The case's verdict; its answer goes to answer.
 : VERDICT ( str str n ^VEC:vector<u8> ^ARENA:arena -- bool )
    {: name:str q:str kind:n answer:^ a:^ :}
-   a TEXT-VEC {: store:^ :}
+   a SPARQL-TEST:TEXT-VEC {: store:^ :}
    kind EVALUATION? if name s" .jsonl" DATA a READ else s" " then
-   store LOAD 0= if store $ answer VEC:APPEND false exit then
-   a TEXT-VEC {: sql:^ :}
+   store LOAD 0= if store SPARQL-TEST:$ answer VEC:APPEND false exit then
+   a SPARQL-TEST:TEXT-VEC {: sql:^ :}
    q store sql answer COMPILED {: ok:bool :}
-   kind REJECT = if ok if sql $ answer VEC:APPEND then ok 0= exit then
+   kind REJECT = if ok if sql SPARQL-TEST:$ answer VEC:APPEND then ok 0= exit then
    ok 0= if false exit then
-   sql $ answer RUN {: ran:bool :}
+   sql SPARQL-TEST:$ answer SPARQL-TEST:RUN {: ran:bool :}
    kind ACCEPT = ran 0= or if ran exit then
    name answer kind a AGREES? ;
 
@@ -310,7 +309,7 @@ STRUCTURE row DERIVE addr FIELD value JSON:value FIELD used bool ;STRUCTURE
    {: name:str q:str kind:n answer:^ a:^ :}
    s" query:" type cr q type
    s" expected:" type cr name kind a EXPECTED.
-   s" answered:" type cr answer $ type cr ;
+   s" answered:" type cr answer SPARQL-TEST:$ type cr ;
 
 : COUNT+ ( n bool -- ) {: kind:n ok:bool :}
    kind TALLIES {: t:^ :}
@@ -320,13 +319,13 @@ STRUCTURE row DERIVE addr FIELD value JSON:value FIELD used bool ;STRUCTURE
 \ A throw out of the case is its answer; the case fails.
 : CASE-IN ( str n ^ARENA:arena -- ) {: name:str kind:n a:^ :}
    name T-LABEL
-   a TEXT-VEC {: answer:^ :}
+   a SPARQL-TEST:TEXT-VEC {: answer:^ :}
    name s" .rq" QUERY a READ {: body:str :}
-   a TEXT-VEC {: text:^ :}
+   a SPARQL-TEST:TEXT-VEC {: text:^ :}
    s" BASE <https://w3c.github.io/rdf-tests/sparql/" text VEC:APPEND
    name text VEC:APPEND  s\" .rq>\n" text VEC:APPEND
    body text VEC:APPEND
-   text $ {: q:str :}
+   text SPARQL-TEST:$ {: q:str :}
    false PASSED !
    [: name q kind answer a VERDICT PASSED ! ;] catch {: rc:n :}
    rc 0<> if
@@ -364,14 +363,13 @@ STRUCTURE row DERIVE addr FIELD value JSON:value FIELD used bool ;STRUCTURE
    loop ;
 
 : SESSION ( -- )
-   s" src/lib/sparql/runtime.sql" RUN-SQL
-   s" test/sparql/w3c.sql" RUN-SQL
+   s" src/lib/sparql/runtime.sql" SPARQL-TEST:RUN-SQL
+   s" test/sparql/w3c.sql" SPARQL-TEST:RUN-SQL
    T-LABEL-CLEAR
    CASES SUMMARY ;
 
 T-RESET
-s" w3c-test" ' SESSION MAIN
+s" w3c-test" ' SESSION SPARQL-TEST:MAIN
 T-REPORT
 
 ;package
-;using

@@ -4766,8 +4766,7 @@ HB-TARGET-LINUX? 0= [if]
    s" E-UNDEFINED" s" dp-held" 5 1 51 58 REJECTED-MODES
    SB-RESET
    s" `dp-held` is public in `DP-HOLD`: " SB-APPEND
-   s" write `DP-HOLD:dp-held`, or call it inside " SB-APPEND
-   s" `using DP-HOLD` … `;using`" SB-APPEND
+   s" write `DP-HOLD:dp-held`" SB-APPEND
    0 s" help" SB$ FIELD= ;
 
 \ A file's `;package` of the package its includer opened is rejected in that

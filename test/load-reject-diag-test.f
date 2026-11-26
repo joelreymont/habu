@@ -1167,8 +1167,7 @@ undefine include
    S\" \n --> " SB-APPEND  BODY$ SB-APPEND
    S\" :5:1\n  |\n5 | lrd-held\n  | ^^^^^^^^ not found\n" SB-APPEND
    s"   = help: `lrd-held` is public in `LRD-HOLD`: " SB-APPEND
-   s" write `LRD-HOLD:lrd-held`, or call it inside " SB-APPEND
-   S\" `using LRD-HOLD` … `;using`\n\n" SB-APPEND
+   S\" write `LRD-HOLD:lrd-held`\n\n" SB-APPEND
    70 ASSERT-REJECTED ;
 
 \ The keyword starts line 1, which holds LINE.

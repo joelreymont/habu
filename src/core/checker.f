@@ -14752,7 +14752,7 @@ variable SEALS-N
 \ The interpreter runs these top-level keywords before it looks the token up,
 \ so at top level none is a word. An id is its spelling's place in the list.
 : TOP-KEYWORDS ( -- str )
-   s" package public private global ;package host target seal-package using ;using export split-str : kernel: trusted: create variable constant defer cast: linear: immediate" ;
+   s" package public private global ;package host target seal-package export split-str : kernel: trusted: create variable constant defer cast: linear: immediate" ;
 
 \ The end of the spelling that starts at s in list k.
 : KEYWORD-END ( str n -- n ) {: k:str s:n :}

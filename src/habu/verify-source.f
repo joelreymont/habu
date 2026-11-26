@@ -2048,7 +2048,6 @@ private
    {: s:str :}
    s s" package" STR:=CI  s s" ;package" STR:=CI or
    s s" public" STR:=CI or  s s" private" STR:=CI or  s s" global" STR:=CI or
-   s s" using" STR:=CI or  s s" ;using" STR:=CI or
    s s" seal-package" STR:=CI or  s s" host" STR:=CI or
    s s" target" STR:=CI or IF 0 0= EXIT THEN
    s s" export" STR:=CI  s s" trusted:" STR:=CI or
@@ -3732,7 +3731,6 @@ private
    o s" BEGIN-STRUCTURE" STR:=CI  o s" FUNCTION:" STR:=CI or
    o s" CALLBACK:" STR:=CI or
    o s" package" STR:=CI or  o s" ;package" STR:=CI or
-   o s" using" STR:=CI or  o s" ;using" STR:=CI or
    o s" seal-package" STR:=CI or 0= IF EXIT THEN
    TOP-CUR-A @ TOP-CUR-U @ >str s" END-STRUCTURE" o UNCLOSED-DECL-STOP ;
 

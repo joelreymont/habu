@@ -29,7 +29,6 @@ package PG-TEST
 
 TYPED-VARIABLE POLL-FD n
 
-\ Resolve the OS primitive before importing PG's POLL.
 : READY? ( fd n -- bool ) {: socket:fd events:n :}
    events 32 lshift socket FD>N $FFFFFFFF and or POLL-FD !
    POLL-FD 1 0 poll {: count:n :}
