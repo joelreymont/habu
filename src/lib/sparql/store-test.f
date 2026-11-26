@@ -36,7 +36,7 @@ package SPARQL
 : TEST-STORE-REJECTS ( ^ARENA:arena -- ) {: arena :}
    s" a missing member is rejected by JSON:GET" T-LABEL
    s\" {\"shapes\": {}, \"sources\": []}"
-   s" 1:1: expected a member `bytes`, found none; add the member or read it with JSON:FIND"
+   s" 1:1: expected a member `bytes`, found none; add the member to the object"
    arena READ-REJECTS
    s" bytes is a whole number above 0" T-LABEL
    s\" {\"bytes\": 0, \"shapes\": {}, \"sources\": []}"
@@ -222,10 +222,10 @@ package SPARQL
    arena READ-REJECTS
    s" a key set has a type and values" T-LABEL
    s\" {\"bytes\": 1, \"shapes\": {}, \"keys\": {\"k\": {\"values\": {}}}, \"sources\": []}"
-   s" 1:42: expected a member `type`, found none; add the member or read it with JSON:FIND"
+   s" 1:42: expected a member `type`, found none; add the member to the object"
    arena READ-REJECTS
    s\" {\"bytes\": 1, \"shapes\": {}, \"keys\": {\"k\": {\"type\": \"t\"}}, \"sources\": []}"
-   s" 1:42: expected a member `values`, found none; add the member or read it with JSON:FIND"
+   s" 1:42: expected a member `values`, found none; add the member to the object"
    arena READ-REJECTS
    s" a key set's values is an object of strings" T-LABEL
    s\" {\"bytes\": 1, \"shapes\": {}, \"keys\": {\"k\": {\"type\": \"t\", \"values\": 1}}, \"sources\": []}"

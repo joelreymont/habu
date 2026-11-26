@@ -115,18 +115,18 @@ private
    [: s\" {\"a\":{}}" JSON:PARSE s" a" JSON:GET s" x" JSON:GET
       JSON:TEXT$ drop ;] JSON:E-MEMBER TTHROWSQ
    JSON:E-MEMBER
-   s" 1:6: expected a member `x`, found none; add the member or read it with JSON:FIND"
+   s" 1:6: expected a member `x`, found none; add the member to the object"
    SAID
    s" GET counts a deep value's place from the document's first line" T-LABEL
    [: DEEP-MISSING ;] JSON:E-MEMBER TTHROWSQ
    JSON:E-MEMBER
-   s" 3:8: expected a member `x`, found none; add the member or read it with JSON:FIND"
+   s" 3:8: expected a member `x`, found none; add the member to the object"
    SAID
    s" GET rejects a member of an array" T-LABEL
    [: s\" {\"a\":[1]}" JSON:PARSE s" a" JSON:GET s" b" JSON:GET
       JSON:TEXT$ drop ;] JSON:E-MEMBER TTHROWSQ
    JSON:E-MEMBER
-   s" 1:6: expected an object, found an array; read a member only from an object"
+   s" 1:6: expected an object, found an array; write an object here"
    SAID ;
 
 \ 31 ASCII bytes, then a two-byte character across REASON:QUOTE-MOST.
@@ -136,7 +136,7 @@ private
    s" GET shows a long missing name cut on a character's first byte" T-LABEL
    [: s" {}" LONG-NAME$ GOT drop ;] JSON:E-MEMBER TTHROWSQ
    JSON:E-MEMBER
-   s" 1:1: expected a member `abcdefghijklmnopqrstuvwxyz01234...`, found none; add the member or read it with JSON:FIND"
+   s" 1:1: expected a member `abcdefghijklmnopqrstuvwxyz01234...`, found none; add the member to the object"
    SAID ;
 
 : TEST-FIND ( -- )
@@ -149,7 +149,7 @@ private
    s" FIND rejects a member of an array" T-LABEL
    [: s" [1]" s" a" FOUND$ drop ;] JSON:E-MEMBER TTHROWSQ
    JSON:E-MEMBER
-   s" 1:1: expected an object, found an array; read a member only from an object"
+   s" 1:1: expected an object, found an array; write an object here"
    SAID ;
 
 : TEST-AT ( -- )

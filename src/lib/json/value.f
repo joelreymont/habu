@@ -420,7 +420,7 @@ private
 \ value is rejected with its kind.
 : ENTER-OBJECT ( ^cursor -- n ) {: state:^ :}
    state NEXT-INNER T-OBJ = if state TOKEN-START exit then
-   state s" an object" s" read a member only from an object" WRONG-KIND ;
+   state s" an object" s" write an object here" WRONG-KIND ;
 
 \ Quotes the span, cut at REASON:QUOTE-MOST on a character's first byte.
 : QUOTE-CUT ( str -- ) {: s:str :}
@@ -431,7 +431,7 @@ private
    state at REJECT-HEAD
    s" a member " REASON:APPEND  name QUOTE-CUT
    REASON:FOUND s" none" REASON:APPEND
-   REASON:FIX s" add the member or read it with JSON:FIND" REASON:APPEND
+   REASON:FIX s" add the member to the object" REASON:APPEND
    E-MEMBER REASON:STOP ;
 
 : OFFSET-OF ( value -- n )
