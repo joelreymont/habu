@@ -1,6 +1,7 @@
-\ x86-64 emissions use rel32 calls and movabs address literals.
+\ x86-64 emissions use rel32 calls and address literals in `mov r32, imm32` or movabs.
 require src/core/exit-status.f
 require src/lib/le.f
+require src/arch/x86-64/asm.f
 require src/core/bytes.f
 require src/compiler/native/emission.f
 require src/compiler/native/shadow.f
@@ -26,9 +27,10 @@ public
    {: to:n at:n p:^ :}
    to p 2 + LE:U64! ;
 
+\ The site loads 0 whatever v is: v is a host address, and PATCH writes values.
 : ADDRESS! ( n ^u8 n n n -- )
    {: v:n b:^ size:n at:n kind:n :}
-   v b at + 2 + LE:U64! ;
+   0 b at + X64ASM:MOV-IMM! ;
 
 : PATCH ( n ^u8 n [ n -- n ] [ n -- n ] [ n n -- bool ] -- )
    {: e:n dst:^ at:n data resolve live :}
@@ -47,7 +49,7 @@ public
       else
          0
       then
-      dst s + 2 + LE:U64!
+      dst s + X64ASM:MOV-IMM!
    loop ;
 
 ;package

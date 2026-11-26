@@ -52,6 +52,7 @@
 require src/lib/error.f
 require src/lib/vector.f
 require src/habu/layout.f
+require src/os/linux/layout.f
 require src/habu/stack-abi.f
 require src/arch/x86-64/asm.f
 require src/compiler/target.f
@@ -64,6 +65,8 @@ require src/compiler/native/relax.f
 
 package COMP
 package X86-64
+
+EXPORT BOOT:data-base
 
 8 constant NVREG
 
@@ -140,10 +143,16 @@ DYNAMIC-BUFFER BR-AHEAD n             \ the AHEAD each forward branch carries
 
 : LIT-R ( n X64ASM:r64 -- ) SINK LIT-IN ;
 
+\ The site loads 0 until its value is written. A build's data has one offset from
+\ data-base on every host, and below DATA-LOW its address fits `mov r32, imm32`.
 : ADDR ( n n vreg n -- )
    {: v:n o:n d:vreg kind:n :}
    PLACE:HERE-OFF kind v o PLACE:PEND+
-   d REG v X64ASM:>IMM64 SINK X64ASM:ENC-MOV-RI64 ;
+   v data-base PTR>N - {: off:n :}
+   kind NEMIT:ADDR-CODE =  off 0 >= off LINUX-LAYOUT:DATA-LOW < and  or if
+      d REG X64ASM:R64>N X64ASM:>R32 0 X64ASM:>IMM32 SINK X64ASM:ENC-MOV32-RI32 exit
+   then
+   d REG 0 X64ASM:>IMM64 SINK X64ASM:ENC-MOV-RI64 ;
 
 \ r, holding the return stack depth, becomes the address one cell past its top.
 : RTOP ( X64ASM:r64 -- ) {: r:X64ASM:r64 :}
@@ -223,8 +232,8 @@ DYNAMIC-BUFFER BR-AHEAD n             \ the AHEAD each forward branch carries
 \ A reading quotation receives its record in rdi.
 \
 \ The rows (t0-emit.f "THE ROWS"): a call or tail site is E8 or E9 rel32, zero
-\ until PATCH measures it from its placed end; an address site is movabs r64,
-\ imm64, whose imm64 starts two bytes past the row's offset. A quotation's
+\ until PATCH measures it from its placed end; an address site is a mov r,
+\ imm whose first byte is at the row's offset (ADDR). A quotation's
 \ RIP-relative lea names its unit inside the emission and needs no row.
 : RETURN ( -- ) SETTLE PLACE:EPI+  SINK X64ASM:ENC-RET  1 GONE ! ;
 
@@ -244,7 +253,7 @@ DYNAMIC-BUFFER BR-AHEAD n             \ the AHEAD each forward branch carries
    NCBSTUB:SLOT@ X64ASM:R10 PLACE:OUT @ LIT-IN
    NCBSTUB:THUNK@ {: thunk:n :}
    PLACE:OUT-OFF NEMIT:ADDR-CODE thunk -1 EMIT-ADDR-ROW+
-   X64ASM:RAX thunk X64ASM:>IMM64 PLACE:OUT @ X64ASM:ENC-MOV-RI64
+   X64ASM:RAX X64ASM:R64>N X64ASM:>R32 0 X64ASM:>IMM32 PLACE:OUT @ X64ASM:ENC-MOV32-RI32
    X64ASM:RAX PLACE:OUT @ X64ASM:ENC-JMP-REG
    at ;
 
@@ -256,6 +265,10 @@ DYNAMIC-BUFFER BR-AHEAD n             \ the AHEAD each forward branch carries
    EMIT-CALL-ROWS 0 ?do
       i EMIT-CALL-ROW {: off:n kind:n to:n :}
       at off to PATCH-CALL
+   loop
+   EMIT-ADDR-ROWS 0 ?do
+      i EMIT-ADDR-ROW {: off:n kind:n to:n :}
+      to  PLACE:OUT @ off VEC:AT  X64ASM:MOV-IMM!
    loop ;
 
 \ ---- values ------------------------------------------------------------------

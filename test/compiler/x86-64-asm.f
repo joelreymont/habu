@@ -155,8 +155,7 @@ TYPED-VARIABLE SINK-CELL ^VEC:vector<u8>
    X64ASM:RCX 16 X64ASM:>IMM32 SINK X64ASM:ENC-TEST-RI32   s" 48f7c110000000" X= ;
 
 \ moves, loads and stores at all four widths, and the three
-\ constant forms. A 32-bit move zero-extends into the full register; movabs is
-\ the relocatable literal whose immediate starts at MOV-RI64-IMM-OFF.
+\ constant forms. A 32-bit move zero-extends into the full register.
 : MOVES ( -- )
    \ llvm-mc: movq %rbx, %rax
    X64ASM:RAX X64ASM:RBX SINK X64ASM:ENC-MOV-RR   s" 4889d8" X=
@@ -774,9 +773,24 @@ TYPED-VARIABLE SINK-CELL ^VEC:vector<u8>
    s" X64-BAD-SHIFT ( X64ASM:r64 X64ASM:imm8 ^VEC:vector<u8> -- ) X64ASM:ENC-SHL-CL"
       CHECK-QUIET-CANDIDATE! 0 T= ;
 
-\ The relocation writer patches the imm64 at this offset; the movabs case above
-\ is ten bytes long, so the immediate is its last eight.
+\ A form encoded with 0 and given v through MOV-IMM! is the form encoded with v.
+: PATCHED= ( n [ n -- ] -- ) {: v:n enc :}
+   0 enc execute  v SINK 0 VEC:AT X64ASM:MOV-IMM!
+   v enc execute
+   SINK VEC:BYTES {: b:str :}
+   b STR:LEN 2 / {: h:n :}
+   true h 0 ?do b STR:DATA i + c@  b STR:DATA i h + + c@ =  and loop TTRUE
+   SINK 0 VEC:RESIZE ;
+
+\ The link writes every address through MOV-IMM!; an arm64 host runs no x86
+\ code, so a wrong offset shows only here. movabs's imm64 is its last 8 bytes.
 : RELOCATION-CONTRACT ( -- )
+   $89ABCDEF [: X64ASM:>IMM32 0 X64ASM:>R32 swap SINK X64ASM:ENC-MOV32-RI32 ;] PATCHED=
+   $FEDCBA98 [: X64ASM:>IMM32 9 X64ASM:>R32 swap SINK X64ASM:ENC-MOV32-RI32 ;] PATCHED=
+   $1122334455667788 [: X64ASM:>IMM64 X64ASM:R11 swap SINK X64ASM:ENC-MOV-RI64 ;] PATCHED=
+   0 X64ASM:>R32 0 X64ASM:>IMM32 SINK X64ASM:ENC-MOV32-RI32
+   [: $100000000 SINK 0 VEC:AT X64ASM:MOV-IMM! ;] X64ASM:E-OPERAND TTHROWSQ
+   SINK 0 VEC:RESIZE
    X64ASM:MOV-RI64-IMM-OFF 2 T=
    X64ASM:R11 $1122334455667788 X64ASM:>IMM64 SINK X64ASM:ENC-MOV-RI64
    SINK-LEN X64ASM:MOV-RI64-IMM-OFF 8 + T=

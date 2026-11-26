@@ -9,6 +9,7 @@
 require src/lib/type/deftype.f
 require src/lib/error.f
 require src/lib/vector.f
+require src/lib/le.f
 
 package X64ASM
 public
@@ -28,8 +29,7 @@ NEWTYPE mem
 E-X64ASM-OPERAND constant E-OPERAND
 
 \ mov r64,imm64 (REX.W B8+r io) always carries REX, so its eight immediate bytes
-\ start at this offset; the relocation writer patches there. It is the one
-\ relocatable literal form (docs/xcomp.md "Machine model").
+\ start at this offset.
 2 constant MOV-RI64-IMM-OFF
 
 \ `call rel32` is E8 cd and `jmp rel32` E9 cd, with no prefix, so the
@@ -522,6 +522,16 @@ public
    1 0 0 n 3 rshift 0 s EMIT-REX
    $B8 n 7 and + s EMIT-B
    v IMM64>N s EMIT-Q ;
+
+\ The mov r, imm whose first byte is at p loads n. B8+r holds an imm32 at 1, 41
+\ B8+r one at 2, and 48 or 49 B8+r an imm64 at 2.
+: MOV-IMM! ( n ^u8 -- ) {: v:n p:^ :}
+   p c@ {: b:n :}
+   b $F8 and $B8 = if v ?UIMM32 p 1+ LE:U32! exit then
+   p 1+ c@ $F8 and $B8 <> if E-OPERAND throw then
+   b $41 = if v ?UIMM32 p 2 + LE:U32! exit then
+   b $48 = b $49 = or if v p 2 + LE:U64! exit then
+   E-OPERAND throw ;
 
 \ ---- scalar double precision -------------------------------------------------
 \ ANDPD and XORPD operate on both 64-bit lanes; UCOMISD compares the low lane.

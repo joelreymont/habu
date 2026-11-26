@@ -236,8 +236,8 @@ variable UNSAFE-COUNT
 
 
 
-\ v written as the address value at site, a row of kind's, in machine a's emission
-\ bytes b, s of them.
+\ The address site at site, a row of kind's, in machine a's emission bytes b, s
+\ of them, loads v, or 0 where the machine's writer says it cannot use v.
 : ADDRESS! ( n CTARGET:arch ^u8 n n n -- )
    {: v:n a:CTARGET:arch b:^ s:n site:n kind:n :}
    a CTARGET-ARCH:AARCH64 CTARGET-ARCH:EQ if v b s site kind ARM64:ADDRESS! exit then

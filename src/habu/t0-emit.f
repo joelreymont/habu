@@ -256,8 +256,7 @@ CAST: CALLABLE>N ( [ R -- S ] -- n )
 \ The finished emission, once the last unit is closed.
 : EMIT-BYTES ( -- str ) CUR @ EMIT-BYTES-XT @ execute ;
 
-\ Write every call row's displacement and every quotation address row for the
-\ emission placed at address n.
+\ Write every call row's displacement and each address row the emitter leaves for placement, for the emission placed at address n.
 : EMIT-PATCH ( n -- ) CUR @ EMIT-PATCH-XT @ execute ;
 
 : EMIT-OPEN ( -- )
