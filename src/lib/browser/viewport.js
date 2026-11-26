@@ -160,10 +160,15 @@ struct Light {
 @group(0) @binding(8) var shade: texture_2d<f32>;
 @group(0) @binding(9) var filtered: sampler;
 @group(0) @binding(10) var clears: texture_2d<u32>;
+// The caster pass's mesh: its vertices, three u32 each as the vertex buffer
+// holds them, and its triangles' u16 indices, two to a u32.
+@group(1) @binding(0) var<storage, read> verts: array<u32>;
+@group(1) @binding(1) var<storage, read> tris: array<u32>;
 
 const PI = 3.14159265358979;
 const SIDE = ${SHADOW_SIDE}u;
 const TOP = ${Math.log2(SHADOW_SIDE)}u; // marks' level of one texel
+const NUDGE = 0.002; // how far ahead of t traced looks a cell up, in texels
 
 struct Vertex {
   @location(0) grid: vec4<u32>,
@@ -336,15 +341,49 @@ fn keyed(n: vec3<f32>, v: vec3<f32>, f0: vec3<f32>, diffuse: vec3<f32>,
   return vec4<u32>(c.id, c.face, bitcast<u32>(c.at.z), 1u);
 }
 
-// The height above the plane along the key over T.
+// The height above the plane along the key over T, and the triangle's
+// corners in map texel x, y and height share.
 struct Cast {
   @builtin(position) @invariant at: vec4<f32>,
   @location(0) @interpolate(linear) height: f32,
+  @location(1) @interpolate(flat) a: vec3<f32>,
+  @location(2) @interpolate(flat) b: vec3<f32>,
+  @location(3) @interpolate(flat) c: vec3<f32>,
 }
 
-@vertex fn caster(v: Vertex) -> Cast {
-  let q = light.clip * vec4<f32>(placed(v), 1.0);
-  return Cast(q, (plane(q.xy) - q.z) / light.reach.z);
+// An instance's row as caster reads it.
+struct Row {
+  @location(1) c0: vec3<f32>,
+  @location(2) c1: vec3<f32>,
+  @location(3) c2: vec3<f32>,
+  @location(4) c3: vec3<f32>,
+  @location(9) origin: vec3<u32>,
+}
+
+// Vertex i of the mesh by light.clip, as placed takes it to world.
+fn vertexAt(row: Row, i: u32) -> vec4<f32> {
+  let w = 3u * i;
+  let grid = vec3<u32>(verts[w] & 0xFFFFu, verts[w] >> 16u, verts[w + 1u] & 0xFFFFu);
+  let g = vec3<f32>(grid + row.origin);
+  return light.clip * vec4<f32>(row.c0 * g.x + row.c1 * g.y + row.c2 * g.z + row.c3, 1.0);
+}
+
+fn onMap(q: vec4<f32>) -> vec3<f32> {
+  return vec3<f32>(mapped(q.xy) * f32(SIDE), (plane(q.xy) - q.z) / light.reach.z);
+}
+
+// Vertex v of a non-indexed draw of the mesh's triangles: corner v % 3 of
+// triangle v / 3.
+@vertex fn caster(@builtin(vertex_index) v: u32, row: Row) -> Cast {
+  let t = v - v % 3u;
+  var q: array<vec4<f32>, 3>;
+  for (var k = 0u; k < 3u; k++) {
+    let i = t + k;
+    q[k] = vertexAt(row, (tris[i / 2u] >> (16u * (i & 1u))) & 0xFFFFu);
+  }
+  let p = q[v % 3u];
+  return Cast(p, (plane(p.xy) - p.z) / light.reach.z, onMap(q[0]), onMap(q[1]),
+    onMap(q[2]));
 }
 
 // Level l of marks, after every level below it: its first texel, then its
@@ -370,13 +409,64 @@ fn span(a: u32, b: u32) -> vec2<u32> {
   return select(vec2<u32>(0u), m, s <= e);
 }
 
-// A fragment marks the slices of its height give or take half its change to
-// the next texel, so a steep face leaves no gap between texel centres.
+fn cross2(a: vec2<f32>, b: vec2<f32>) -> f32 {
+  return a.x * b.y - a.y * b.x;
+}
+
+// The least and most height share triangle a, b, c (map texel x, y and
+// share) reaches in the texel from lo to lo + 1, whose centre, at share h,
+// it covers. A linear function's extremes over the triangle cut to the texel
+// lie at the cut's corners: the triangle's corners in the texel, the points
+// where its edges cross the texel's sides and the texel's corners in it, each
+// a mix of a, b and c, so the result stays within their shares however thin
+// the triangle.
+fn reached(a: vec3<f32>, b: vec3<f32>, c: vec3<f32>, lo: vec2<f32>, h: f32) -> vec2<f32> {
+  var r = vec2<f32>(h);
+  let hi = lo + 1.0;
+  var v = array<vec3<f32>, 3>(a, b, c);
+  for (var i = 0u; i < 3u; i++) {
+    let p = v[i];
+    let q = v[(i + 1u) % 3u];
+    if (all(p.xy >= lo) && all(p.xy <= hi)) { r = vec2<f32>(min(r.x, p.z), max(r.y, p.z)); }
+    for (var k = 0u; k < 4u; k++) {
+      let j = k & 1u;
+      let side = select(lo[j], hi[j], k >= 2u);
+      let e = q[j] - p[j];
+      if (e != 0.0) {
+        let u = (side - p[j]) / e;
+        let m = mix(p, q, clamp(u, 0.0, 1.0));
+        let o = 1u - j;
+        if (u >= 0.0 && u <= 1.0 && m[o] >= lo[o] && m[o] <= hi[o]) {
+          r = vec2<f32>(min(r.x, m.z), max(r.y, m.z));
+        }
+      }
+    }
+  }
+  let area = cross2(b.xy - a.xy, c.xy - a.xy);
+  if (area != 0.0) {
+    for (var k = 0u; k < 4u; k++) {
+      let x = lo + vec2<f32>(f32(k & 1u), f32(k >> 1u));
+      let wa = cross2(b.xy - x, c.xy - x) / area;
+      let wb = cross2(c.xy - x, a.xy - x) / area;
+      let wc = 1.0 - wa - wb;
+      if (wa >= 0.0 && wb >= 0.0 && wc >= 0.0) {
+        let s = clamp(wa * a.z + wb * b.z + wc * c.z, min(min(a.z, b.z), c.z),
+          max(max(a.z, b.z), c.z));
+        r = vec2<f32>(min(r.x, s), max(r.y, s));
+      }
+    }
+  }
+  return r;
+}
+
+// A fragment marks the slices of the heights its triangle reaches in its
+// texel, so a steep face leaves no gap between texel centres, and a mark
+// lies within a texel and a slice of a point of the triangle.
 @fragment fn stamp(f: Cast) {
-  let d = 0.5 * fwidth(f.height);
   if (f.height > 0.0) {
     let p = vec2<u32>(f.at.xy);
-    let m = span(slice(f.height - d), slice(f.height + d));
+    let band = reached(f.a, f.b, f.c, floor(f.at.xy), f.height);
+    let m = span(slice(band.x), slice(band.y));
     let i = 2u * (p.y * SIDE + p.x);
     for (var w = 0u; w < 2u; w++) {
       if (m[w] != 0u) { atomicOr(&marks[i + w], m[w]); }
@@ -440,7 +530,7 @@ fn traced(at: vec2<f32>, dir: vec2<f32>) -> f32 {
   let ahead = step(vec2<f32>(0.0), safe);
   // A cell is looked up a little ahead of t, so a ray at its exit finds the
   // next cell.
-  let nudge = (2.0 * ahead - 1.0) * 0.002;
+  let nudge = (2.0 * ahead - 1.0) * NUDGE;
   let cap = u32(clamp(ceil(log2(max(max(abs(dir.x), abs(dir.y)), 1.0))) - 2.0, 0.0,
     f32(TOP)));
   var lvl = cap;
@@ -536,9 +626,10 @@ fn share(q: vec4<f32>) -> f32 {
 }
 
 // Ray r's footprint of a box, the ground whose ray r can cross it, in shade's
-// pixels: the ground's world point; the box grown by half a map texel in light
-// x and y and a slice in height share, as the world's axes take them, so a box
-// at a texel's or a slice's edge counts; the world steps of a map texel in
+// pixels: the ground's world point; the box grown by a map texel and traced's
+// nudge in light x and y and a slice in height share, as the world's axes take
+// them, so every ray a mark of a triangle in the box blocks crosses it: the
+// mark lies in the ray's texel and slice; the world steps of a map texel in
 // light x and in y at a fixed height share, and of a unit of height share at
 // a fixed light x, y; and r.
 struct Reach {
@@ -574,7 +665,7 @@ struct Reach {
     top = max(top, share(light.clip * vec4<f32>(select(lo, hi, high), 1.0)));
   }
   let s = slice(top);
-  let grow = 0.5 * abs(wx) + 0.5 * abs(wy) +
+  let grow = (1.0 + NUDGE) * (abs(wx) + abs(wy)) +
     max(bottom(s + 1u) - bottom(s), bottom(1u)) * abs(wh);
   let a = lo - grow;
   let b = hi + grow;
@@ -1003,7 +1094,7 @@ function setup(canvas, context, device, release, fail) {
   });
   const caster = device.createRenderPipeline({
     layout: "auto",
-    vertex: { module, entryPoint: "caster", buffers: layouts },
+    vertex: { module, entryPoint: "caster", buffers: [layouts[1]] },
     fragment: { module, entryPoint: "stamp", targets: [{ format: "r8unorm", writeMask: 0 }] },
     primitive: { topology: "triangle-list", cullMode: "none" },
   });
@@ -1144,16 +1235,18 @@ function setup(canvas, context, device, release, fail) {
   // buffer's creation throws.
   const mesh = (handle, vertexCount, triangleCount, origin, vertices,
       triangles) => {
-    const held = filled(vertices, VERTEX);
+    const held = filled(vertices, VERTEX | STORAGE);
     let indices;
     try {
-      indices = filled(triangles, INDEX);
+      indices = filled(triangles, INDEX | STORAGE);
     } catch (e) {
       held.destroy();
       throw e;
     }
+    const cast = device.createBindGroup({ layout: caster.getBindGroupLayout(1), entries: [
+      { binding: 0, resource: { buffer: held } }, { binding: 1, resource: { buffer: indices } }] });
     meshes.set(handle, { vertices: held, indices, count: 3 * triangleCount,
-      origin: origin.slice() });
+      origin: origin.slice(), cast });
   };
   const unmesh = (handle) => {
     const { vertices, indices } = meshes.get(handle);
@@ -1210,12 +1303,11 @@ function setup(canvas, context, device, release, fail) {
         view: area.createView(), loadOp: "clear", storeOp: "discard" }] });
       casting.setPipeline(caster);
       casting.setBindGroup(0, shadows.caster);
-      if (count) casting.setVertexBuffer(1, instances);
+      if (count) casting.setVertexBuffer(0, instances);
       for (const [handle, first, n] of [...runs, ...casts]) {
-        const { vertices, indices, count: indexCount } = meshes.get(handle);
-        casting.setVertexBuffer(0, vertices);
-        casting.setIndexBuffer(indices, "uint16");
-        casting.drawIndexed(indexCount, n, 0, 0, first);
+        const { cast, count: indexCount } = meshes.get(handle);
+        casting.setBindGroup(1, cast);
+        casting.draw(indexCount, n, 0, first);
       }
       casting.end();
       const halving = encoder.beginComputePass();
