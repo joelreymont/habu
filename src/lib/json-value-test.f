@@ -105,6 +105,12 @@ private
    s\" {\"a\":1,\"b\":2}" s" b" GOT s" 2" T$=
    s\" {\"a\":{\"b\":[true]}}" JSON:PARSE s" a" JSON:GET s" b" JSON:GET
    JSON:TEXT$ s" [true]" T$=
+   s" GET steps over strings holding brackets and escaped quotes" T-LABEL
+   s\" {\"a\":\"]}\\\"{[\",\"b\":[\"\\\\\",{\"c\":\"}\"}],\"d\":3}"
+   s" d" GOT s" 3" T$=
+   s" GET and EACH step over white space around a colon and a comma" T-LABEL
+   s\" { \"a\" : [ 1 , 2 ] , \"b\" : 3 }" s" b" GOT s" 3" T$=
+   0 s\" [ 1 , 2 ]" JSON:PARSE [: JSON:>N + ;] JSON:EACH 3 T=
    s" GET rejects a missing member at its object's place" T-LABEL
    [: s\" {\"a\":{}}" JSON:PARSE s" a" JSON:GET s" x" JSON:GET
       JSON:TEXT$ drop ;] JSON:E-MEMBER TTHROWSQ
@@ -137,6 +143,9 @@ private
    s" FIND answers some member or none" T-LABEL
    s\" {\"a\":1}" s" a" FOUND$ s" 1" T$=
    s\" {\"a\":1}" s" b" FOUND$ s" none" T$=
+   s" FIND compares a member's decoded name" T-LABEL
+   s\" {\"a\\u0062\":1}" s" ab" FOUND$ s" 1" T$=
+   s\" {\"a\\nb\":1}" s" a\nb" FOUND$ s" none" T$=
    s" FIND rejects a member of an array" T-LABEL
    [: s" [1]" s" a" FOUND$ drop ;] JSON:E-MEMBER TTHROWSQ
    JSON:E-MEMBER

@@ -1266,8 +1266,11 @@ private
 : FIND-PHASE? ( n -- bool )
    dup ST-KEY = swap ST-SEP = or ;
 
+: BAD-KEY? ( str -- bool ) {: key:str :}
+   key STR:LEN 0 <  key STR:LEN 0 > key STR:DATA 0= and  or ;
+
 : REQUIRE-KEY-SPAN ( ^cursor str -- ) {: state:^ key:str :}
-   key STR:LEN 0 <  key STR:LEN 0 > key STR:DATA 0= and  or if
+   key BAD-KEY? if
       state s" a key of 0 or more bytes at a non-null address"
       s" pass the key's address and its length"
       E-JSON-READ-STATE REJECT-TOKEN

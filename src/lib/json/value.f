@@ -12,11 +12,14 @@
 \ below an inner object's lo, so the stack stays below the range a check groups.
 \ The repeat earliest in the text is rejected once the whole text has read well
 \ formed.
-\ The walks EACH, EACH-MEMBER, their -WHILE forms and WALK run their
-\ quotation while the walk's cursor is open; a value it is given borrows the
-\ text, not the cursor, so it stays valid after the walk. WALK keeps each open
-\ container's start on a stack that grows with its depth, so a walk of any
-\ depth takes constant machine stack.
+\ Every value a word answers lies in text PARSE checked, so GET, FIND, EACH,
+\ EACH-MEMBER and the -WHILE forms step over a value by its brackets and
+\ strings alone, where a backslash escapes the byte after it and a quote
+\ closes the string; they open a cursor only to reject, or to decode a name
+\ with an escape. WALK runs its quotation while its cursor is open. A value
+\ a walk gives borrows the text, so it stays valid after the walk. WALK keeps
+\ each open container's start on a stack that grows with its depth, so a
+\ walk of any depth takes constant machine stack.
 \ STORAGE CLASS. CALLER-OWNED: the caller owns the text a value borrows and
 \ the vector APPEND-STRING grows. The cursor record lives in a MEM scope,
 \ the cursor's depth mapping in a mapping of its own, and the key storage,
@@ -263,44 +266,103 @@ private
    state CURSOR-SRC @ state TOKEN-START
    state CURSOR-TOK-LEN @ 2 + VALUE-MAKE ;
 
-\ The str is the fix a wrong kind's rejection gives; it names the caller's walk.
-: ELEMENTS ( R ^cursor str [ R value -- R bool ] -- R )
-   {: state:^ fs:str body :}
-   state NEXT-INNER T-ARR <> if state s" an array" fs WRONG-KIND then
-   begin state NEXT-INNER T-ARR-END <> while
-      state TOKEN-VALUE body execute 0= if exit then
-   repeat ;
+\ Rejects the value, read as a token, for its kind: es is the kind expected.
+: NOT-KIND ( value str str -- ) {: v es:str fs:str :}
+   v [: dup NEXT-INNER drop es fs WRONG-KIND ;] WITH-CURSOR ;
+
+\ NEST-END through MEMBER-ENDS scan a container's text from an index with
+\ no bound: the container's close follows every value inside it.
+
+\ The index after the string or container at i. Or-ing $20 reads `[` as `{`,
+\ `]` as `}`, and no byte checked text holds outside a string as `"`.
+: NEST-END ( str n -- n ) {: s:str i:n :}
+   s STR:DATA {: p:^ :}
+   0 i begin
+      p over + c@ $20 or
+      dup DQ = if drop 1+ begin p over + c@ dup DQ <> while
+            BACKSLASH = if 2 + else 1+ then repeat drop 1+ else
+         dup LBRACE = if drop swap 1+ swap else
+         RBRACE = if swap 1- swap then then 1+
+      then
+      over 0=
+   until nip ;
+
+\ The index after the number or literal at i.
+: SCALAR-END ( str n -- n ) {: s:str i:n :}
+   s STR:DATA {: p:^ :}
+   p i + c@ {: b:n :}
+   b CH-T = b CH-N = or if i 4 + exit then
+   b CH-F = if i 5 + exit then
+   i begin p over + c@ NUM-CHAR? while 1+ repeat ;
+
+: VALUE-END ( str n -- n ) {: s:str i:n :}
+   s STR:DATA i + c@ {: b:n :}
+   b DQ = b LBRACE = or b LBRACK = or if s i NEST-END exit then
+   s i SCALAR-END ;
+
+: WS-END ( str n -- n ) {: s:str i:n :}
+   s STR:DATA {: p:^ :}
+   i begin p over + c@ WS? while 1+ repeat ;
+
+\ The index of the item after a value that ends at e, or of the close.
+: NEXT-ITEM ( str n -- n ) {: s:str e:n :}
+   s e WS-END {: j:n :}
+   s STR:DATA j + c@ COMMA = if s j 1+ WS-END exit then
+   j ;
+
+\ From a member's name at k: the name's end, and its value's start and end.
+: MEMBER-ENDS ( str n -- n n n ) {: s:str k:n :}
+   s k NEST-END {: ke:n :}
+   s s ke WS-END 1+ WS-END {: i:n :}
+   ke i s i VALUE-END ;
+
+\ The value of the bytes from i to e of the value's text.
+: PART ( value n n -- value ) {: v i:n e:n :}
+   v VALUE-UNMAKE {: doc:^ at:n len:n :}
+   doc at i + e i - VALUE-MAKE ;
+
+\ The str is the fix a wrong kind's rejection gives; it names the caller's
+\ walk.
+: ELEMENTS ( R value str [ R value -- R bool ] -- R )
+   {: v fs:str body :}
+   v ARRAY? 0= if v s" an array" fs NOT-KIND then
+   v TEXT$ {: s:str :}
+   s 1 WS-END begin s STR:DATA over + c@ RBRACK <> while
+      {: i:n :} s i VALUE-END {: e:n :}
+      v i e PART body execute 0= if exit then
+      s e NEXT-ITEM
+   repeat drop ;
 
 \ The str is the fix, as in ELEMENTS.
-: MEMBERS ( R ^cursor str [ R value value -- R bool ] -- R )
-   {: state:^ fs:str body :}
-   state NEXT-INNER T-OBJ <> if state s" an object" fs WRONG-KIND then
-   begin state NEXT-INNER T-OBJ-END <> while
-      state NAME-VALUE
-      state NEXT-INNER drop state TOKEN-VALUE body execute 0= if exit then
-   repeat ;
+: MEMBERS ( R value str [ R value value -- R bool ] -- R )
+   {: v fs:str body :}
+   v OBJECT? 0= if v s" an object" fs NOT-KIND then
+   v TEXT$ {: s:str :}
+   s 1 WS-END begin s STR:DATA over + c@ RBRACE <> while
+      {: k:n :} s k MEMBER-ENDS {: ke:n i:n e:n :}
+      v k ke PART v i e PART body execute 0= if exit then
+      s e NEXT-ITEM
+   repeat drop ;
 
 public
 
 : EACH ( R value [ R value -- R ] -- R ) {: v body :}
-   v [: s" walk only an array with JSON:EACH"
-      [: body execute true ;] ELEMENTS ;] WITH-CURSOR ;
+   v s" walk only an array with JSON:EACH"
+   [: body execute true ;] ELEMENTS ;
 
 \ The name is the key as written, a string value.
 : EACH-MEMBER ( R value [ R value value -- R ] -- R )
    {: v body :}
-   v [: s" walk only an object with JSON:EACH-MEMBER"
-      [: body execute true ;] MEMBERS ;] WITH-CURSOR ;
+   v s" walk only an object with JSON:EACH-MEMBER"
+   [: body execute true ;] MEMBERS ;
 
 : EACH-WHILE ( R value [ R value -- R bool ] -- R )
    {: v body :}
-   v [: s" walk only an array with JSON:EACH-WHILE" body ELEMENTS ;]
-   WITH-CURSOR ;
+   v s" walk only an array with JSON:EACH-WHILE" body ELEMENTS ;
 
 : EACH-MEMBER-WHILE ( R value [ R value value -- R bool ] -- R )
    {: v body :}
-   v [: s" walk only an object with JSON:EACH-MEMBER-WHILE" body MEMBERS ;]
-   WITH-CURSOR ;
+   v s" walk only an object with JSON:EACH-MEMBER-WHILE" body MEMBERS ;
 
 \ An event WALK gives. A name is the member's name as written, a string value;
 \ a close carries the whole container that just ended.
@@ -372,44 +434,17 @@ private
    REASON:FIX s" add the member or read it with JSON:FIND" REASON:APPEND
    E-MEMBER REASON:STOP ;
 
-: MEMBER-VALUE ( ^cursor str -- value ) {: state:^ name:str :}
-   state ENTER-OBJECT {: at:n :}
-   state name FIND-INNER if state TOKEN-VALUE exit then
-   state at name MISSING ;
+: OFFSET-OF ( value -- n )
+   VALUE-UNMAKE {: doc:^ at:n len:n :} at ;
 
-: MEMBER-OPTION ( ^cursor str -- option<value> )
-   {: state:^ name:str :}
-   state ENTER-OBJECT drop
-   state name FIND-INNER 0= if OPTION:NONE exit then
-   state TOKEN-VALUE OPTION:SOME ;
+\ Throws E-MEMBER at the object's `{`: it has no member of that name.
+: ABSENT ( value str -- value ) {: v name:str :}
+   v [: v OFFSET-OF name MISSING ;] WITH-CURSOR ;
 
-: POINTED ( ^cursor str ^VEC:vector<u8> -- option<value> )
-   {: state:^ s:str out:^ :}
-   state s out SEEK {: at:n len:n found:bool :}
-   found 0= if OPTION:NONE exit then
-   state CURSOR-SRC @ at len VALUE-MAKE OPTION:SOME ;
-
-public
-
-\ The member of that decoded name. A value that is not an object, or an
-\ object without the member, throws E-MEMBER.
-: GET ( value str -- value ) {: v name:str :}
-   v [: name MEMBER-VALUE ;] WITH-CURSOR ;
-
-\ None for an object without the member; a value that is not an object
-\ throws E-MEMBER.
-: FIND ( value str -- option<value> ) {: v name:str :}
-   v [: name MEMBER-OPTION ;] WITH-CURSOR ;
-
-\ The value the RFC 6901 pointer names from this one, none for no such place.
-\ A pointer POINTER? rejects throws E-JSON-POINTER before anything is read.
-: AT ( value str -- option<value> ) {: v s:str :}
-   s POINTER? 0= if E-JSON-POINTER throw then
-   HEAP:ALLOCATOR s STR:LEN [type] u8 VEC:NEW {: out:^ :}
-   [: v [: s out POINTED ;] WITH-CURSOR ;]
-   [: out VEC:DELETE ;] finally ;
-
-private
+\ Rejects, as a cursor reading members does, a value that is not an object,
+\ then a name no text can be.
+: LOOKUP-REJECT ( value str -- ) {: v name:str :}
+   v [: dup ENTER-OBJECT drop name REQUIRE-KEY-SPAN ;] WITH-CURSOR ;
 
 : MATCH-AT ( ^cursor str -- bool ) {: state:^ want:str :}
    state NEXT-INNER drop
@@ -425,6 +460,55 @@ private
      none OF false ENDOF
      some OF drop true ENDOF
    ;MATCH ;
+
+\ Whether a string value decodes to want. Decoding shortens a string with an
+\ escape and keeps any other; it streams, so no buffer bounds it.
+: QUOTED= ( value str -- bool ) {: v want:str :}
+   v INSIDE$ {: raw:str :}
+   raw STR:LEN want STR:LEN - {: more:n :}
+   more 0< if false exit then
+   more 0= if
+      raw want STR:= 0= if false exit then  raw ESCAPED? 0= exit
+   then
+   raw ESCAPED? 0= if false exit then
+   v [: want MATCH-AT ;] WITH-CURSOR ;
+
+: POINTED ( ^cursor str ^VEC:vector<u8> -- option<value> )
+   {: state:^ s:str out:^ :}
+   state s out SEEK {: at:n len:n found:bool :}
+   found 0= if OPTION:NONE exit then
+   state CURSOR-SRC @ at len VALUE-MAKE OPTION:SOME ;
+
+public
+
+\ None for an object without the member; a value that is not an object
+\ throws E-MEMBER.
+: FIND ( value str -- option<value> ) {: v name:str :}
+   v OBJECT? 0= name BAD-KEY? or if v name LOOKUP-REJECT then
+   v TEXT$ {: s:str :}
+   s 1 WS-END begin s STR:DATA over + c@ RBRACE <> while
+      {: k:n :} s k MEMBER-ENDS {: ke:n i:n e:n :}
+      v k ke PART name QUOTED= if v i e PART OPTION:SOME exit then
+      s e NEXT-ITEM
+   repeat drop OPTION:NONE ;
+
+\ The member of that decoded name. A value that is not an object, or an
+\ object without the member, throws E-MEMBER.
+: GET ( value str -- value ) {: v name:str :}
+   v name FIND MATCH option
+     none OF v name ABSENT ENDOF
+     some OF ENDOF
+   ;MATCH ;
+
+\ The value the RFC 6901 pointer names from this one, none for no such place.
+\ A pointer POINTER? rejects throws E-JSON-POINTER before anything is read.
+: AT ( value str -- option<value> ) {: v s:str :}
+   s POINTER? 0= if E-JSON-POINTER throw then
+   HEAP:ALLOCATOR s STR:LEN [type] u8 VEC:NEW {: out:^ :}
+   [: v [: s out POINTED ;] WITH-CURSOR ;]
+   [: out VEC:DELETE ;] finally ;
+
+private
 
 : NEXT-STRING ( ^cursor -- ) {: state:^ :}
    state NEXT-INNER T-STR <> if
@@ -458,12 +542,9 @@ private
 
 public
 
-\ A string with an escape streams its decoding, so no buffer bounds it.
 : STRING= ( value str -- bool ) {: v want:str :}
    v STRING? 0= if false exit then
-   v INSIDE$ dup ESCAPED? 0= if want STR:= exit then
-   drop
-   v [: want MATCH-AT ;] WITH-CURSOR ;
+   v want QUOTED= ;
 
 \ The text is lent for the call only: the bytes inside the quotes when the
 \ string holds no escape, else its decoding in a vector of its own.
