@@ -238,6 +238,17 @@ STRUCTURE term-members DERIVE addr
      some OF drop v [: arena SAVE$ ;] JSON:WITH-STRING ENDOF
    ;MATCH ;
 
+\ The string decoded, rejected if it holds U+0000: it reaches SQL as text,
+\ which cannot hold it.
+: TERM-STRING$ ( JSON:value ^ARENA:arena -- str ) {: v arena :}
+   v arena DECODED$ dup 0 STR:INDEX-OF MATCH option
+     none OF exit ENDOF
+     some OF drop ENDOF
+   ;MATCH
+   v s" a string without U+0000"
+   s" remove U+0000 from the string: PostgreSQL text cannot hold it"
+   JSON:REJECT ;
+
 : STRING$ ( JSON:value ^ARENA:arena -- str ) {: m arena :}
    m REQUIRE-STRING  m arena DECODED$ ;
 
@@ -292,7 +303,7 @@ STRUCTURE term-members DERIVE addr
    set KEY-SET-MEMBERS @ {: members:^ :}
    set KEY-SET-PLACES arena MAP:ROOM
    members VEC:COUNT set KEY-SET-PLACES @ iri arena DECODED$ MAP:SET
-   v arena DECODED$ members VEC:PUSH MEMBER-KEYS ! ;
+   v arena TERM-STRING$ members VEC:PUSH MEMBER-KEYS ! ;
 
 \ The SQL array literal of the IRI's keys, an empty one for an IRI the set
 \ does not list.
@@ -462,7 +473,7 @@ STRUCTURE term-members DERIVE addr
    {: m name:str arena :}
    m MATCH option
      none OF ENDOF
-     some OF {: v :} name v arena DECODED$ +TERM-MEMBER ENDOF
+     some OF {: v :} name v arena TERM-STRING$ +TERM-MEMBER ENDOF
    ;MATCH ;
 
 \ The checked term's text.
@@ -470,7 +481,7 @@ STRUCTURE term-members DERIVE addr
       -- str )
    {: kind value t:^ arena :}
    arena NEW-WRITER
-   kind arena DECODED$ value arena DECODED$ TERM-START
+   kind arena DECODED$ value arena TERM-STRING$ TERM-START
    t TERM-MEMBERS-LANG @ s" xml:lang" arena COPY-MEMBER
    t TERM-MEMBERS-DATATYPE @ s" datatype" arena COPY-MEMBER
    JSON:WRITE-OBJECT-END JSON:WRITTEN$ ;

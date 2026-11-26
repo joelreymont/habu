@@ -1,6 +1,9 @@
 \ emit.f - a parsed query compiled to one PostgreSQL statement on the native
 \ columns the store describes. Its parameters are the query's constants and
-\ names; no query text enters the statement.
+\ names; no query text enters the statement. The description's texts, a
+\ slot's `term`, a source's `graph` and a key set's keys, are string
+\ literals: the host wrote them, store.f checked them, and as parameters
+\ they would grow with the description past the 65,535 one call takes.
 \
 \ A relation is SQL text usable as a FROM item and, for each variable in
 \ scope, a binding: always bound or maybe, and its form, a native column of
@@ -385,6 +388,22 @@ defer EXISTS-SQL ( ^plan n -- )
 \ The JSON term's parameter, JSONB.
 : TERM-ARG ( ^plan str -- str ) true ARGUMENT ;
 
+\ Appends the text inside an E'' literal, each `\` and `'` doubled: `\'`
+\ is rejected under backslash_quote off and unsafe in a multibyte encoding.
+: +ESCAPED ( ^VEC:vector<u8> str -- )
+   {: v:^ t:str :}
+   t STR:LEN 0 ?do
+      t STR:DATA i + c@ {: b:n :}
+      b [char] \ = b [char] ' = or if b v VEC:PUSH c! then
+      b v VEC:PUSH c!
+   loop ;
+
+\ The description's JSON term as a literal, JSONB.
+: TERM-LITERAL ( ^plan str -- str )
+   {: plan t:str :}
+   plan NEW-SQL {: v:^ :}
+   v s" E'" +SQL v t +ESCAPED v s" '::jsonb" +SQL v VEC:BYTES ;
+
 \ The string's parameter, text.
 : TEXT-ARG ( ^plan str -- str ) false ARGUMENT ;
 
@@ -717,7 +736,7 @@ defer EXISTS-SQL ( ^plan n -- )
          plan NEW-SQL {: v:^ :}
          v alias +SQL v s" ." +SQL v c +SQL v VEC:BYTES
       ENDOF
-      term OF {: t:str :} plan t TERM-ARG ENDOF
+      term OF {: t:str :} plan t TERM-LITERAL ENDOF
    ;MATCH ;
 
 : TERM-SAME? ( ^plan n str -- bool )
@@ -1237,14 +1256,14 @@ STRUCTURE pruning DERIVE addr
    ;MATCH ;
 
 \ Appends to where that the key column holds one of the IRI's keys,
-\ `<alias>.<col> = ANY((<keys>)::<type>)`, the keys a text parameter.
+\ `<alias>.<col> = ANY(E'<keys>'::<type>)`.
 : +KEY-MATCH ( ^plan n ^key str ^VEC:vector<u8> -- )
    {: plan node:n k:^ alias:str where:^ :}
    plan k KEY-SET@ {: set:^ :}
-   plan set plan TREE node TEXT$ KEYS$ TEXT-ARG {: arg:str :}
    where s"  AND " +SEP where alias +SQL where s" ." +SQL
-   where k KEY-COL @ +SQL where s"  = ANY(" +SQL where arg +SQL
-   where s" ::" +SQL where set KEY-SET-TYPE @ +SQL where s" )" +SQL ;
+   where k KEY-COL @ +SQL where s"  = ANY(E'" +SQL
+   where set plan TREE node TEXT$ KEYS$ +ESCAPED
+   where s" '::" +SQL where set KEY-SET-TYPE @ +SQL where s" )" +SQL ;
 
 \ Appends to where that the column slot holds the constant, through its
 \ key when it has one; for a predicate !(...), a predicate other than its
@@ -1920,7 +1939,7 @@ STRUCTURE pruning DERIVE addr
    state node NODE-A@ {: g:n :}
    state g VARIABLE? if
       plan NEW-BINDINGS {: own:^ :}
-      own plan g VAR KNOWN plan t TERM-ARG t BIND
+      own plan g VAR KNOWN plan t TERM-LITERAL t BIND
       plan own LAST r RELATION-WHERE @ +OUTER
       plan r RELATION-BINDINGS @ own r RELATION-WHERE @ false MEET-ALL
    then plan branches r +RELATION ;
@@ -2305,12 +2324,33 @@ STRUCTURE pruning DERIVE addr
    bs var GENERIC v VEC:BYTES s" " BIND
    copies bs LAST BINDING-COPIES ! ;
 
-\ Whether the expression calls a function of a new value at each call.
-: VOLATILE? ( str -- bool )
-   {: x:str :}
-   x s" sparql.rand(" STR:CONTAINS?
-   x s" sparql.uuid(" STR:CONTAINS? or
-   x s" sparql.struuid(" STR:CONTAINS? or ;
+\ The children of node n that may hold a call: two walked on their own
+\ and the one the walk goes on to, 0 for none. A list or a chain goes
+\ on along its long side.
+: CHILDREN ( ^syntax n -- n n n )
+   {: state node:n :}
+   state node NODE-K {: kind:n :}
+   state node NODE-A@ state node NODE-B@ {: a:n b:n :}
+   kind N-LIST = if a 0 b exit then
+   kind N-BINARY = kind N-UNION = or if b 0 a exit then
+   kind N-SELECT = if a state node NODE-D@ b exit then
+   kind N-GRAPH = if 0 0 b exit then
+   kind N-TRIPLE = kind N-VALUES = or if 0 0 0 exit then
+   0 0 a ;
+
+\ Whether node n or a node below it, an EXISTS's group's included, calls
+\ RAND, UUID or STRUUID, which give a new value at each call.
+: VOLATILE? ( ^syntax n -- bool )
+   {: state top:n :}
+   top begin dup 0<> while
+      {: node:n :}
+      state node NODE-K N-CALL = if
+         state node s" RAND UUID STRUUID" CALL-IN? if true exit then
+      then
+      state node CHILDREN {: one:n two:n next:n :}
+      state one RECURSE state two RECURSE or if true exit then
+      next
+   repeat drop false ;
 
 \ Makes r a derived table of its bindings and the expression as the
 \ variable. PostgreSQL evaluates a materialized CTE once; a LATERAL item or
@@ -2335,7 +2375,7 @@ STRUCTURE pruning DERIVE addr
    plan state e NODE-B@ VAR {: var:n :}
    state e NODE-A@ {: value:n :}
    plan r value EXPRESSION-SQL {: x:str :}
-   x VOLATILE? x STR:LEN MOST-COPIED > or if
+   state value VOLATILE? x STR:LEN MOST-COPIED > or if
       plan r var x +EVALUATED
    else
       plan r x COPIES-OF {: copies:n :}

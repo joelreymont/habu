@@ -171,6 +171,10 @@ package SPARQL
    s\" {\"from\": \"f\", \"graph\": {\"type\": \"uri\", \"value\": 1}}"
    s" 1:116: expected a string, found `1`; write the value as a JSON string"
    arena SOURCE-REJECTS
+   s" a term's string holds no U+0000" T-LABEL
+   s\" {\"from\": \"f\", \"graph\": {\"type\": \"uri\", \"value\": \"a\\u0000\"}}"
+   s\" 1:116: expected a string without U+0000, found `\"a\\u0000\"`; remove U+0000 from the string: PostgreSQL text cannot hold it"
+   arena SOURCE-REJECTS
    s" a literal has one of datatype and xml:lang" T-LABEL
    s\" {\"from\": \"f\", \"graph\": null, \"s\": {\"term\": {\"type\": \"literal\", \"value\": \"v\", \"datatype\": \"d\", \"xml:lang\": \"en\"}}}"
    s" 1:111: expected a literal with one of `datatype` and `xml:lang`, found `{`; remove one of the two"
@@ -229,6 +233,9 @@ package SPARQL
    arena READ-REJECTS
    s\" {\"bytes\": 1, \"shapes\": {}, \"keys\": {\"k\": {\"type\": \"t\", \"values\": {\"urn:a\": 1}}}, \"sources\": []}"
    s" 1:76: expected a string, found `1`; write the value as a JSON string"
+   arena READ-REJECTS
+   s\" {\"bytes\": 1, \"shapes\": {}, \"keys\": {\"k\": {\"type\": \"t\", \"values\": {\"urn:a\": \"{\\u0000}\"}}}, \"sources\": []}"
+   s\" 1:76: expected a string without U+0000, found `\"{\\u0000}\"`; remove U+0000 from the string: PostgreSQL text cannot hold it"
    arena READ-REJECTS
    s" a key's set is declared" T-LABEL
    s\" {\"bytes\": 1, \"shapes\": {\"id\": {\"in\": \"i\", \"out\": \"o\"}}, \"keys\": {\"k\": {\"type\": \"t\", \"values\": {}}}, \"sources\": [{\"from\": \"f\", \"graph\": null, \"s\": {\"col\": \"c\", \"shape\": \"id\", \"key\": {\"col\": \"k\", \"set\": \"no\"}}}]}"

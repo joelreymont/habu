@@ -162,7 +162,7 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
 : KEYED-IN ( str str ^ARENA:arena -- )
    {: q:str w:str a:^ :}
    q s" 1048576" a ANSWER {: sql:^ doc:^ :}
-   sql $ s" = ANY(" STR:CONTAINS? TTRUE
+   sql $ s" = ANY(E'" STR:CONTAINS? TTRUE
    doc $ w a UNQUOTE $ a false SAME? TTRUE ;
 
 \ The query answers the expected document, matching a key column.
@@ -281,6 +281,14 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
 : SPELLED-CONSTANT ( -- str )
    s" {'from':'(SELECT 1::bigint AS id)','graph':null,'s':{'col':'id','shape':'id'},'p':{'term':{'type':'uri','value':'urn:test:91'}},'o':{'term':{'datatype':'http://www.w3.org/2001/XMLSchema#integer','value':'\u0035','type':'literal'}}}" ;
 
+\ A named graph and a constant literal holding `'` and `\`.
+: SPELLED-QUOTED ( -- str )
+   s" {'from':'(SELECT 1::bigint AS id)','graph':{'type':'uri','value':'urn:test:o\u0027k'},'s':{'col':'id','shape':'id'},'p':{'term':{'type':'uri','value':'urn:test:92'}},'o':{'term':{'type':'literal','value':'it\u0027s \\ here'}}}" ;
+
+\ A constant literal that spells a call of RAND's SQL.
+: SPELLED-CALL ( -- str )
+   s" {'from':'(SELECT 1::bigint AS id)','graph':null,'s':{'col':'id','shape':'id'},'p':{'term':{'type':'uri','value':'urn:test:93'}},'o':{'term':{'type':'literal','value':'sparql.rand('}}}" ;
+
 : SPELLED-STORE ( ^ARENA:arena -- ^VEC:vector<u8> )
    {: a:^ :}
    a TEXT-VEC {: out:^ :}
@@ -290,7 +298,9 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    SPELLED-LABELS out VEC:APPEND s" ," out VEC:APPEND
    SPELLED-FACTS out VEC:APPEND s" ," out VEC:APPEND
    SPELLED-PAIRS out VEC:APPEND s" ," out VEC:APPEND
-   SPELLED-CONSTANT out VEC:APPEND s" ]}" out VEC:APPEND
+   SPELLED-CONSTANT out VEC:APPEND s" ," out VEC:APPEND
+   SPELLED-QUOTED out VEC:APPEND s" ," out VEC:APPEND
+   SPELLED-CALL out VEC:APPEND s" ]}" out VEC:APPEND
    out $ a UNQUOTE ;
 
 : SPELLED-IN ( str str ^ARENA:arena -- )
@@ -367,6 +377,9 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    SPELLED
    s" SELECT ?s WHERE { ?s t:91 5 }"
    s" {'head':{'vars':['s']},'results':{'bindings':[{'s':{'type':'uri','value':'urn:test:1'}}]}}"
+   SPELLED
+   s" SELECT ?g ?o WHERE { GRAPH ?g { t:1 t:92 ?o } }"
+   s" {'head':{'vars':['g','o']},'results':{'bindings':[{'g':{'type':'uri','value':'urn:test:o\u0027k'},'o':{'type':'literal','value':'it\u0027s \\ here'}}]}}"
    SPELLED
    \ A variable needs no test that a column never NULL holds a value.
    s" SELECT ?s ?l WHERE { ?s rdfs:label ?l FILTER(?l = 'Lathe') }"
@@ -889,6 +902,16 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    s" SELECT (COUNT(DISTINCT ?id) AS ?n) WHERE { { SELECT ?s (STRUUID() AS ?id) WHERE { VALUES ?s { 1 2 } } } }"
    TWO ;
 
+\ A BIND that calls RAND is evaluated once per solution; one whose term
+\ spells RAND's SQL is copied.
+: VOLATILE-BINDS ( -- )
+   s" SELECT (COUNT(*) AS ?n) WHERE { VALUES ?s { 1 2 } BIND(RAND() AS ?r) FILTER(?r = ?r) }"
+   TWO
+   s" SELECT ?x WHERE { ?s t:93 ?o BIND(STR(?o) AS ?x) }"
+   s" sparql.rand(" s" MATERIALIZED"
+   s" {'head':{'vars':['x']},'results':{'bindings':[{'x':{'type':'literal','value':'sparql.rand('}}]}}"
+   SPELLED-ALONE ;
+
 \ Inline VALUES joins a native column, UNDEF matching any term; no rows is
 \ no solution; a trailing VALUES joins the groups.
 : DATA-BLOCKS ( -- )
@@ -1124,7 +1147,7 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    SUBSTITUTIONS MANY CONSTANTS WIDE FORMS
    PROJECTIONS GROUPING AGGREGATES BRANCH-GROUPING ORDERS DISTINCTS
    SUBQUERIES
-   BINDS CHAINS UUIDS DATA-BLOCKS PATHS ;
+   BINDS CHAINS UUIDS VOLATILE-BINDS DATA-BLOCKS PATHS ;
 
 T-RESET
 s" sparql-test" ' SESSION MAIN
