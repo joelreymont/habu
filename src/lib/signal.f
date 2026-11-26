@@ -97,9 +97,6 @@ create SA-OLD SA-BUF-BYTES allot   \ sigaction fills this; its prior content is 
 SCRATCH-VARIABLE STUB-A            \ the stub's runtime address, as sa_handler
 PTR-VARIABLE FD-WORD-A             \ the ADDRESS of the process-wide fd word
 SCRATCH-VARIABLE CAUGHT            \ bit (sig-1) per signal RELEASE restores
-\ Set before the stub goes in and cleared after it is replaced, so no forked
-\ child keeps it. A rejected CATCH's bit stays: sigaction rejects its reset too.
-SCRATCH-VARIABLE STUBBED           \ bit (sig-1) per signal CHILD-RESET resets
 SCRATCH-VARIABLE READ-FD-CELL
 SCRATCH-VARIABLE WRITE-FD-CELL
 SCRATCH-VARIABLE OWNER             \ TASK:SELF-N at INIT; read only while READY
@@ -124,6 +121,17 @@ FUNCTION: SIGACTION-CALL sigaction ( n ^u8 ^u8 -- i32 )
 
 : FD-WORD ( -- ^n )
    FD-WORD-A @ ;
+
+\ Bit (sig-1) per signal CHILD-RESET resets, set before the stub goes in and
+\ cleared after it is replaced: a stub that finds its bit clear is no longer the
+\ disposition, and sends the signal on to the one in force. A rejected CATCH's
+\ bit stays: sigaction rejects its reset too.
+: STUBBED ( -- ^n )
+   FD-WORD 1 cells + ;
+
+\ The count of stubs running, on any thread.
+: FLIGHT ( -- ^n )
+   FD-WORD 2 cells + ;
 
 : ARM ( n -- )
    FD-WORD ! ;
@@ -219,17 +227,21 @@ FUNCTION: SIGACTION-CALL sigaction ( n ^u8 ^u8 -- i32 )
    PROCESS:NO-FD READ-FD-CELL !
    PROCESS:NO-FD WRITE-FD-CELL ! ;
 
-\ A forked child keeps the stub, the armed fd word and both pipe ends, so it
-\ would write a stop signal into the parent's pipe and live on through it.
+\ A forked child keeps the stubs, the three words and both pipe ends, so it
+\ would write a stop signal into the parent's pipe and live on through it. Its
+\ count can hold a stub another thread was running at the fork, released or not.
+\ The stubs go before DISARM: a signal between them would find its bit set and
+\ the fd word 0 and send itself back to the stub.
 : CHILD-RESET ( -- )
+   FD-WORD-A @ NULL-PTR <> if 0 FLIGHT ! then
    READY @ 0= if exit then
-   DISARM
    STUBBED @ [: SIG-DFL ACTION! SIGACTION-RC drop ;] EACH-IN
+   0 STUBBED !
+   DISARM
    READ-FD-CELL @ close
    WRITE-FD-CELL @ close
    FORGET-FDS
    0 CAUGHT !
-   0 STUBBED !
    0 READY ! ;
 
 : REGISTER-RESET ( -- )
@@ -299,8 +311,7 @@ REGISTER-RESET
 public
 
 \ From the MAIN task: the two published cells are read once here and kept.
-\ The fd word is armed last, so a signal that arrives while INIT is opening the
-\ pipe is absorbed rather than written to a half-built facility.
+\ The fd word is armed last, once the pipe it names is whole.
 : INIT ( -- )
    READY @ 0<> if E-SIGNAL-STATE throw then
    KEEP-ABI
@@ -377,13 +388,21 @@ public
       drop
    again ;
 
-\ The last caught signal not yet taken, or 0. Restoring before DISARM sends each
-\ signal to the pipe or its default, bar one a stub on another thread holds.
+\ No stub that may write runs once this returns. The fence orders DISARM before the reads of
+\ the count, as the stub's locked add orders its reads after its count.
+: AWAIT-STUBS ( -- )
+   fence
+   begin FLIGHT atomic@ 0<> while TASK:PAUSE repeat ;
+
+\ The last caught signal not yet taken, or 0. Restoring before DISARM and
+\ waiting out the stubs after it sends each signal to the pipe before DRAIN or
+\ to its default, and leaves no stub to write after the close.
 : RELEASE ( -- n )
    NEED-READY
    NEED-OWNER
    RESTORE-ALL
    DISARM
+   AWAIT-STUBS
    DRAIN {: last:n :}
    READ-FD-CELL @ WRITE-FD-CELL @ {: r:n w:n :}
    FORGET-FDS

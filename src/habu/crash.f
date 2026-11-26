@@ -853,24 +853,33 @@ public
    12 12 SIGSTK-DISABLE A64ICODE:ANDI,
    A64ICODE:SP A64ICODE:SP SIGSTK-FRAME A64ICODE:ADDI, ;
 
+\ x(reg) = the absolute address of the SIGNAL-ABI word at DATA offset off.
+: ABI-WORD, ( n n -- ) {: reg:n off:n :}
+   reg DATA-VA VA>N off + A64ICODE:LIT64, ;
+
 \ LSIGH: the async-signal-safe stub a program installs through sigaction to get
 \ a signal on a file descriptor. No Forth word is async-signal-safe, so this is
-\ machine code: it reads the process-wide fd word and, when that is nonzero,
-\ writes the four-byte signal number to it with one write syscall.
+\ machine code. It counts itself in the in-flight word for as long as it runs,
+\ so a release waits it out, and writes the four-byte signal number to the fd
+\ word's descriptor with one write syscall only while the stubbed word has bit
+\ sig-1 set and the fd word is nonzero. Otherwise it sends the signal to the
+\ process again, which takes the disposition then in force: a clear bit, or a
+\ zero fd word, says that is no longer this stub.
 \
 \ IT IS AN ORDINARY `void (int)` sa_handler, installed through libc sigaction,
 \ whose trampoline passes the number in x0 on Linux and macOS alike. The crash
 \ handler is the raw sa_tramp and reads it from x2 on macOS (C-CRASH-ENTRY).
 \
-\ IT READS THE FD WORD BY ITS ABSOLUTE ADDRESS, never as `XREG-RBASE <off>`: it runs
-\ on whichever thread the kernel picks, whose x20 is its own task region, so the
-\ offset form would read a different word per task and zero on a new one.
+\ IT READS THE WORDS BY THEIR ABSOLUTE ADDRESS, never as `XREG-RBASE <off>`: it
+\ runs on whichever thread the kernel picks, whose x20 is its own task region,
+\ so the offset form would read a different word per task and zero on a new one.
 \ DATA-VA is fixed (src/habu/layout.f package SIGNAL-ABI).
 \
-\ IT COSTS THE INTERRUPTED CONTEXT x0, x1, x2, the registers SYS, uses, the
-\ flags and sixteen bytes below its sp, and touches no Forth state (no DATA
-\ cell, dictionary or VM stack), so a program can carry it through any point
-\ of its execution. A fd word of zero absorbs the signal.
+\ IT COSTS THE INTERRUPTED CONTEXT x0 to x3, the registers SYS, uses, the flags
+\ and sixteen bytes below its sp, and touches no Forth state but the three
+\ words (no task cell, dictionary or VM stack), so a program can carry it
+\ through any point of its execution. The count's add is LDADDAL into x1, never xzr: with xzr it is
+\ STADDL, which has no acquire, and the loads after it could pass it.
 \
 \ THE WRITE IS FOUR BYTES AND ITS RESULT IS IGNORED. Four bytes is under
 \ PIPE_BUF, so a pipe takes it whole or not at all: a reader that falls behind
@@ -879,13 +888,24 @@ public
 \ signal landed on.
 : EMIT-SIGNAL-HANDLER ( -- )
    LSIGH A64ICODE:LABEL@ A64ICODE:LBL,
-   A64ICODE:LBL {: done:label :}
+   A64ICODE:LBL A64ICODE:LBL {: resend:label done:label :}
    A64ICODE:SP A64ICODE:SP $10 A64ICODE:SUBI,
    0 A64ICODE:SP 0 A64ICODE:STR,                                   \ the four low bytes ARE the number the fd receives
-   0 DATA-VA VA>N SIGNAL-ABI:FD-CELL + A64ICODE:LIT64,
-   0 0 0 A64ICODE:LDR,
-   0 done A64ICODE:CBZ,
+   2 SIGNAL-ABI:FLIGHT-CELL ABI-WORD,
+   1 1 A64ICODE:MOVZ,  1 1 2 A64ICODE:LDADDAL,
+   3 SIGNAL-ABI:STUBBED-CELL ABI-WORD,
+   1 3 0 A64ICODE:LDR,  2 0 1 A64ICODE:SUBI,  1 1 2 A64ICODE:LSRV,  1 1 1 A64ICODE:ANDI,
+   1 resend A64ICODE:CBZ,
+   3 SIGNAL-ABI:FD-CELL ABI-WORD,
+   0 3 0 A64ICODE:LDR,
+   0 resend A64ICODE:CBZ,
    1 A64ICODE:SP 0 A64ICODE:ADDI,  2 4 A64ICODE:MOVZ,  SYSCALL:NR-WRITE SYSCALL:SYS,
+   done A64ICODE:B,
+   resend A64ICODE:LBL,
+   SYSCALL:NR-GETPID SYSCALL:SYS,
+   1 A64ICODE:SP 0 A64ICODE:LDR,  2 1 A64ICODE:MOVZ,  SYSCALL:NR-KILL SYSCALL:SYS,     \ x2: macOS's kill takes posix, as libc's 1
    done A64ICODE:LBL,
+   2 SIGNAL-ABI:FLIGHT-CELL ABI-WORD,
+   1 0 A64ICODE:MOVN,  1 1 2 A64ICODE:LDADDAL,
    A64ICODE:SP A64ICODE:SP $10 A64ICODE:ADDI,  A64ICODE:RET, ;
 ;package

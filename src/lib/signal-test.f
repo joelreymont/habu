@@ -48,6 +48,9 @@ private
 : SA-RESTART ( -- n )
    HB-TARGET-LINUX? if $10000000 else 2 then ;
 
+: SA-RESETHAND ( -- n )
+   HB-TARGET-LINUX? if $80000000 else 4 then ;
+
 \ glibc supplies the x86-64 restorer when it installs a sigaction, including
 \ the default disposition restored by RELEASE. It is part of the observed
 \ action flags, while ARM Linux and macOS leave this bit clear.
@@ -673,6 +676,27 @@ FUNCTION: WAITPID-CALL waitpid ( n ^u8 n -- i32 )
    s" ... once its exit actions removed the path it registered" T-LABEL
    DIE-PATH DIE-PATH-U @ >str FS:EXISTS? 0= TTRUE ;
 
+\ RELEASE cleared the stub's bit, so a stub still installed sends the signal
+\ on. SA_RESETHAND puts SIG_DFL back as the stub enters, so the child dies of
+\ it: a stub that wrote it to the re-armed pipe would leave the child running.
+: RESEND-CHILD ( -- )
+   SIGNAL:INIT
+   SIGNAL:SIGUSR1 SIGNAL:CATCH
+   SIGNAL:RELEASE drop
+   SIGNAL:INIT
+   SIGNAL:SIGUSR1 SIGNAL-ABI:STUB SA-RESETHAND SET-DISPOSITION
+   SIGNAL:SIGUSR1 RAISE ;
+
+: RESEND-WAIT ( -- len len PROCESS:ending )
+   s" package SIGNAL-TEST RESEND-CHILD ;package"
+   DIE-OUT DIE-CAP >LEN DIE-ERR DIE-CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN ;
+
+: RESEND-CASE ( -- )
+   RESEND-WAIT {: outu:len erru:len done :}
+   s" a stub RELEASE replaced sends its signal on to the default" T-LABEL
+   s" RESEND-CHILD" DIE-OUT outu LEN>N >str DIE-ERR erru LEN>N >str done
+   SIGNAL:SIGUSR1 T-ENDING-SIGNALED= ;
+
 public
 
 \ The loop is started after the last definition and stopped at the end; every
@@ -702,6 +726,7 @@ public
    IGNORE-CASE
    FORK-CASE
    DIE-OF-CASE
+   RESEND-CASE
    AIO:STOP
    T-REPORT ;
 

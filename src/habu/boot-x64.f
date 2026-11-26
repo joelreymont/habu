@@ -220,40 +220,64 @@ private
 \ The width of the stub's one write: under PIPE_BUF, so a pipe takes it whole.
 4 constant SIGNO-BYTES
 
-\ The fd word's absolute address. DATA is mapped at DATA-VA and DATA-REGION,
-\ rejects a boot the kernel answered elsewhere, so this one address names the
-\ same word for the life of the process, whatever task is running.
-: FD-WORD-VA ( -- n ) LINUX-LAYOUT:DATA-VA VA>N SIGNAL-ABI:FD-CELL + ;
+\ The absolute address of the SIGNAL-ABI word at DATA offset off. DATA is mapped
+\ at DATA-VA and DATA-REGION, rejects a boot the kernel answered elsewhere, so
+\ this one address names the same word for the life of the process, whatever
+\ task is running.
+: ABI-WORD-VA ( n -- n ) LINUX-LAYOUT:DATA-VA VA>N + ;
 
-\ Bind the signal stub at the label: the twin of src/habu/crash.f
-\ EMIT-SIGNAL-HANDLER (LSIGH), whose comment gives the contract. It is a
-\ `void (int)` sa_handler, so the number arrives in edi; its four low bytes,
-\ pushed, are what the fd receives in one write whose result it ignores. It
-\ reads the fd word by its absolute address, never through rbp, which is the
-\ interrupted thread's own DATA; a word of zero absorbs the signal. It costs
-\ rax rcx rdx rsi r11, the flags and a cell below its own rsp, all of which
-\ rt_sigreturn restores, and touches no Forth state. Its `ret`,
-\ at the second label, enters the restorer the installer named: src/lib/signal.f
-\ installs through libc sigaction, which supplies one.
+: FD-WORD-VA ( -- n ) SIGNAL-ABI:FD-CELL ABI-WORD-VA ;
+
+\ rax = the in-flight word's address; rcx's n is added to it, locked.
+: FLIGHT-ADD, ( n -- ) {: n:n :}
+   X64ASM:RAX SIGNAL-ABI:FLIGHT-CELL ABI-WORD-VA IMM,
+   X64ASM:RCX n X64ASM:>IMM32 X64CODE:ASM-SINK X64ASM:ENC-MOV-RI32
+   X64ASM:RCX X64ASM:RAX X64ASM:MEM-AT X64CODE:ASM-SINK X64ASM:ENC-LOCK-XADD-MR ;
+
+\ Bind the signal stub at the label. It is a `void (int)` sa_handler, so the
+\ number arrives in edi; its four low bytes, pushed, are what the fd receives in
+\ one write whose result it ignores. It reads the three words by their absolute
+\ address, never through rbp, which is the interrupted thread's own DATA; the
+\ locked add orders the loads after it. It costs rax rcx rdx rsi r11, the flags
+\ and a cell below its own rsp, all of which rt_sigreturn restores. Its `ret`,
+\ at the second label, enters the restorer the installer named: libc sigaction
+\ supplies one.
 : SIGNAL-STUB, ( label label -- ) {: at:label last:label :}
    at X64CODE:LBL,
-   X64CODE:LBL {: done:label :}
+   X64CODE:LBL X64CODE:LBL {: resend:label done:label :}
    X64ASM:RDI X64CODE:ASM-SINK X64ASM:ENC-PUSH
+   1 FLIGHT-ADD,
+   X64ASM:RAX SIGNAL-ABI:STUBBED-CELL ABI-WORD-VA IMM,
+   X64ASM:RSI X64ASM:RAX X64ASM:MEM-AT X64CODE:ASM-SINK X64ASM:ENC-MOV-RM
+   X64ASM:RCX X64ASM:RDI X64CODE:ASM-SINK X64ASM:ENC-MOV-RR  X64ASM:RCX X64CODE:ASM-SINK X64ASM:ENC-DEC
+   X64ASM:RSI X64CODE:ASM-SINK X64ASM:ENC-SHR-CL
+   X64ASM:RSI 1 X64ASM:>IMM8 X64CODE:ASM-SINK X64ASM:ENC-AND-RI8
+   X64ASM:C-E resend X64CODE:JCC,
    X64ASM:RAX FD-WORD-VA IMM,
-   X64ASM:RDI X64ASM:RAX X64ASM:MEM-AT X64CODE:ASM-SINK X64ASM:ENC-MOV-RM
-   X64ASM:RDI X64ASM:RDI X64CODE:ASM-SINK X64ASM:ENC-TEST-RR
-   X64ASM:C-E done X64CODE:JCC,
+   X64ASM:RDX X64ASM:RAX X64ASM:MEM-AT X64CODE:ASM-SINK X64ASM:ENC-MOV-RM
+   X64ASM:RDX X64ASM:RDX X64CODE:ASM-SINK X64ASM:ENC-TEST-RR
+   X64ASM:C-E resend X64CODE:JCC,
+   X64ASM:RDI X64ASM:RDX X64CODE:ASM-SINK X64ASM:ENC-MOV-RR
    X64ASM:RSI X64ASM:RSP X64CODE:ASM-SINK X64ASM:ENC-MOV-RR
    X64ASM:RDX X64ASM:R64>N X64ASM:>R32 SIGNO-BYTES X64ASM:>IMM32 X64CODE:ASM-SINK X64ASM:ENC-MOV32-RI32
    X64ASM:RAX X64ASM:R64>N X64ASM:>R32 NR-WRITE X64ASM:>IMM32 X64CODE:ASM-SINK X64ASM:ENC-MOV32-RI32
    X64CODE:ASM-SINK X64ASM:ENC-SYSCALL
+   done X64CODE:JMP,
+   resend X64CODE:LBL,
+   X64ASM:RAX X64ASM:R64>N X64ASM:>R32 NR-GETPID X64ASM:>IMM32 X64CODE:ASM-SINK X64ASM:ENC-MOV32-RI32
+   X64CODE:ASM-SINK X64ASM:ENC-SYSCALL
+   X64ASM:RSI X64ASM:RDI X64CODE:ASM-SINK X64ASM:ENC-MOV-RR
+   X64ASM:RDI X64ASM:RAX X64CODE:ASM-SINK X64ASM:ENC-MOV-RR
+   X64ASM:RAX X64ASM:R64>N X64ASM:>R32 NR-KILL X64ASM:>IMM32 X64CODE:ASM-SINK X64ASM:ENC-MOV32-RI32
+   X64CODE:ASM-SINK X64ASM:ENC-SYSCALL
    done X64CODE:LBL,
+   -1 FLIGHT-ADD,
    X64ASM:RDI X64CODE:ASM-SINK X64ASM:ENC-POP
    last X64CODE:LBL,  X64CODE:RET, ;
 
-\ Publish the stub bound at the label and the address of the word it reads,
-\ so a program installs and arms the stub without spelling either (layout.f
-\ package SIGNAL-ABI). The word itself needs no clear: DATA is a fresh mapping
+\ Publish the stub bound at the label and the address of the fd word, so a
+\ program installs and arms the stub without spelling either (layout.f
+\ package SIGNAL-ABI). The three words need no clear: DATA is a fresh mapping
 \ here.
 : PUBLISH-STUB, ( label -- ) {: stub:label :}
    X64ASM:RAX stub X64CODE:MOVABS,  X64ASM:RAX SIGNAL-ABI:STUB-CELL CELL!

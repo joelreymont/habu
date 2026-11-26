@@ -328,13 +328,15 @@ public
 $43B0 constant DELTA-CELL
 ;package
 
-\ SIGNAL-ABI: the baked async-signal-safe handler stub and the word it reads.
-\ STUB-CELL is the stub's address, a program's sa_handler; FD-PTR-CELL is the
-\ address of the fd word, through which a program stores its self-pipe's write
-\ end; FD-CELL is the word's offset, claimed so nothing else takes it. Every
-\ boot writes the two published cells and none writes the fd word: DATA is
-\ mapped fresh, so it starts zero.
-\ The stub reads the fd word at the absolute address DATA-VA + FD-CELL, never
+\ SIGNAL-ABI: the baked async-signal-safe handler stub and the three words it
+\ reads. STUB-CELL is the stub's address, a program's sa_handler; FD-PTR-CELL is
+\ the address of the fd word, through which a program stores its self-pipe's
+\ write end. The fd word, STUBBED-CELL (bit sig-1 set while the stub may be
+\ sig's disposition) and FLIGHT-CELL (the count of stubs running) are one
+\ block a program reaches at FD + 0, 8 and 16. Every boot writes the two
+\ published cells and none writes the block: DATA is mapped fresh, so it
+\ starts zero.
+\ The stub reads the block at the absolute address DATA-VA + FD-CELL, never
 \ through x20: a handler runs on whichever thread receives the signal, and that
 \ thread's x20 is its own task region.
 \ DATA-VA is fixed. A spawned task's region carries neither published cell, so
@@ -345,9 +347,11 @@ $43B0 constant DELTA-CELL
 package SIGNAL-ABI
 private EXPORT BOOT:data-base
 public
+$660 constant FD-CELL
+FD-CELL 8 + constant STUBBED-CELL
+FD-CELL 16 + constant FLIGHT-CELL
 $678 constant STUB-CELL
 $680 constant FD-PTR-CELL
-$688 constant FD-CELL
 \ Both answer zero where the boot published nothing.
 : STUB ( -- n )
    data-base STUB-CELL + @ ;

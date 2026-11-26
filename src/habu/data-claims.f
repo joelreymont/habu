@@ -67,7 +67,8 @@ create TAB
    RSP-CELL                           1 cells                 CLAIM RSP-CELL
    EXITH-CELL                         1 cells                 CLAIM EXITH-CELL
    GENIO-ABI:OUT-CELL                 GENIO-ABI:END GENIO-ABI:OUT-CELL -  CLAIM GENIO-ABI
-   SIGNAL-ABI:STUB-CELL               3 cells                 CLAIM SIGNAL-ABI
+   SIGNAL-ABI:FD-CELL                 3 cells                 CLAIM SIGNAL-ABI-WORDS
+   SIGNAL-ABI:STUB-CELL               2 cells                 CLAIM SIGNAL-ABI
    COMMA-RUN-CELL                     1 cells                 CLAIM COMMA-RUN-CELL
    COMMA-END-CELL                     1 cells                 CLAIM COMMA-END-CELL
    COMMA-BASE-CELL                    1 cells                 CLAIM COMMA-BASE-CELL

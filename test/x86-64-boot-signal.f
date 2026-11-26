@@ -1,8 +1,9 @@
 \ x86-64-boot-signal.f - the SIGUSR1 stub src/habu/boot-x64.f START emits and
 \ publishes, cross-built for an x86-64 peer. Each image installs it from
-\ SIGNAL-ABI:STUB-CELL through SIGACTION-AT,, and raises the signal on its own
-\ pid with rbp on a zeroed DATA window: a stub reading the fd word through the
-\ DATA register instead of its absolute address writes nothing.
+\ SIGNAL-ABI:STUB-CELL through SIGACTION-AT,, marks it the disposition in the
+\ stubbed word and raises the signal on its own pid with rbp on a zeroed DATA
+\ window: a stub reading its words through the DATA register instead of their
+\ absolute addresses sends the signal on and the armed image dies of it.
 require test/x86-64-boot-harness.f
 require src/os/linux/layout.f
 require src/arch/x86-64/rt.f
@@ -16,7 +17,7 @@ require src/arch/x86-64/icode.f
 package X64K-SIGNAL
 
 10 constant SIGUSR1
-0 constant NO-FLAGS                     \ a plain `void (int)` handler
+$80000000 constant SA-RESETHAND          \ SIG_DFL goes back as the stub enters
 $800 constant O-NONBLOCK
 -11 constant EAGAIN-RC                  \ read on an empty non-blocking pipe
 4 constant SIGNO-BYTES                  \ the one write the stub makes
@@ -43,7 +44,7 @@ $1000 constant WINDOW
    rest X64BOOT:RESTORER,
    past X64CODE:LBL,
    X64ASM:R8 DATA-REG SIGNAL-ABI:STUB-CELL X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-MOV-RM
-   SIGUSR1 NO-FLAGS X64ASM:R8 rest X64BOOT:SIGACTION-AT,
+   SIGUSR1 SA-RESETHAND X64ASM:R8 rest X64BOOT:SIGACTION-AT,
    0 ANSWER, ;
 
 \ O_NONBLOCK: a read of the empty pipe answers at once.
@@ -53,20 +54,17 @@ $1000 constant WINDOW
    NR-PIPE SYS,
    0 ANSWER, ;
 
-\ Make fd 0 the pipe's write end too, with dup3, so a stub that wrote to the
-\ zero in the fd word instead of absorbing the signal would fill the pipe.
-: STDIN-PIPE, ( -- )
-   FDS X64ASM:RCX SCRATCH>,
-   X64ASM:RDI X64ASM:R64>N X64ASM:>R32 X64ASM:RCX 4 X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-MOV32-RM
-   X64ASM:RSI ZERO-REG,  X64ASM:RDX ZERO-REG,
-   NR-DUP2 SYS,
-   0 ANSWER, ;
-
 : ARM, ( -- )
    FDS X64ASM:RCX SCRATCH>,
    X64ASM:RAX X64ASM:R64>N X64ASM:>R32 X64ASM:RCX 4 X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-MOV32-RM
    X64ASM:RDX DATA-REG SIGNAL-ABI:FD-PTR-CELL X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-MOV-RM
    X64ASM:RAX X64ASM:RDX X64ASM:MEM-AT X64CODE:ASM-SINK X64ASM:ENC-MOV-MR ;
+
+\ Set bit SIGUSR1-1 of the stubbed word: the stub is still the disposition.
+: STUBBED, ( -- )
+   X64ASM:RDX DATA-REG SIGNAL-ABI:FD-PTR-CELL X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-MOV-RM
+   X64ASM:RAX 1 SIGUSR1 1- lshift X64ASM:>IMM64 X64CODE:ASM-SINK X64ASM:ENC-MOV-RI64
+   X64ASM:RAX X64ASM:RDX SIGNAL-ABI:STUBBED-CELL SIGNAL-ABI:FD-CELL - X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-MOV-MR ;
 
 \ The handler has run when kill returns; r8 keeps DATA across the call.
 : RAISE, ( -- )
@@ -89,15 +87,15 @@ $1000 constant WINDOW
 : ARMED-CASE ( -- )
    LINUX-LAYOUT:DATA-VA SIGNAL-ABI:FD-CELL +  SIGNAL-ABI:FD-PTR-CELL
    X64HARNESS:EXPECT-CELL,
-   INSTALL,  PIPE,  ARM,  RAISE,
+   INSTALL,  PIPE,  ARM,  STUBBED,  RAISE,
    SIGNO-BYTES DRAIN,
    SIGUSR1 BUF X64HARNESS:EXPECT-SCRATCH,
    EAGAIN-RC DRAIN, ;
 
 : IDLE-CASE ( -- )
+   SIGUSR1 X64HARNESS:EXPECT-SIGNAL
    0 SIGNAL-ABI:FD-CELL X64HARNESS:EXPECT-CELL,
-   INSTALL,  PIPE,  STDIN-PIPE,  RAISE,
-   EAGAIN-RC DRAIN, ;
+   INSTALL,  STUBBED,  RAISE, ;
 
 : BUILD ( [ -- ] bool str -- ) {: negative:bool path:str :}
    negative X64HARNESS:BOOT-OPEN,
@@ -108,8 +106,10 @@ $1000 constant WINDOW
 
 public
 
-\ Without the stub, STUB-CELL reads 0, sigaction installs SIG_DFL and the image
-\ dies of SIGUSR1.
+\ The armed image reads the signal number from the pipe the fd word names. The
+\ idle image's fd word is 0, so the stub sends the signal on and the image dies
+\ of it; a stub that wrote to fd 0 instead would leave it alive. The negative
+\ image is the armed one failing its first check.
 : RUN ( -- )
    T-RESET
    X64HARNESS:INIT
