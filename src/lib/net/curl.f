@@ -137,6 +137,7 @@ OPT-FUNCTION 79 + constant OPT-HEADER-FUNCTION \ CURLOPT_HEADERFUNCTION
 OPT-OBJECT 29 + constant OPT-HEADER-DATA  \ CURLOPT_HEADERDATA
 OPT-OBJECT 2 + constant OPT-URL           \ CURLOPT_URL
 OPT-OBJECT 4 + constant OPT-PROXY         \ CURLOPT_PROXY
+OPT-OBJECT 18 + constant OPT-AGENT        \ CURLOPT_USERAGENT
 OPT-OBJECT 23 + constant OPT-HTTP-HEADER  \ CURLOPT_HTTPHEADER
 OPT-OBJECT 31 + constant OPT-COOKIE-FILE  \ CURLOPT_COOKIEFILE
 OPT-OBJECT 36 + constant OPT-METHOD       \ CURLOPT_CUSTOMREQUEST
@@ -545,6 +546,15 @@ public
 : PROXY! ( handle str -- status )
    {: subject:handle text:str :}
    subject OPT-PROXY text SET-TEXT ;
+
+
+\ Set again, the new name replaces the one before, as a HEADER+ line cannot be;
+\ a User-Agent line added with HEADER+ is sent in its place.
+: AGENT! ( handle str -- status )
+   {: subject:handle text:str :}
+   text STR:LEN 1 AT-LEAST
+   text ONE-LINE
+   subject OPT-AGENT text SET-TEXT ;
 
 
 \ libcurl picks GET by default and POST once BODY! has been used. METHOD!

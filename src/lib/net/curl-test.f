@@ -1368,6 +1368,44 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    LAST-STATUS @ 200 T= ;
 
 
+: ECHO-COUNT ( str -- n ) {: needle:str :}
+   0 LAST-LEN @ 0 ?do
+      BODY$ needle i TEXT-AT? if 1+ then
+   loop ;
+
+
+: AGENT-SENT ( str -- ) {: line:str :}
+   s" User-Agent:" ECHO-COUNT 1 T=
+   line ECHO-HAS? TTRUE ;
+
+
+\ The echo is the head the peer read, so one User-Agent line holding the last
+\ name shows that AGENT! replaced the name before it.
+: TEST-AGENT ( -- )
+   PATH-ECHO$ GET-READY {: subject:CURL:handle :}
+   subject s" one/1" CURL:AGENT! EXPECT-OK
+   subject ECHO-FETCH
+   s" AGENT! sends its name as the one User-Agent line" T-LABEL
+   S\" User-Agent: one/1\r\n" AGENT-SENT
+   subject s" two/2" CURL:AGENT! EXPECT-OK
+   subject ECHO-FETCH
+   s" AGENT! again replaces the name the handle sends" T-LABEL
+   S\" User-Agent: two/2\r\n" AGENT-SENT
+   s" a name holding an LF is rejected" T-LABEL
+   [: subject S\" three/3\nX-B: 2" CURL:AGENT! EXPECT-OK ;]
+   CURL:E-OPERAND TTHROWSQ
+   s" an empty name is rejected" T-LABEL
+   [: subject s" " CURL:AGENT! EXPECT-OK ;] CURL:E-OPERAND TTHROWSQ
+   subject ECHO-FETCH
+   s" a rejected name leaves the name before it" T-LABEL
+   S\" User-Agent: two/2\r\n" AGENT-SENT
+   subject s" User-Agent: four/4" CURL:HEADER+ EXPECT-OK
+   subject ECHO-FETCH
+   s" a HEADER+ User-Agent line is sent in place of the name" T-LABEL
+   S\" User-Agent: four/4\r\n" AGENT-SENT
+   subject CURL:CLEANUP ;
+
+
 \ The echo ends with the bytes as the transfer found them, changed after the setter.
 : TEST-BORROWED-POST ( -- )
    s" b=2" {: first:str :}
@@ -3328,7 +3366,7 @@ TIGHT-FILL
    SERVER-BAD @ 0 T=
    SERVER-ERRNO @ 0 T=
    SERVER-HITS atomic@
-   118 MANY-N MANY-ROUNDS * + CEILING-HITS @ + T= ;
+   122 MANY-N MANY-ROUNDS * + CEILING-HITS @ + T= ;
 
 
 : NET-TESTS? ( -- bool )
@@ -3454,6 +3492,7 @@ public
    T-RESET
    PREPARE
    TEST-PROXY
+   TEST-AGENT
    TEST-GET
    TEST-MISSING
    TEST-HEADER
