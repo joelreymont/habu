@@ -201,8 +201,8 @@ private
    nc map-anon 0 <> IF
       drop s" rejection: a record room's mmap failed" EXIT-STATUS:SYSTEM die
    THEN {: q:^ :}
-   p q c >str ARENA-COPY
-   p f = IF p c >str ARENA-ZERO ELSE p c ARENA-UNMAP THEN
+   p q c >span ARENA-COPY
+   p f = IF p c >span ARENA-ZERO ELSE p c ARENA-UNMAP THEN
    q ;
 
 \ Doubles TEXT, keeping its bytes; a span taken from it before is stale.
@@ -330,7 +330,7 @@ private
    {: s:str :}
    BUF-ON @ 0= IF FD s write drop EXIT THEN
    s STR:LEN HELD-ROOM
-   s STR:DATA HELD-P @ HELD-U @ + s STR:LEN >str ARENA-COPY
+   s STR:DATA HELD-P @ HELD-U @ + s STR:LEN >span ARENA-COPY
    HELD-U @ s STR:LEN + HELD-U ! ;
 
 : FLUSH ( -- )
@@ -1163,7 +1163,7 @@ private
 \ Keeps the u bytes at a as the record, in place of the one kept before; no throw carries it yet.
 : KEEP-SAVED ( str -- ) {: s:str :}
    0 SAVED-U !  s STR:LEN SAVED-ROOM
-   s STR:DATA SAVED-P @ s STR:LEN >str ARENA-COPY
+   s STR:DATA SAVED-P @ s STR:LEN >span ARENA-COPY
    s STR:LEN SAVED-U !  0 data-base STAMP-CELL + ! ;
 
 public
@@ -1194,7 +1194,7 @@ public
    0 PENDING-U !
    QUIET @ 0= IF
       TEXT-LEN @ PENDING-ROOM IF
-         TEXT PENDING-P @ TEXT-LEN @ >str ARENA-COPY
+         TEXT PENDING-P @ TEXT-LEN @ >span ARENA-COPY
          TEXT-LEN @ PENDING-U !
       THEN
    THEN
@@ -1385,7 +1385,7 @@ public
    s STR:LEN CHUNK-ROOM {: c:^ :}
    c CHUNK-USED {: o:n :}
    s STR:LEN c o + cell-view !
-   s STR:DATA c o + CELL + s STR:LEN >str ARENA-COPY
+   s STR:DATA c o + CELL + s STR:LEN >span ARENA-COPY
    o CELL + s STR:LEN + c CHUNK-USED!
    c o + CELL + s STR:LEN >str ;
 
@@ -1575,5 +1575,5 @@ public
    SAVED-P @ SAVED-BASE SAVED-CAP @ ROOM-FREE
    PENDING-P @ NULL-PTR PENDING-CAP @ ROOM-FREE
    LABELS-P @ LABELS-BASE LABELS-CAP @ ROOM-FREE
-   BLOCK CELLS-BYTES >str ARENA-ZERO ;
+   BLOCK CELLS-BYTES >span ARENA-ZERO ;
 ;package

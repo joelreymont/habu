@@ -424,7 +424,7 @@ variable TDA-CAP   0 TDA-CAP !          \ bytes mapped at TDA-P, 0 for none
 
 : TDA-KEEP ( str -- ) {: s:str :}
    TDA-P TDA-CAP TDA-FIRST s STR:LEN ARENA-ROOM
-   s STR:DATA TDA-P @ s STR:LEN >str ARENA-COPY
+   s STR:DATA TDA-P @ s STR:LEN >span ARENA-COPY
    TDA-P @ TDA-A !  s STR:LEN TDA-U ! ;
 
 \ The armed reason is the one store every declaration catcher reads, whichever
@@ -476,7 +476,7 @@ variable LABEL-U
 : LABEL-START ( -- ) 0 LABEL-U ! ;
 : LABEL+ ( str -- ) {: s:str :}
    LABEL-P LABEL-CAP LABEL-FIRST LABEL-U @ s STR:LEN + ARENA-ROOM
-   s STR:DATA LABEL-P @ LABEL-U @ + s STR:LEN >str ARENA-COPY
+   s STR:DATA LABEL-P @ LABEL-U @ + s STR:LEN >span ARENA-COPY
    LABEL-U @ s STR:LEN + LABEL-U ! ;
 : LABEL$ ( -- str ) LABEL-P @ LABEL-U @ >str ;
 

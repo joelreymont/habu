@@ -172,7 +172,7 @@ private
    rows cap id 1 + 2 * GROW-CELLS
    PATH-TEXT PATH-TEXT-CAP PATH-TEXT-U @ s STR:LEN + CELL / 1 + GROW-CELLS
    PATH-TEXT-U @ {: off:n :}
-   s STR:DATA  PATH-TEXT @ BYTE-VIEW off +  s STR:LEN >str ARENA-COPY
+   s STR:DATA  PATH-TEXT @ BYTE-VIEW off +  s STR:LEN >span ARENA-COPY
    off rows @ id 2 * cells + !
    s STR:LEN rows @ id 2 * 1 + cells + !
    off s STR:LEN + PATH-TEXT-U ! ;
@@ -245,9 +245,9 @@ private
    at p STR:LEN + {: u:n :}
    JOINED JOINED-CAP u 1 + u 1 + ARENA-ROOM
    JOINED @ BYTE-VIEW {: b:^ :}
-   d STR:DATA b d STR:LEN >str ARENA-COPY
+   d STR:DATA b d STR:LEN >span ARENA-COPY
    47 b d STR:LEN + c!
-   p STR:DATA  b at +  p STR:LEN >str  ARENA-COPY
+   p STR:DATA  b at +  p STR:LEN >span  ARENA-COPY
    0 b u + c!
    b u >str ;
 
@@ -509,7 +509,7 @@ public
    rows cells PATH-TEXT-U @ + allot
    PATH-ROWS @ t rows ARENA-CELLS-COPY
    PATH-TEXT @ BYTE-VIEW
-   t rows cells + BYTE-VIEW  PATH-TEXT-U @ >str  ARENA-COPY
+   t rows cells + BYTE-VIEW  PATH-TEXT-U @ >span  ARENA-COPY
    t IMAGE-PATHS !  MINTED @ IMAGE-N !
    align here CELL-VIEW {: s:^ :}
    SPAN-N @ 3 * {: cs:n :}

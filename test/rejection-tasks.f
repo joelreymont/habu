@@ -43,7 +43,7 @@ $400000000000000 constant BIG-N
    REJECTION:CAPTURE
    try catch drop  REJECTION:SEND-SAVED
    REJECTION:BUFFER$ dup STR:DATA swap STR:LEN EXP-CAP min {: a:^ u:n :}
-   a exp u >str ARENA-COPY  u expu !
+   a exp u SPAN:MAKE ARENA-COPY  u expu !
    REJECTION:CAPTURE  REJECTION:BUFFER-OFF ;
 
 : GATE ( -- )

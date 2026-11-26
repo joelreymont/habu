@@ -1,4 +1,3 @@
-split-str
 \ main.f - the engine's command line in Habu.
 \ `--load` and stdin build one source stream, interpreted once, open, through
 \ SOURCE-ROOT:RUN-ROOT; the program file of `hb prog.f` is a loaded file the
@@ -40,7 +39,7 @@ ENUM route load plain ;ENUM
 
 \ Argument idx of an argv vector, a NUL-terminated string.
 : ARG ( ^^u8 n -- str )
-   ptr-field @ dup ZLEN ;
+   ptr-field @ dup ZLEN >str ;
 
 \ The open record has no place: no source holds an argument or stdin.
 : REJECT ( n -- ) {: rc:n :}
@@ -52,10 +51,9 @@ ENUM route load plain ;ENUM
    s" usage: hb file.f [args ...], hb --load file.f ... [-- args ...], or hb with the program on stdin"
    REJECTION:EMIT-STR ;
 
-\ The unknown flag a u.
-: USAGE ( str -- ) {: a:^ u:n :}
+: USAGE ( str -- ) {: flag:str :}
    s" E-HB-USAGE" REJECTION:OPEN
-   s" unknown flag `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR  96 REJECTION:EMIT1
+   s" unknown flag `" REJECTION:EMIT-STR  flag REJECTION:EMIT-STR  96 REJECTION:EMIT1
    USAGE-HELP  EXIT-STATUS:USAGE REJECT ;
 
 \ No file to load: `--load` with nothing before the end or a `--`.
@@ -80,10 +78,10 @@ ENUM route load plain ;ENUM
 \ Any other argument starting with `-` is an unknown flag (USAGE).
 \ Anything else, `--` included, is the program file. Past argv[1] only `--` is
 \ special: `--load a.f --x` loads a file named `--x`.
-: ROUTE ( str -- route ) {: a:^ u:n :}
-   a u LOAD$ STR:= if construct route load exit then
-   a u SEP$ STR:= if construct route plain exit then
-   u 0 > if a c@ DASH = if a u USAGE then then
+: ROUTE ( str -- route ) {: arg:str :}
+   arg LOAD$ STR:= if construct route load exit then
+   arg SEP$ STR:= if construct route plain exit then
+   arg STR:LEN 0 > if arg STR:DATA c@ DASH = if arg USAGE then then
    construct route plain ;
 
 \ The first `--` from argv[2] on, or argc: where a list's files end.
@@ -108,27 +106,29 @@ variable USED
 \ Bytes one read asks for: a Linux pipe's default capacity.
 $10000 constant READ-SIZE
 
-: APPEND ( str -- ) {: a:^ u:n :}
+: APPEND ( str -- ) {: s:str :}
+   s STR:LEN {: u:n :}
    USED @ u + TEXT-RESERVE
-   a USED @ TEXT u BYTE-COPY
+   s STR:DATA USED @ TEXT u BYTE-COPY
    USED @ u + USED ! ;
 
 \ The byte at p spelled so an `s\"` literal decodes it back.
 : APPEND-ESCAPED ( ^u8 -- ) {: p:^ :}
    p c@ {: c:n :}
-   c [char] " = c BACKSLASH = or if S\" \\" APPEND  p 1 APPEND exit then
+   c [char] " = c BACKSLASH = or if S\" \\" APPEND  p 1 >str APPEND exit then
    c BLANK < c $7F >= or if
-      s" 0123456789ABCDEF" drop {: hex:^ :}
-      S\" \\x" APPEND  hex c 4 rshift + 1 APPEND  hex c $0F and + 1 APPEND exit
+      s" 0123456789ABCDEF" STR:DATA {: hex:^ :}
+      S\" \\x" APPEND  hex c 4 rshift + 1 >str APPEND
+      hex c $0F and + 1 >str APPEND exit
    then
-   p 1 APPEND ;
+   p 1 >str APPEND ;
 
 \ One `s\" <path>" <word>` row. Through script-required the registry loads
 \ each file in its own include frame and skips one the engine holds.
-: ROW ( str str -- ) {: path:^ u:n word:^ w:n :}
+: ROW ( str str -- ) {: path:str word:str :}
    S\" s\\\" " APPEND
-   u 0 ?do path i + APPEND-ESCAPED loop
-   S\" \" " APPEND  word w APPEND  NL 1 APPEND ;
+   path STR:LEN 0 ?do path STR:DATA i + APPEND-ESCAPED loop
+   S\" \" " APPEND  word APPEND  NL 1 >str APPEND ;
 
 \ One read past USED; whether the file has ended.
 : STEP ( n -- bool ) {: fd:n :}
@@ -139,12 +139,12 @@ $10000 constant READ-SIZE
    got 0 = ;
 
 \ A file that starts `#!` starts a line comment instead.
-: SHEBANG ( str -- ) {: a:^ u:n :}
-   u 2 < if exit then
-   a c@ HASH <> if exit then
-   a 1 + c@ BANG <> if exit then
-   BACKSLASH a c!
-   BLANK a 1 + c! ;
+: SHEBANG ( SPAN:span<u8> -- ) {: s :}
+   s SPAN:LEN 2 < if exit then
+   s 0 SPAN:U8@ HASH <> if exit then
+   s 1 SPAN:U8@ BANG <> if exit then
+   BACKSLASH s 0 SPAN:U8!
+   BLANK s 1 SPAN:U8! ;
 
 : START-STREAM ( -- ) 0 USED ! ;
 
@@ -158,16 +158,16 @@ $10000 constant READ-SIZE
 : STREAM ( ^^u8 n n -- str ) {: argv:^ first:n end:n :}
    START-STREAM
    end first ?do
-      i first > if NL 1 APPEND then
+      i first > if NL 1 >str APPEND then
       argv i ARG s" script-required" ROW
    loop
-   0 TEXT USED @ ;
+   0 TEXT USED @ >str ;
 
 : STDIN ( -- str )
    START-STREAM
    begin 0 STEP until
-   0 TEXT USED @ SHEBANG
-   0 TEXT USED @ ;
+   0 TEXT USED @ SPAN:MAKE SHEBANG
+   0 TEXT USED @ >str ;
 
 \ The root stream runs open, as the engine's loop runs it: a stream that
 \ leaves cells still exits 0 (src/core/include.f SOURCE-ROOT:RUN-ROOT).
@@ -183,6 +183,9 @@ CAST: APP-ACTION ( n -- [ -- ] )
 : APP? ( -- bool )
    data-base APP-ENTRY:XT-CELL + @ 0<> ;
 
+: RUN-FILE ( str -- ) {: file:str :}
+   file STR:DATA PROGRAM-ARG !  file SOURCE-ROOT:RUN-PROGRAM ;
+
 \ argv[0] is the program; a vector with nothing after it has no file to load
 \ (the assembly sends that one to the REPL before it reaches its file list).
 : RUN ( ^^u8 n -- ) {: argv:^ argc:n :}
@@ -192,9 +195,7 @@ CAST: APP-ACTION ( n -- [ -- ] )
    first end >= if NO-FILES then
    r MATCH route
       load OF argv first end STREAM RUN-TEXT ENDOF
-      plain OF
-         argv first ARG over PROGRAM-ARG ! SOURCE-ROOT:RUN-PROGRAM
-      ENDOF
+      plain OF argv first ARG RUN-FILE ENDOF
    ;MATCH ;
 
 \ An application's MAIN takes the arguments, then stdin is the source. Off

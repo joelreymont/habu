@@ -1,4 +1,3 @@
-split-str
 \ arena-pages.f - growable stores on fresh anonymous pages: copy, zeroing and
 \ release.
 
@@ -12,7 +11,8 @@ private EXPORT BOOT:data-base
 : DATA-OFF ( ^a -- n ) NULL-PTR - data-base NULL-PTR - - ;
 global
 
-: ARENA-COPY ( ^u8 str -- ) {: src:^ dst:^ n:n :}
+: ARENA-COPY ( ^u8 SPAN:span<u8> -- )
+   span> {: src:^ dst:^ n:n :}
    0
    begin dup CELL + n <= while
       src over + CELL-VIEW @  over dst swap + CELL-VIEW !
@@ -24,7 +24,8 @@ global
    repeat
    drop ;
 
-: ARENA-ZERO ( str -- ) {: dst:^ u:n :}
+: ARENA-ZERO ( SPAN:span<u8> -- )
+   span> {: dst:^ u:n :}
    u CELL / CELL * {: bulk:n :}
    0
    begin dup bulk < while
@@ -70,5 +71,5 @@ global
 \ depend on how writes and the grow interleave, and a stale pointer into it
 \ reads zeros.
 : ARENA-ABANDON ( ^a n -- ) {: base:^ bytes:n :}
-   base BYTE-VIEW bytes REG-DATA-SPAN? IF base BYTE-VIEW bytes ARENA-ZERO EXIT THEN
+   base BYTE-VIEW bytes REG-DATA-SPAN? IF base BYTE-VIEW bytes >span ARENA-ZERO EXIT THEN
    base bytes ARENA-UNMAP ;

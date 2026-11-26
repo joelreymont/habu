@@ -1,4 +1,3 @@
-split-str
 \ intern.f - the permanent address of a string literal's bytes; equal bodies
 \ within a segment share one. Bodies live in DATA, since a DATA address means the
 \ same after a snapshot restore and an mmap one does not. Tier 0 interns
@@ -51,15 +50,15 @@ ROWS-MAX 2 * constant SLOTS          \ a power of two
 
 ROWS-MAX cells 2 * OWNER-BYTES + constant OWNER-SIZE
 
-: CLEAR-CELLS ( str -- )
-   {: buf:^ bytes:n :}
+: CLEAR-CELLS ( SPAN:span<u8> -- )
+   span> {: buf:^ bytes:n :}
    bytes CELL / 0 ?do 0 buf i cells + CELL-VIEW ! loop ;
 
 : OWNER-INIT ( ^u8 ^u8 n -- ) {: owner:^ arena:^ cap:n :}
    \ Allot leaves old bytes intact. Unused rows and arena capacity belong to
    \ this new owner too, and must not retain the build host's scratch values.
-   owner OWNER-SIZE CLEAR-CELLS
-   arena cap CELL + CLEAR-CELLS
+   owner OWNER-SIZE SPAN:MAKE CLEAR-CELLS
+   arena cap CELL + SPAN:MAKE CLEAR-CELLS
    arena owner ARENA-FIELD LINK! ;
 
 create BOOT-OWNER OWNER-SIZE allot
@@ -90,12 +89,12 @@ variable PROBE
    k cells R-LEN + @ ;
 
 : ROW$ ( n -- str ) {: k:n :}
-   STRING-ARENA k ROW-OFF +  k ROW-LEN ;
+   STRING-ARENA k ROW-OFF +  k ROW-LEN >str ;
 
 \ ---- finding a body that is already here --------------------------------------
 \ Masked by an `and` against a positive constant so a hash whose top bit ran
 \ into the sign still lands inside the table.
-: HASH ( str -- n ) {: a:^ u:n :} FNV:BASIS32 a u FNV:BYTES32 SLOTS 1- and ;
+: HASH ( str -- n ) {: s:str :} FNV:BASIS32 s FNV:BYTES32 SLOTS 1- and ;
 
 : PROBE-NEXT ( -- )
    PROBE @ 1+ SLOTS 1- and PROBE ! ;
@@ -103,10 +102,10 @@ variable PROBE
 : SLOT@ ( -- n )
    PROBE @ cells SLOT + @ ;
 
-: ROW-FIND ( str -- n ) {: a:^ u:n :}
-   a u HASH PROBE !
+: ROW-FIND ( str -- n ) {: s:str :}
+   s HASH PROBE !
    begin SLOT@ 0<> while
-      SLOT@ 1- ROW$ a u STR:= if SLOT@ 1- exit then
+      SLOT@ 1- ROW$ s STR:= if SLOT@ 1- exit then
       PROBE-NEXT
    repeat
    -1 ;
@@ -147,12 +146,13 @@ private
 
 \ A body larger than ARENA-CAP gets a segment of its own size; its USED then
 \ exceeds ARENA-CAP, so ROOM? sends the next body to a new segment.
-: ADD ( str -- n ) {: a:^ u:n :}
+: ADD ( str -- n ) {: body:str :}
+   body STR:LEN {: u:n :}
    u ROOM? 0= if u ARENA-CAP max NEW-SEGMENT then
-   a u FREE-SLOT {: s:n :}
+   body FREE-SLOT {: s:n :}
    USED @ {: off:n :}
    u 0= if ARENA-CAP else off then {: stored:n :}
-   a  STRING-ARENA stored +  u BYTE-COPY
+   body STR:DATA  STRING-ARENA stored +  u BYTE-COPY
    stored ROWS @ cells R-OFF + !
    u ROWS @ cells R-LEN + !
    ROWS @ 1+ s cells SLOT + !
@@ -168,11 +168,11 @@ public
 
 \ `s" "` is a body: it gets a row and an address like any other.
 : STRING ( str -- n )
-   {: a:^ u:n :}
-   SPACE? if a u SPACE-STRING exit then
-   a u ROW-FIND {: k:n :}
+   {: s:str :}
+   SPACE? if s SPACE-STRING exit then
+   s ROW-FIND {: k:n :}
    k 0 >= if BASE k ROW-OFF + exit then
-   a u ADD {: row:n :}
+   s ADD {: row:n :}
    BASE row ROW-OFF + ;
 
 \ The second result is the origin its callers file beside the address: -1, none.

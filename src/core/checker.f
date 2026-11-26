@@ -1710,7 +1710,7 @@ ATOMA-BOOT ATOMA-P !   ATOMU-BOOT ATOMU-P !   ATOMK-BOOT ATOMK-P !   MAXATOM-INI
       TERM-NAME-P @ TERM-NAME-CAP @ nc SR-GROW TERM-NAME-P !
       nc TERM-NAME-CAP !
    THEN
-   s STR:DATA TERM-NAMES TERM-NAME-N @ + s STR:LEN >str ARENA-COPY
+   s STR:DATA TERM-NAMES TERM-NAME-N @ + s STR:LEN >span ARENA-COPY
    TERM-NAME-N @ dup s STR:LEN + TERM-NAME-N ! ;
 : RIGID-RESET ( -- )
    1 RIGID-N !   1 RGN-N !   1 EXT-N !   1 GEN-N !   1 RGN-MARK !   0 FB-N ! ;
@@ -2966,7 +2966,7 @@ EXPORT CHECKER-REG:GROW
    CT-CLASS ctn CTN @ ARENA-CELLS-ZERO    CT-WIDTH ctn CTN @ ARENA-CELLS-ZERO
    CT-SIGN ctn CTN @ ARENA-CELLS-ZERO
    CT-PKG-A ctn CTN @ ARENA-CELLS-ZERO    CT-PKG-U ctn CTN @ ARENA-CELLS-ZERO
-   CT-STR ctu +  CT-STR-U @ ctu - >str ARENA-ZERO
+   CT-STR ctu +  CT-STR-U @ ctu - >span ARENA-ZERO
    ctn CTN !
    ctu CT-STR-U ! ;
 
@@ -7693,7 +7693,7 @@ variable VRC-RVN
    VRN-G dn VREC-NODE-N @ ARENA-CELLS-ZERO    VRN-H dn VREC-NODE-N @ ARENA-CELLS-ZERO
    VRN-I dn VREC-NODE-N @ ARENA-CELLS-ZERO
    VNARG an VNARG-N @ ARENA-CELLS-ZERO
-   VREC-STR su +  VREC-STR-U @ su - >str ARENA-ZERO
+   VREC-STR su +  VREC-STR-U @ su - >span ARENA-ZERO
    rn VREC-N !  fn VREC-FIELD-N !  dn VREC-NODE-N !  an VNARG-N !  su VREC-STR-U ! ;
 
 : VREC-MAP-RESET-ONE ( ^n -- ) {: p:^ :}
@@ -10545,7 +10545,7 @@ PTR-VARIABLE PU-P   variable PU-CAP   variable PU-N      \ pending uses, in rows
    {: s:str :}
    s STR:LEN DLB-ROOM
    DLB-N @ {: off:n :}
-   s STR:DATA  DLB-P @ off +  s STR:LEN >str ARENA-COPY
+   s STR:DATA  DLB-P @ off +  s STR:LEN >span ARENA-COPY
    off s STR:LEN + DLB-N !
    off ;
 
@@ -11447,7 +11447,7 @@ PTR-VARIABLE ELET-WAIT-P   variable ELET-WAIT-CAP   variable ELET-WAIT-N
    E-WEND@ p EN.A !
    s STR:LEN p EN.B !
    E-WEND@ s STR:LEN + UALIGN CELL + E-WENSURE
-   s STR:DATA E-WBASE E-WEND@ + s STR:LEN >str ARENA-COPY
+   s STR:DATA E-WBASE E-WEND@ + s STR:LEN >span ARENA-COPY
    E-WEND@ s STR:LEN + UALIGN E-WEND! ;
 
 : E-RES ( n -- n ) {: x:n :}
@@ -12505,7 +12505,7 @@ CUR-DEFAULT
    {: t:str v:n s:n e:n :}
    CUR-RP CUR-RCAP CUR-RN @ 1 + CUR-ROW ARENA-ROWS-ENSURE
    CB-P CB-CAP CB-N @ t STR:LEN + CELL + 1 - CELL / 1 ARENA-ROWS-ENSURE
-   t STR:DATA  CB-N @ CB-AT  t STR:LEN >str ARENA-COPY
+   t STR:DATA  CB-N @ CB-AT  t STR:LEN >span ARENA-COPY
    CUR-RP CUR-RN @ CUR-ROW NAV-CELL {: p:^ :}
    CB-N @ p !  t STR:LEN p CELL + !  v p 2 cells + !  s p 3 cells + !  e p 4 cells + !
    CB-N @ t STR:LEN + CB-N !
@@ -12752,7 +12752,7 @@ EXPORT CHECKER-EFFECT-AUTHORITY:RECOVERY-NEW?
 : SYM-REWIND ( n n -- ) {: symn:n symu:n :}
    symn HIDX-SYMS-RETIRE
    SYMS CELL-VIEW  symn SYM-REC CELL / *  SYM-N @ SYM-REC CELL / *  ARENA-CELLS-ZERO
-   SYM-STR symu +  SYM-STR-U @ symu - >str ARENA-ZERO
+   SYM-STR symu +  SYM-STR-U @ symu - >span ARENA-ZERO
    symn SYM-N !
    symu SYM-STR-U ! ;
 
@@ -12823,9 +12823,9 @@ SCRATCH-VARIABLE HEAD-KEY-CAP     \ HEAD-KEY-P's room, in cells
    t STR:LEN 1 + s STR:LEN + {: ku:n :}
    t STR:LEN 0= IF NULL-PTR EXIT THEN
    HEAD-KEY-P HEAD-KEY-CAP  ku CELL / 1 +  1 ARENA-ROWS-ENSURE
-   t STR:DATA HEAD-KEY t STR:LEN >str ARENA-COPY
+   t STR:DATA HEAD-KEY t STR:LEN >span ARENA-COPY
    $3A HEAD-KEY t STR:LEN + c!
-   s STR:DATA HEAD-KEY t STR:LEN 1 + + s STR:LEN >str ARENA-COPY
+   s STR:DATA HEAD-KEY t STR:LEN 1 + + s STR:LEN >span ARENA-COPY
    HEAD-KEY ku >str BOOT:NAMESPACE-WL WL-PROBE ;
 \ The row a qualifier's head names here, NULL-PTR for none: in A or its
 \ part `A:<head>` first, then a top-level package.
@@ -14404,7 +14404,7 @@ HELD-TEXT-P HELD-TEXT-CAP 1 HELD-TEXT-N STORE+
 \ Copies the text: a caller's buffer is reused before the linker reads it.
 : HOLD-FACTS ( str n -- )
    {: s:str ix:n :}
-   s STR:DATA  s STR:LEN ix HOLD  s STR:LEN >str ARENA-COPY ;
+   s STR:DATA  s STR:LEN ix HOLD  s STR:LEN >span ARENA-COPY ;
 
 
 : HELD-ENTRY ( n -- n str )
@@ -14725,7 +14725,7 @@ variable SEALS-N
    SEALS-U @ {: off:n :}  SEALS-N @ {: at:n :}
    SEALS-P SEALS-CAP off s STR:LEN + ARENA-BYTES-ENSURE
    SEAL-ROWS-P SEAL-ROWS-CAP at 1 + 2 ARENA-ROWS-ENSURE
-   s STR:DATA SEALS off + s STR:LEN >str ARENA-COPY
+   s STR:DATA SEALS off + s STR:LEN >span ARENA-COPY
    off at SEAL-AT !  s STR:LEN at SEAL-AT CELL + !
    off s STR:LEN + SEALS-U !  at 1 + SEALS-N ! ;
 
@@ -15724,9 +15724,9 @@ NCOMP-DISPATCH:TARGET-DECL-CELL RESERVED-PTR-U8-CELL TARGET-OWNER-A
    p STR:LEN 0= IF s EXIT THEN
    p STR:LEN 1 + s STR:LEN + {: ku:n :}
    PATH-KEY-P PATH-KEY-CAP  ku CELL / 1 +  1 ARENA-ROWS-ENSURE
-   p STR:DATA PATH-KEY p STR:LEN >str ARENA-COPY
+   p STR:DATA PATH-KEY p STR:LEN >span ARENA-COPY
    $3A PATH-KEY p STR:LEN + c!
-   s STR:DATA PATH-KEY p STR:LEN 1 + + s STR:LEN >str ARENA-COPY
+   s STR:DATA PATH-KEY p STR:LEN 1 + + s STR:LEN >span ARENA-COPY
    PATH-KEY ku >str ;
 
 : PUBLIC-SECTION ( -- )
@@ -16603,8 +16603,8 @@ SCRATCH-VARIABLE MARK-NAME-CAP  \ MARK-NAME-P's room, in bytes
 : MARK-NAME$ ( str str -- str ) {: ps:str s:str :}
    MARK-NAME-P MARK-NAME-CAP ps STR:LEN s STR:LEN + ARENA-BYTES-ENSURE
    MARK-NAME-P @ {: buf:^ :}
-   ps STR:DATA buf ps STR:LEN >str ARENA-COPY
-   s STR:DATA buf ps STR:LEN + s STR:LEN >str ARENA-COPY
+   ps STR:DATA buf ps STR:LEN >span ARENA-COPY
+   s STR:DATA buf ps STR:LEN + s STR:LEN >span ARENA-COPY
    buf ps STR:LEN s STR:LEN + >str ;
 
 : UNSEEN-NAME$ ( str -- str ) s" unseen " swap MARK-NAME$ ;
@@ -18106,7 +18106,7 @@ variable NRX-POS                        \ byte offset cursor over the entry arra
 : NORET-RESTORE-END ( n -- ) {: newend:n :}
    newend RECORD-CONTROL-REWIND-XT
    newend NRX-TRUNCATE
-   NORETS newend +  NORET-END @ newend - >str ARENA-ZERO
+   NORETS newend +  NORET-END @ newend - >span ARENA-ZERO
    newend NORET-END !
    NORET-TERM ;
 
@@ -18591,7 +18591,7 @@ PROW-P PROW-CAP-V 1 PROW-END STORE+
 
 \ The table is baked, so the retired rows' bytes are zeroed.
 : PROW-REWIND ( n -- ) {: n:n :}
-   n PROW-END @ < IF PROW n +  PROW-END @ n - >str ARENA-ZERO THEN
+   n PROW-END @ < IF PROW n +  PROW-END @ n - >span ARENA-ZERO THEN
    n PROW-END ! ;
 
 : PROW-ENSURE ( n -- ) {: need:n :}
@@ -18607,7 +18607,7 @@ PROW-P PROW-CAP-V 1 PROW-END STORE+
    WRITE-WINDOW-CK
    PROW-END @ PROW-HEAD + len + {: at:n :}
    at s STR:LEN + 1 + PROW-ENSURE
-   s STR:DATA  PROW at +  s STR:LEN >str ARENA-COPY
+   s STR:DATA  PROW at +  s STR:LEN >span ARENA-COPY
    32  PROW at + s STR:LEN +  c!
    len s STR:LEN + 1 + ;
 
@@ -18688,8 +18688,8 @@ PROW-P PROW-CAP-V 1 PROW-END STORE+
    CHECKER-SYM-IDENTITY {: pkg:str name:str vis:n :}
    CELL 1 + pkg STR:LEN + name STR:LEN +  HELD-UNDEFINE HOLD {: at:^ :}
    pkg STR:LEN at CELL-VIEW !   vis at CELL + c!
-   pkg STR:DATA  at CELL 1 + +  pkg STR:LEN >str ARENA-COPY
-   name STR:DATA  at CELL 1 + + pkg STR:LEN +  name STR:LEN >str ARENA-COPY ;
+   pkg STR:DATA  at CELL 1 + +  pkg STR:LEN >span ARENA-COPY
+   name STR:DATA  at CELL 1 + + pkg STR:LEN +  name STR:LEN >span ARENA-COPY ;
 \ `undefine` of the name the checker resolved to sym, held while a build's
 \ space is open, so a link of the file's object replays it (READ-UNDEFINE).
 : UNDEFINE ( n -- )
@@ -19856,7 +19856,7 @@ variable WFN-OFF   variable WFN-ROW   variable WFN-K
 : WF-FACT@ ( n -- n n n ) {: i:n :} i WF-OFF@  i WF-POS@  i WF-WIDTH@ ;
 
 : WF-ROW-COPY ( n n -- ) {: src:n dst:n :}
-   src WF-ROW BYTE-VIEW dst WF-ROW BYTE-VIEW WF-REC >str ARENA-COPY ;
+   src WF-ROW BYTE-VIEW dst WF-ROW BYTE-VIEW WF-REC >span ARENA-COPY ;
 
 : WF-KEY< ( n n n -- bool ) {: off:n pos:n row:n :}
    off row WF-OFF@ < if RES-TRUE exit then
@@ -23783,7 +23783,7 @@ defer VIS-VISIT ( str n n n -- )
    i VS-CELL @ 0 <> IF RES-FALSE EXIT THEN
    VE-P VE-CAP VS-N @ 1 + VE-ROW ARENA-ROWS-ENSURE
    VB-P VB-CAP VB-N @ s STR:LEN + CELL + 1 - CELL / 1 ARENA-ROWS-ENSURE
-   s STR:DATA  VB-N @ VB-AT  s STR:LEN >str ARENA-COPY
+   s STR:DATA  VB-N @ VB-AT  s STR:LEN >span ARENA-COPY
    VE-P VS-N @ VE-ROW NAV-CELL {: p:^ :}
    VB-N @ p !  s STR:LEN p CELL + !
    VB-N @ s STR:LEN + VB-N !
@@ -23943,9 +23943,9 @@ defer VIS-VISIT ( str n n n -- )
    {: qs:str s:str :}
    qs STR:LEN 1 + s STR:LEN + {: len:n :}
    VQ-P VQ-CAP len CELL + 1 - CELL / 1 ARENA-ROWS-ENSURE
-   qs STR:DATA  0 VQ-AT  qs STR:LEN >str ARENA-COPY
+   qs STR:DATA  0 VQ-AT  qs STR:LEN >span ARENA-COPY
    58  qs STR:LEN VQ-AT  c!
-   s STR:DATA  qs STR:LEN 1 + VQ-AT  s STR:LEN >str ARENA-COPY
+   s STR:DATA  qs STR:LEN 1 + VQ-AT  s STR:LEN >span ARENA-COPY
    0 VQ-AT len >str ;
 
 \ The qualifier a candidate behind PKG is spelled with: the prefix's own as

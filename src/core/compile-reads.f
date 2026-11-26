@@ -162,7 +162,7 @@ create CALL-BUF 2 cells SCRATCH-ALLOT    \ CALL+'s first, then second bytes
    CAP @ 2 * need max ROOM-MIN max {: cap:n :}
    cap s" a recording of a compile's reads" FRESH
    {: fresh:^ :}
-   MAP @ fresh USED @ >str ARENA-COPY
+   MAP @ fresh USED @ >span ARENA-COPY
    MAP @ CAP @ UNMAP
    fresh MAP !
    cap CAP ! ;
@@ -206,8 +206,8 @@ private
    kind off AT CELL-VIEW !
    u off CELL + AT CELL-VIEW !
    v off 2 cells + AT CELL-VIEW !
-   as STR:DATA off 3 cells + AT u >str ARENA-COPY
-   bs STR:DATA off 3 cells + u + AT v >str ARENA-COPY
+   as STR:DATA off 3 cells + AT u >span ARENA-COPY
+   bs STR:DATA off 3 cells + u + AT v >span ARENA-COPY
    size 3 cells - u v + ?do 0 off 3 cells + i + AT c! loop
    off size + USED !
    off 1+ place SLOT !  FILLED @ 1+ FILLED ! ;

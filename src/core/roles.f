@@ -45,7 +45,7 @@ EXPORT CHECK:SR-GROW
       DTC-P @ DTC-CAP @ nc SR-GROW DTC-P !
       nc DTC-CAP !
    THEN
-   s STR:DATA  DTC-BUF DTC-U @ + s STR:LEN >str  ARENA-COPY
+   s STR:DATA  DTC-BUF DTC-U @ + s STR:LEN >span  ARENA-COPY
    DTC-U @ s STR:LEN + DTC-U ! ;
 
 : DTC-NAME$ ( -- str )
