@@ -74,37 +74,37 @@
 // light along env's key softbox, tone-mapped by Khronos PBR Neutral and
 // encoded to sRGB, the only encoding, since the preferred canvas format is
 // never an -srgb one. The studio and key light are fixed in view's right, up
-// and back, which studio() sets: with no ground they are the view's own, so
-// the studio turns with the camera; with a ground, up is the ground's normal
-// and right and back turn about it with the camera, a turntable. V points
-// from the fragment toward view's eye, a point when its w is 1 and a
-// direction when 0. The normal is turned toward V: meshes are drawn without
-// culling and may be open. hit, after vs, marks the nearest fragment in
-// pick's one texel, with 1 in its fourth channel to tell a hit from the clear.
+// and back: with no ground they are the view's own, so the studio turns with
+// the camera; with a ground they are the ground record's (turn.js), up its
+// normal and right and back turning about it with the camera, a turntable.
+// V points from the fragment toward view's eye, a point when its w is 1 and
+// a direction when 0. The normal is turned toward V: meshes are drawn
+// without culling and may be open. hit, after vs, marks the nearest fragment
+// in pick's one texel, with 1 in its fourth channel to tell a hit from the
+// clear.
 // The key casts the instances' soft shadow on the ground: caster draws every
 // row, cast-only (flags bit 1) or not, into the map, SHADOW_SIDE square, by
 // light.clip, whose x and y run along the key softbox's tangents and cover
-// the key's volume (keyVolume) and whose depth runs away from the key over
-// the casters' box; stamp, its fragment, sets in marks, for every surface,
-// the height slices it covers in its texel; halve ORs each level of marks'
-// 2x2 texels into the next, up to one texel; seen finds,
+// M, the ground record's, and whose depth runs away from the key over the
+// casters' nearest to farthest key z; stamp, its fragment, sets in marks,
+// for every surface, the height slices it covers in its texel; halve ORs
+// each level of marks' 2x2 texels into the next, up to one texel; seen finds,
 // at half the canvas's size, the share V of the softbox the ground sees past
 // the casters, as the share of its rays through the slices that clear them
 // (clearing, traced), into shade, and those rays' bits into clears; and
 // ground draws the catcher, the quad light.corners on the plane, whose
 // fragment, shadow, reads V there. Slice k
 // of 64 holds the heights T 2^((k - 64) / 10) to T 2^((k - 63) / 10), T the
-// casters' box's greatest height, and slice 0 every height below. vs, a pick's
+// casters' greatest height, and slice 0 every height below. vs, a pick's
 // probe and so the depth occlude's view test reads take only the rows whose
-// bit 1 is clear. The fit depends on the draw's matrix, the plane and the
-// casters' box alone, never on the rows, so a row outside the view still
-// shades the ground in view, and the map's texel is the same whichever rows a
-// module sends. The ground is not in the map: the plane's depth at light x, y
-// is light.ground.x x + light.ground.y y + light.ground.z, light.reach.xy is
-// the softbox's half extents in light x and y per unit of depth and
-// light.reach.z T in units of depth; light.reach.w is 0. A
-// caster below the plane neither shades it nor hides one above it from the
-// key. The catcher reads white times
+// bit 1 is clear. The fit is the ground record's, never the rows', so a row
+// outside the view still shades the ground in view, and the map's texel is
+// the same whichever rows a module sends. The ground is not in the map: the
+// plane's depth at light x, y is light.ground.x x + light.ground.y y +
+// light.ground.z, light.reach.xy is the softbox's half extents in light x
+// and y per unit of depth and light.reach.z T in units of depth;
+// light.reach.w is 0. A caster below the plane neither shades it nor hides
+// one above it from the key. The catcher reads white times
 // (env(up, 1) + key V) / (env(up, 1) + key), key the key's irradiance on the
 // ground, in linear light and not tone-mapped, so an unshadowed ground reads
 // white as the clear does.
@@ -123,10 +123,6 @@
 // per unit along KEY, in studio coordinates. SHADOW_SIDE is the shadow map's
 // side, a power of two: a fixed side keeps the shadow's error, a texel over
 // its distance, and its cost the same on every canvas.
-// studio.f's KEY-VOLUME states these and studio's turntable rule again;
-// test/browser/display-peer.mjs compares its planes and pixel, as numbers,
-// with the ground the host holds, M as the Light uniform lit writes states
-// it, and M's larger side over SHADOW_SIDE.
 const KEY = [-0.4, 0.6, 0.7];
 const KEY_BOX = [0.45, 0.27];
 const SHADOW_SIDE = 1024;
@@ -815,114 +811,39 @@ const cross3 = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2],
 const scaled = (a, k) => a.map((v) => v * k);
 const plus = (...vs) => [0, 1, 2].map((k) => vs.reduce((s, v) => s + v[k], 0));
 
-// The studio's view, viewer's view with the studio's axes, in binary64: the
-// view's own with no plane; with a ground plane, up is its normal n, right r
-// the view's right laid on the plane, or, where that right lies along n, s
-// times n cross the view's back laid on it, and back s r cross n, s the sign
-// of the view's right · (up × back), so the studio keeps the view's
-// handedness. A right laid shorter than 1e-6 lies along n: an f32 matrix
-// rolled 90° leaves about 4e-8.
-function studio(view, plane) {
-  if (!plane) return view.slice();
-  const [right, up, back] = [4, 8, 12].map((k) => view.slice(k, k + 3));
-  const n = unit(Array.from(plane.subarray(0, 3)));
-  const laid = (a) => plus(a, scaled(n, -dot3(a, n)));
-  const s = Math.sign(dot3(right, cross3(up, back)));
-  const along = laid(right);
-  const r = Math.hypot(...along) >= 1e-6 ? unit(along)
-    : scaled(unit(cross3(n, laid(back))), s);
-  return [...view.slice(0, 4), ...r, 0, ...n, 0, ...scaled(cross3(r, n), s), 0];
-}
-
-// The key light's world axes from the studio's view and the ground plane: x
-// and y the key softbox's tangents, z toward the key, as shader's softbox
-// takes them in studio coordinates; and the plane's unit normal n and d.
-function keyAxes(axes, plane) {
+// The light event's numbers (turn.js): its tangents are softbox's for
+// keyward(), so the shadow's softbox is the one env shades with.
+export const LIGHT = (() => {
   const c = unit(KEY);
   const across = unit(cross3([0, 1, 0], c));
+  return Float32Array.of(...across, ...cross3(c, across), ...c, ...KEY_BOX,
+    SHADOW_SIDE);
+})();
+
+// The key light's world axes for the studio's view: x and y the key
+// softbox's tangents, z toward the key, LIGHT's laid on the studio's axes.
+function keyAxes(axes) {
   const [right, up, back] = [4, 8, 12].map((k) => axes.slice(k, k + 3));
-  const world = (a) => plus(scaled(right, a[0]), scaled(up, a[1]), scaled(back, a[2]));
-  const length = Math.hypot(plane[0], plane[1], plane[2]);
-  return { x: world(across), y: world(cross3(c, across)), z: world(c),
-    n: Array.from(plane.subarray(0, 3), (v) => v / length), d: plane[3] / length };
+  const world = (k) => plus(scaled(right, LIGHT[k]), scaled(up, LIGHT[k + 1]),
+    scaled(back, LIGHT[k + 2]));
+  return { x: world(0), y: world(3), z: world(6) };
 }
 
-// The world point of the plane, unit n and d, that clip matrix m, column-major,
-// takes to NDC x, y, in binary64 by Cramer's rule over the plane and the two
-// planes m takes to x and y; null when the view runs along the plane or the
-// point lies behind the camera, w not above 0.
-function onPlane(m, n, d, x, y) {
-  const row = (r) => [m[r], m[4 + r], m[8 + r], m[12 + r]];
-  const w = row(3);
-  const [e0, e1, e2] = [row(0).map((v, k) => v - x * w[k]),
-    row(1).map((v, k) => v - y * w[k]), [...n, d]];
-  const [a, b, c] = [e0, e1, e2].map((e) => e.slice(0, 3));
-  const p = scaled(plus(scaled(cross3(b, c), -e0[3]), scaled(cross3(c, a), -e1[3]),
-    scaled(cross3(a, b), -e2[3])), 1 / dot3(a, cross3(b, c)));
-  return p.every(Number.isFinite) && dot3(w, p) + w[3] > 0 ? p : null;
-}
-
-// How far, in key units, a ground point's rays to the softbox go in key x,
-// either way, down and up in key y before they rise T, tall, above the plane.
-// A ray at u, v of the softbox runs along (u, v, 1) in the key's axes a and
-// so rises nz + v ny a unit of key z, n having no part along key x: the rays
-// at the softbox's low edge rise least and go furthest.
-function reaches(tall, a) {
-  const [ny, nz] = [dot3(a.n, a.y), dot3(a.n, a.z)];
-  const [X, Y] = KEY_BOX;
-  const [far, near] = [tall / (nz - Y * ny), tall / (nz + Y * ny)];
-  return { across: X * far, down: Y * far, up: Y * near };
-}
-
-// The key's volume, every point on or above the plane whose key x and y lie
-// in M, for clip matrix m, the casters' box (six f32, its lowest corner then
-// its highest) and the key's axes a, as lit takes it: M as lo and hi, the
-// box's greatest and least key z as near and far, and T as tall; or null,
-// when no shadow is drawn. V, the ground in view, is the plane's points at
-// NDC x, y = ±1 and R their rectangle in key x and y, unbounded where one of
-// them is none (onPlane). T is the most the box's corners rise above the
-// plane, and M is R grown by reaches, cut to the rectangle of the box's
-// corners: every caster a ground point in view sees the softbox past lies in
-// M. The map covers M alone, so the picture does not depend on rows outside
-// the volume. Null when T is not above 0, M is empty, or M and the box's
-// depth along the key all have no extent, a box that is a point.
-function keyVolume(m, box, a) {
-  const corners = Array.from({ length: 8 }, (_, k) =>
-    [0, 1, 2].map((j) => box[(k >> j) & 1 ? 3 + j : j]));
-  const tall = Math.max(...corners.map((p) => dot3(a.n, p) + a.d));
-  if (!(tall > 0)) return null;
-  // The rectangle of points in key x and y, lowest then highest.
-  const rect = (points) => [0, 1].map((side) => [a.x, a.y].map((axis) =>
-    (side ? Math.max : Math.min)(...points.map((p) => dot3(axis, p)))));
-  const seen = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([x, y]) =>
-    onPlane(m, a.n, a.d, x, y));
-  const [r0, r1] = seen.every((p) => p) ? rect(seen)
-    : [[-Infinity, -Infinity], [Infinity, Infinity]];
-  const [b0, b1] = rect(corners);
-  const { across, down, up } = reaches(tall, a);
-  const lo = [Math.max(r0[0] - across, b0[0]), Math.max(r0[1] - down, b0[1])];
-  const hi = [Math.min(r1[0] + across, b1[0]), Math.min(r1[1] + up, b1[1])];
-  const depths = corners.map((p) => dot3(a.z, p));
-  const [near, far] = [Math.max(...depths), Math.min(...depths)];
-  if (lo[0] > hi[0] || lo[1] > hi[1]) return null;
-  const wide = Math.max(hi[0] - lo[0], hi[1] - lo[1], near - far);
-  return wide > 0 ? { lo, hi, near, far, tall } : null;
-}
-
-// The Light uniform, 40 f32s, for the key's volume keyVolume found with the
+// The Light uniform, 40 f32s, for a ground record of 21 (turn.js) and the
 // key's axes. The map's x and y cover M, so its texel is M's larger side over
-// SHADOW_SIDE; its depth runs over the casters' box along the key, from its
-// nearest corner, 0, to its farthest, 1, 1% to spare at each end, so clipping
-// keeps a caster at either end. reach.z is T, the casters' greatest height
-// above the plane, in units of depth. The catcher is the ground that
-// can see M on its way to the softbox, M grown by reaches the other way, laid
-// on the plane: past it the catcher would draw only the clear's white. An
-// axis in which M has no extent takes a spare of a millionth of its largest
-// extent or the box's depth, so the fit keeps the scene's own scale whatever
-// its units.
-function lit(fitted, a) {
-  const { lo, hi, near, far, tall } = fitted;
-  const nx = dot3(a.n, a.x), ny = dot3(a.n, a.y), nz = dot3(a.n, a.z);
+// SHADOW_SIDE; its depth runs over the casters' key z, from the nearest, 0,
+// to the farthest, 1, 1% to spare at each end, so clipping keeps a caster at
+// either end. reach.z is T in units of depth. The catcher is C laid on the
+// plane: past it the catcher would draw only the clear's white. An axis in
+// which M has no extent takes a spare of a millionth of its largest extent or
+// the casters' depth, so the fit keeps the scene's own scale whatever its
+// units.
+function lit(fit, a) {
+  const n = Array.from(fit.subarray(0, 3)), d = fit[3];
+  const [lo, hi] = [[fit[10], fit[12]], [fit[11], fit[13]]];
+  const [x0, x1, y0, y1] = fit.subarray(14, 18);
+  const [tall, near, far] = fit.subarray(18, 21);
+  const nx = dot3(n, a.x), ny = dot3(n, a.y), nz = dot3(n, a.z);
   const spare = Math.max(hi[0] - lo[0], hi[1] - lo[1], near - far) * 1e-6;
   const [cx, cy] = [(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2];
   const ex = Math.max((hi[0] - lo[0]) / 2, spare);
@@ -934,16 +855,15 @@ function lit(fitted, a) {
   const rows = [[...scaled(a.x, 1 / ex), -cx / ex], [...scaled(a.y, 1 / ey), -cy / ey],
     [...scaled(a.z, -1 / span), top / span], [0, 0, 0, 1]];
   const D = tall / nz;
-  const { across, down, up } = reaches(tall, a);
   const corner = (x, y) => [...plus(scaled(a.x, x), scaled(a.y, y),
-    scaled(a.z, -(a.d + x * nx + y * ny) / nz)), 1];
+    scaled(a.z, -(d + x * nx + y * ny) / nz)), 1];
   const out = new Float32Array(40);
   for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) out[4 * c + r] = rows[r][c];
-  out.set([...corner(lo[0] - across, lo[1] - up), ...corner(hi[0] + across, lo[1] - up),
-    ...corner(hi[0] + across, hi[1] + down), ...corner(lo[0] - across, hi[1] + down)], 16);
+  out.set([...corner(x0, y0), ...corner(x1, y0), ...corner(x1, y1),
+    ...corner(x0, y1)], 16);
   out.set([ex * nx / (nz * span), ey * ny / (nz * span),
-    (top + (a.d + cx * nx + cy * ny) / nz) / span, 0], 32);
-  out.set([span * KEY_BOX[0] / ex, span * KEY_BOX[1] / ey, D / span, 0], 36);
+    (top + (d + cx * nx + cy * ny) / nz) / span, 0], 32);
+  out.set([span * LIGHT[9] / ex, span * LIGHT[10] / ey, D / span, 0], 36);
   return out;
 }
 
@@ -1011,21 +931,20 @@ function grouped(rows, count, origin) {
 // a 4x colour texture resolved into the canvas's, then discarded, against a
 // 4x depth texture, both of the drawing buffer's size, which draw makes
 // again when that size has changed. The depth texture keeps the last draw's
-// depth, the matrix buffer its matrix and the view buffer studio's
-// view of the ground held then and of the last view viewer gave, the identity
-// matrix's before any. While a ground is held, marks exist with area, the
+// depth, the matrix buffer its matrix and the view buffer the last view
+// viewer gave, the identity matrix's before any, with the right, up and back
+// of the ground held then. While a ground is held, marks exist with area, the
 // caster pass's attachment SHADOW_SIDE square, and with shade and clears,
 // half the drawing buffer's size rounded up, which a draw that shades makes
 // again when that size has changed. Each draw that shades writes light and
 // shadeMatrix, so these stay the last such draw's until the next, and occlude
 // after a resize answers the last draw. clears is made, and cleared outside
 // the catcher, with every ray clear (ALL_CLEAR), as V is 1 there and marks are
-// made empty. A draw whose eye is above the plane and whose key's volume is not
-// null first draws every row into marks along the key, ORs the marks into their
-// levels, draws V into shade and its clear rays into clears, then draws the
-// catcher first in its main pass, which draws only the rows that are not
-// cast-only; so does a pick's probe. With no ground or no shadow a cast-only
-// row draws nothing.
+// made empty. A draw while a ground of 21 is held first draws every row into
+// marks along the key, ORs the marks into their levels, draws V into shade
+// and its clear rays into clears, then draws the catcher first in its main
+// pass, which draws only the rows that are not cast-only; so does a pick's
+// probe. With no ground or no shadow a cast-only row draws nothing.
 // occlude draws its boxes against the depth, and their footprints into shade's
 // pixels against clears when the last draw drew a shadow and marks are held,
 // in passes of at most QUERIES occlusion queries, one per box, and reads
@@ -1131,8 +1050,7 @@ function setup(canvas, context, device, release, fail) {
   });
   const light = device.createBuffer({ size: 160, usage: UNIFORM | COPY_DST });
   const shadeMatrix = device.createBuffer({ size: 64, usage: UNIFORM | COPY_DST });
-  let plane = null; // the ground's plane held, or null
-  let casters = null; // the casters' box held with it
+  let fit = null; // the ground record held, 10 or 21 f32, or null
   const bound = (user, entries) => device.createBindGroup({
     layout: user.getBindGroupLayout(0),
     entries: entries.map(([binding, resource]) => ({ binding, resource })),
@@ -1255,11 +1173,10 @@ function setup(canvas, context, device, release, fail) {
     meshes.delete(handle);
   };
 
-  const ground = (held, box) => {
-    plane = held && held.slice();
-    casters = held && box.slice();
-    if (plane && !shadows) shadowMap();
-    if (!plane && shadows) unshadow();
+  const ground = (held) => {
+    fit = held && held.slice();
+    if (fit && !shadows) shadowMap();
+    if (!fit && shadows) unshadow();
   };
 
   // The last draw's runs of drawn rows and its matrix, copied, as a pick
@@ -1278,12 +1195,11 @@ function setup(canvas, context, device, release, fail) {
     }
     device.queue.writeBuffer(matrix, 0, clip);
     seen = viewer(last.clip) ?? seen;
-    const axes = studio(seen, plane);
+    const axes = fit ? [...seen.slice(0, 4), ...fit.subarray(4, 7), 0,
+      ...fit.subarray(0, 3), 0, ...fit.subarray(7, 10), 0] : seen;
     device.queue.writeBuffer(view, 0, Float32Array.from(axes));
-    const key = plane && keyAxes(axes, plane);
-    const above = key && dot3(key.n, seen) + key.d * seen[3] > 0;
-    const cast = above ? keyVolume(last.clip, casters, key) : null;
-    last.cast = cast !== null;
+    const cast = fit !== null && fit.length === 21;
+    last.cast = cast;
     const encoder = device.createCommandEncoder();
     if (cast) {
       const [w, h] = [Math.ceil(canvas.width / 2), Math.ceil(canvas.height / 2)];
@@ -1293,7 +1209,7 @@ function setup(canvas, context, device, release, fail) {
         shaded();
       }
       const { area, marks, shade, clears } = shadows;
-      device.queue.writeBuffer(light, 0, lit(cast, key));
+      device.queue.writeBuffer(light, 0, lit(fit, keyAxes(axes)));
       // shade's texel is two pixels square, so it overruns an odd canvas.
       device.queue.writeBuffer(shadeMatrix, 0,
         windowed(0, 0, 2 * shade.width, 2 * shade.height));
@@ -1582,7 +1498,7 @@ export async function mount(canvas, { Module, module: url, fetch: load, rpc, onT
       mesh: live((...args) => renderer.mesh(...args)),
       unmesh: live((handle) => renderer.unmesh(handle)),
       highlight: live((words) => renderer.highlight(words)),
-      ground: live((plane, box) => renderer.ground(plane, box)),
+      ground: live((held) => renderer.ground(held)),
       pick: live((x, y) => renderer.pick(x, y)),
       occlude: live((boxes) => renderer.occlude(boxes)),
       draw: live((...args) => {
@@ -1672,7 +1588,9 @@ export async function mount(canvas, { Module, module: url, fetch: load, rpc, onT
 
   // Enabled only before start: its first records may immediately disable it.
   onInput(true);
-  send(() => module.start());
+  // The start and light turns report their first failure once: a module
+  // that ends at hello rejects both.
+  send(() => Promise.all([module.start(), module.light(LIGHT)]));
   // The a the module was last told; 0 before the mount's first resize, so that
   // one always sends.
   let told = 0;

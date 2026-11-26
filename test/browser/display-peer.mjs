@@ -10,6 +10,7 @@ import { readFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Module } from "../../src/lib/browser/turn.js";
+import { LIGHT } from "../../src/lib/browser/viewport.js";
 import { devtoolsPort, launch, stopGroup, until } from "./chrome.mjs";
 
 const [file, output, flag, chrome] = process.argv.slice(2);
@@ -39,6 +40,7 @@ module.x.memory.grow(1);
 assert.deepEqual(copied, original, "SVG bytes must survive source mutation and memory growth");
 module = await Module.load(bytes, host);
 await module.start();
+await module.light(LIGHT);
 await module.typed("on");
 assert.deepEqual(records.at(-1), ["input", true]);
 await module.typed("off");
@@ -50,10 +52,8 @@ for (const [command, reason] of [
   ["flag", /input a must be 0 or 1/], ["negative-flag", /input a must be 0 or 1/],
   ["input-b", /input b and c must be zero/], ["input-c", /input b and c must be zero/],
   ["occlude", /occlude 7 before any draw/],
-  ["ground-c", /ground c must be zero/], ["ground-b", /a ground of 12 bytes, not 0 or 40/],
+  ["ground-c", /ground c must be zero/], ["ground-b", /a ground of 12 bytes, not 0, 40 or 84/],
   ["ground-outside", /outside the module/], ["ground-nan", /not all finite/],
-  ["ground-flat", /normal is \(0, 0, 0\)/], ["ground-far", /is not a finite f32/],
-  ["ground-box", /lowest -0\.5, -0\.5, 2 above its highest 0\.5, 0\.5, 1/],
 ]) {
   const count = records.length;
   await assert.rejects(module.typed(command), reason, command);
@@ -103,10 +103,19 @@ for (const [command, text] of [["die", "warned"], ["die-255", "\uFFFDboom"]]) {
   assert.match(module.ended, /^the module trapped and has ended: Error: /, command);
   assert.throws(() => module.run(), (e) => e.message === module.ended, `${command}: a run after the trap`);
 }
+// display.f's typed text that has it send the ground record STUDIO:KEY-FIT
+// makes for a draw through matrix m over the casters' box and the plane.
+const fitText = (m, box, plane = [0, 0, 1, 0]) => `fit ${Buffer.from(
+  Float32Array.from([...m, ...plane, ...box]).buffer).toString("hex")}`;
+// Clip x and y x / 2 - 1 and y / 2 - 1, depth 0.5 - z / 16: the plane z = 0
+// seen from above, the studio's right +x and back -y. A box below the plane
+// answers those alone, the 40-byte record.
+const overhead = [0.5, 0, 0, 0, 0, 0.5, 0, 0, 0, 0, -0.0625, 0, -1, -1, 0.5, 1];
 const scene = join(output, "scene.bin");
 writeFileSync(scene, Uint8Array.of(0, 255, 16));
 const cli = Bun.spawn([process.execPath, "src/lib/browser/host-cli.mjs", file, "--typed", "on", "--typed", "zero",
-  "--typed", "draw", "--typed", "unmesh", "--typed", "seam", "--typed", "ground", "--typed", "ground-none",
+  "--typed", "draw", "--typed", "unmesh", "--typed", "seam",
+  "--typed", fitText(overhead, [-3, -2, -1, 4, 5, 0]), "--typed", "ground-none",
   "--load", scene,
   "--focus", "00".repeat(15) + "Ff",
   "--highlight", ""], { stdout: "pipe", stderr: "pipe" });
@@ -123,7 +132,7 @@ assert.equal(stdout, `hello\ninput 0\nsvg ${original.length} ${Buffer.from(origi
   "draw 1 2/2/0/0/30a040/65535/16384\n" +
   "mesh 4 4 2 100000 200000 300000\nmesh 5 4 2 139000 190000 299000\n" +
   "draw 2 4/8/0/-/ff7314/0/32768 5/9/0/-/ff7314/0/32768\n" +
-  "ground 0 0 1 0 -0.5 -0.5 0 0.5 0.5 1\nground none\n" +
+  "ground 0 0 1 0 1 0 0 0 -1 0\nground none\n" +
   `text load 00ff10\ntext focus ${"00".repeat(15)}ff\ntext highlight \n`);
 console.log("SVG/input protocol, independent copy, rejected records, identities, rejected delivery, " +
   "error text, mesh origins and CLI passed");
@@ -219,6 +228,7 @@ async function browser() {
       return result.result.value;
     };
     const command = (text) => evaluate(`subject.typed(${JSON.stringify(text)})`);
+    const fit = (m, box, plane) => command(fitText(m, box, plane));
     await call("Page.enable");
     await call("Page.navigate", { url: `http://127.0.0.1:${server.port}/` });
     await until(() => evaluate("!!window.subject && !!document.querySelector('img')?.complete"))
@@ -418,7 +428,6 @@ async function browser() {
     console.log(`Headless Chrome occlude after 0 rows: ${open}`);
     await shadowed();
     await traced();
-    await volumed();
     await seamed();
     await evaluate("oldError?.call(oldImage,new Event('error'))");
     assert.equal((await state()).error, "");
@@ -443,7 +452,8 @@ async function browser() {
     // display.f's ground z = 0, +z up, under an orange unit box on it at x
     // and y -0.5 to 0.5, mesh 100 drawn by the host straight from the page,
     // seen straight down through x / 2, y / 2. The key, from the studio's
-    // front left, casts the box's shadow up and right on screen.
+    // front left, casts the box's shadow up and right on screen. A draw
+    // through another matrix first has display.f fit the ground to it.
     // boxes(m, list, flags) draws mesh 100's box as each of list's [lowest x,
     // y, z, highest x, y, z], a row each, with the rows' flags; box(m, k,
     // flags) draws the unit box scaled by k about the world's origin.
@@ -528,6 +538,7 @@ async function browser() {
         }
       }
       // The turntable keeps the key's place on screen as the camera orbits.
+      await fit(orbited, unitBox);
       await evaluate(`box(${JSON.stringify(orbited)})`);
       const [turned, turnedMirror] = await pixels(points);
       assert.ok(grey(turned) && Math.abs(turned[0] - shade[0]) <= 20,
@@ -536,9 +547,8 @@ async function browser() {
       // The box, the casters' box and the camera scaled by 1e-12 draw the same
       // picture.
       const small = down.map((v, k) => (k < 12 ? v * 1e12 : v));
-      await evaluate(`subject.host.ground(Float32Array.of(0, 0, 1, 0),
-        Float32Array.from([-0.5, -0.5, 0, 0.5, 0.5, 1], (v) => v * 1e-12));
-        box(${JSON.stringify(small)}, 1e-12)`);
+      await fit(small, unitBox.map((v) => v * 1e-12));
+      await evaluate(`box(${JSON.stringify(small)}, 1e-12)`);
       const [tiny] = await pixels(points);
       assert.ok(grey(tiny), `the box at 1e-12 scale casts the shadow, got ${tiny}`);
       await command("ground");
@@ -584,10 +594,12 @@ async function browser() {
       // y 1, white.
       const h = Math.SQRT1_2;
       const tilted = [0.5, 0, 0, 0, 0, 0.5 * h, 0.2 * h, 0, 0, 0.5 * h, -0.2 * h, 0, 0, 0, 0.5, 1];
+      await fit(tilted, unitBox);
       await evaluate(`box(${JSON.stringify(tilted)})`);
       const [leaning] = await pixels([[0.3, 0.5 * h]]);
       assert.ok(grey(leaning), `tilted 45°, the floor behind the box is in shadow, got ${leaning}`);
       // From below, the floor point shadowed from above is at y -0.4.
+      await fit(below, unitBox);
       await evaluate(`box(${JSON.stringify(below)})`);
       const [under] = await pixels([[0.2, -0.4]]);
       assert.deepEqual(under, background, `a camera below the ground shows no shadow, got ${under}`);
@@ -599,6 +611,7 @@ async function browser() {
       // outside the view shades as a cast-only row and which is white with
       // no row.
       const zoomed = [4, 0, 0, 0, 0, 4, 0, 0, 0, 0, -0.25, 0, -1.6, -3.2, 0.5, 1];
+      await fit(zoomed, unitBox);
       await evaluate(`subject.host.draw(new Uint8Array(0), 0, Float32Array.from(${JSON.stringify(zoomed)}))`);
       const [bare] = await pixels([[0, 0]]);
       assert.deepEqual(bare, background, `the floor in view with no row is white, got ${bare}`);
@@ -608,6 +621,7 @@ async function browser() {
       // The cast-only box in view casts the shadow the drawn box casts and
       // leaves its own pixels as the ground's, a neutral grey or white, which
       // a pick passes through.
+      await command("ground");
       await evaluate(`box(${JSON.stringify(down)}, 1, 2)`);
       const [castShade, , , castTop] = await pixels(points);
       assert.deepEqual(castShade, shade, `a cast-only box casts the drawn box's shadow, got ${castShade}`);
@@ -705,9 +719,8 @@ async function browser() {
         ["a wall and a low box", [wall, low]], ["a plate over a base", [base, plate]]]) {
         const all = [0, 1, 2].map((k) => Math.min(...boxes.map((b) => b[k])))
           .concat([3, 4, 5].map((k) => Math.max(...boxes.map((b) => b[k]))));
-        await evaluate(`subject.host.ground(Float32Array.of(0, 0, 1, 0),
-          Float32Array.from(${JSON.stringify(all)}));
-          boxes(${JSON.stringify(view)}, ${JSON.stringify(boxes)})`);
+        await fit(view, all);
+        await evaluate(`boxes(${JSON.stringify(view)}, ${JSON.stringify(boxes)})`);
         const here = places.filter((p) => { const [x, y] = world(p); return boxes.every((b) =>
           Math.hypot(Math.max(b[0] - x, x - b[3], 0), Math.max(b[1] - y, y - b[4], 0)) >= 6); });
         const rays = shares(here.map(world), boxes, [h, h, 0]);
@@ -729,91 +742,6 @@ async function browser() {
       await evaluate(`subject.host.draw(new Uint8Array(0), 0, Float32Array.from(${JSON.stringify(view)}));
         subject.host.unmesh(100)`);
       console.log(`Headless Chrome traced rays: the ground's greys are the rays', ${seen.join("; ")}`);
-    }
-
-    // Runs run, a function's source, on the page, and answers the last Light
-    // uniform the host wrote, the width of each map it made, the caster pass's
-    // attachment, r8unorm and only that, the plane of the last ground it was
-    // given and the page's text.
-    function lit(run) {
-      return evaluate(`(async () => {
-        const write = GPUQueue.prototype.writeBuffer, make = GPUDevice.prototype.createTexture;
-        const ground = subject.host.ground, light = [], maps = [];
-        let plane = null;
-        GPUQueue.prototype.writeBuffer = function (buffer, offset, data, ...rest) {
-          if (buffer.size === 160 && buffer.usage & GPUBufferUsage.UNIFORM) light.push(Array.from(data));
-          return write.call(this, buffer, offset, data, ...rest);
-        };
-        GPUDevice.prototype.createTexture = function (...args) {
-          const texture = make.apply(this, args);
-          if (texture.format === "r8unorm" && texture.usage === GPUTextureUsage.RENDER_ATTACHMENT)
-            maps.push(texture.width);
-          return texture;
-        };
-        subject.host.ground = (held, box) => { plane = held && Array.from(held); return ground(held, box); };
-        try { await (${run})(); } finally {
-          GPUQueue.prototype.writeBuffer = write; GPUDevice.prototype.createTexture = make;
-          subject.host.ground = ground;
-        }
-        return { light: light.at(-1), maps, plane, text: document.querySelector("#text").textContent };
-      })()`);
-    }
-
-    // The key's x and y axes, M's centre and its half sides in each, from the
-    // Light uniform's first two rows, key x and y over a half side less the
-    // centre's.
-    function keyed(light) {
-      const half = [0, 1].map((r) => 1 / Math.hypot(...[0, 4, 8].map((k) => light[k + r])));
-      const axes = [0, 1].map((r) => [0, 4, 8].map((k) => light[k + r] * half[r]));
-      const centre = [0, 1].map((r) => -light[12 + r] * half[r]);
-      return { axes, centre, half };
-    }
-
-    // display.f's volume and volume-skewed: each sends a ground and draws 0
-    // rows, and answers the planes and pixel of the key's volume
-    // src/lib/browser/studio.f's KEY-VOLUME finds. The host fits its shadow
-    // map to its own statement of that volume, viewport.js's keyVolume, so
-    // each of the module's five planes is the host's: the ground the host
-    // holds, then key x at least M's lowest, at most its highest, then key y
-    // the same, M from the Light uniform; and its pixel is M's larger side
-    // over the map's side, 1024 on every canvas, studio.f's SHADOW-SIDE. A
-    // normal's components agree to 1e-6 of its length 1, the ground's offset
-    // to 1e-6 of itself, a side's offset to 1e-6 of M's larger bound in that
-    // axis and the pixel to 1e-6 of itself: the uniform is f32.
-    async function volumed() {
-      const float = (hex) => { const v = new DataView(new ArrayBuffer(8));
-        v.setBigUint64(0, BigInt(`0x${hex}`)); return v.getFloat64(0); };
-      const close = (a, b, scale) => Math.abs(a - b) <= 1e-6 * scale;
-      const seen = [];
-      for (const name of ["volume", "volume-skewed"]) {
-        await command("ground-none");
-        const { light, maps, plane, text } = await lit(`() => subject.typed(${JSON.stringify(name)})`);
-        const [word, count, ...numbers] = text.split(" ");
-        assert.equal(word, "volume", `${name} answers its volume, got ${text}`);
-        assert.equal(count, "5", `${name}'s volume has five planes, got ${text}`);
-        assert.equal(numbers.length, 21, `${name} answers 20 plane numbers and a pixel, got ${text}`);
-        const module = numbers.map(float);
-        assert.ok(light && maps.length === 1 && maps[0] === 1024 && plane,
-          `${name} draws a shadow on one map 1024 square, got ` +
-          `${light ? "a" : "no"} Light uniform, maps ${maps} and ground ${plane}`);
-        const { axes, centre, half } = keyed(light);
-        const n = Math.hypot(...plane.slice(0, 3));
-        const side = (k, s) => [...axes[k].map((v) => s * v), -s * (centre[k] - s * half[k])];
-        const host = [plane.map((v) => v / n), side(0, 1), side(0, -1), side(1, 1), side(1, -1)];
-        const bound = [0, 1].map((k) => Math.abs(centre[k]) + half[k]);
-        const scales = [Math.abs(host[0][3]), bound[0], bound[0], bound[1], bound[1]];
-        host.forEach((h, p) => h.forEach((v, j) => {
-          const m = module[4 * p + j];
-          assert.ok(close(m, v, j < 3 ? 1 : Math.max(scales[p], Math.abs(m))),
-            `${name}'s plane ${p} number ${j} is the host's ${v}, got ${m}`);
-        }));
-        const pixel = 2 * Math.max(...half) / maps[0];
-        assert.ok(close(module[20], pixel, pixel), `${name}'s pixel is the host's ${pixel}, got ${module[20]}`);
-        seen.push(`${name} M x ${centre[0] - half[0]}..${centre[0] + half[0]} ` +
-          `y ${centre[1] - half[1]}..${centre[1] + half[1]} pixel ${module[20]}`);
-      }
-      await command("ground-none");
-      console.log(`Headless Chrome key volume: the module's planes and pixel are the host's, ${seen.join("; ")}`);
     }
 
     // display.f's seam: meshes 4 and 5, one orange plane split along a shared
@@ -922,8 +850,8 @@ async function browser() {
       await evaluate("(async () => { window.second = await mountOne(); await second.post({ kind: 'typed', text: 'draw' }); })()");
       assert.deepEqual((await evaluate("records")).slice(9),
         [["input", true], ["input", false], ["svg", svgLength], ["svg", null]], "a second mount runs a fresh module");
-      assert.equal(await evaluate("modules.length === 2 && devices.length === 2 && modules[1].turns"), 3,
-        "the second mount has its own module and device, and ran start, resize and draw");
+      assert.equal(await evaluate("modules.length === 2 && devices.length === 2 && modules[1].turns"), 4,
+        "the second mount has its own module and device, and ran start, light, resize and draw");
       // A ratio change reaches the module through the mount's matchMedia watch.
       assert.deepEqual(await evaluate("modules[1].ratios"), [1000]);
       await scale(2);

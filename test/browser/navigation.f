@@ -1,7 +1,7 @@
 \ navigation.f - Wasm fixture for the browser navigation, tree, highlight,
 \ pick and occlude protocol, built by `tools/hb-build.f -- --target wasm`,
 \ whose entry is MAIN. Typed "pick" picks pixel 5, 6 with id 9; a picked
-\ event's fields come back as text, as any event's do.
+\ event's fields come back as text, as any event's but the light's do.
 require src/lib/string.f
 require src/lib/browser/event.f
 require test/browser/turn-revision.f
@@ -236,6 +236,7 @@ variable PRESS-MODS
    kind 10 = if 2 EVENT@ 1 = if OPENED exit then then
    kind 8 = if KEY-TEXT exit then
    kind 19 = if OCCLUDED-TEXT exit then
+   kind 20 = if exit then
    kind 2 = if 5 EVENT@ PRESS-BUTTONS ! 6 EVENT@ PRESS-MODS ! then
    EVENT-TEXT ;
 

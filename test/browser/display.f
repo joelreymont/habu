@@ -34,19 +34,17 @@
 \ through twice the identity moved by x 0.4, y -0.2 and z 0.5, so w is 2,
 \ and picks with id 5 a pixel of their face 1 that the identity leaves
 \ empty. Each picked event comes back as the text picked and its a, b, c and
-\ d in decimal. Typed "ground" sends the ground z = 0 with +z up and the
-\ casters' box of the unit box display-peer.mjs draws on it, x and y -0.5 to
-\ 0.5 and z 0 to 1; "ground-none" no ground. Typed "seam", once, sends meshes 4 and 5, two
+\ d in decimal. The light event's bytes are kept for STUDIO:KEY-FIT. Typed
+\ "ground" sends the ground record KEY-FIT makes for the ground z = 0, +z up,
+\ with the casters' box of the unit box display-peer.mjs draws on it, x and y
+\ -0.5 to 0.5 and z 0 to 1, seen straight down through x / 2 and y / 2;
+\ "fit " and 208 hex digits, the bytes of a draw's matrix, 16 f32, then a
+\ plane and casters' box, ten f32, sends the record KEY-FIT makes for them;
+\ "ground-none" no ground. Typed "seam", once, sends meshes 4 and 5, two
 \ orange rectangles in one grid plane with origins 100000, 200000, 300000
 \ and 139000, 190000, 299000 that share the edge from grid 140000, 200000,
 \ 300000 to 140000, 240000, 300000, and draws them, ids 8 and 9, through one
-\ transform rotated about x then y. Typed "volume" sends the ground z = 0,
-\ +z up, with the casters' box x, y -10..10 and z -1..1 and draws 0 rows
-\ through display-peer.mjs's zoomed; "volume-skewed" sends a tilted ground
-\ and draws 0 rows through a skewed matrix. Each then sends the text volume,
-\ STUDIO:KEY-VOLUME's count and, as binary64 bits in hex, its 20 plane
-\ numbers and its pixel. Typed "ground-box" sends a casters' box whose
-\ lowest z lies above its highest. Typed "warn" writes warned to descriptor 2;
+\ transform rotated about x then y. Typed "warn" writes warned to descriptor 2;
 \ "warn-throw" writes it and throws 93; "die" writes warned and dies with an
 \ empty message; "die-255" writes byte 255 to descriptor 2 and dies with boom.
 \ A resize, which clears the canvas, draws the last draw again, unless an SVG
@@ -54,7 +52,6 @@
 \ Built by `tools/hb-build.f -- --target wasm`, whose entry is MAIN.
 require src/lib/string.f
 require src/lib/browser/event.f
-require src/lib/ieee754.f
 require src/lib/float32.f
 require src/lib/float32-buffer.f
 require src/lib/browser/studio.f
@@ -81,11 +78,12 @@ CAST: BYTES>N ( ^u8 -- n )
 64 BUFFER: MATRIX
 64 BUFFER: SHIFTED
 40 BUFFER: PLANE
+48 BUFFER: LIGHT
+64 BUFFER: VIEW
+84 BUFFER: FITTED
+20 TYPED-BUFFER CULL r
 4097 24 * BUFFER: BOXES
 512 BUFFER: IMAGE
-64 BUFFER: VOLUME-MATRIX
-40 BUFFER: VOLUME-GROUND
-20 TYPED-BUFFER VOLUME-PLANES r
 variable IMAGE-U
 1 BUFFER: MALFORMED
 1024 constant ECHO-CAP
@@ -368,27 +366,16 @@ TYPED-VARIABLE SHOWN held
    INSTANCE-ROWS 360 + 2 SHIFTED RENDER
    5 2 5 PICK ;
 
-: PLANE! ( n n n n -- )
-   \ The ground's nx, ny, nz and d, f32 bits.
-   {: x:n y:n z:n d:n :}
-   x PLANE U32!  y PLANE 4 + U32!  z PLANE 8 + U32!  d PLANE 12 + U32! ;
-
 : UP ( -- )
-   0 0 $3F800000 0 PLANE! ;
+   \ The ground's nx, ny, nz and d, f32 bits: the plane z = 0, +z up.
+   0 PLANE U32!  0 PLANE 4 + U32!
+   $3F800000 PLANE 8 + U32!  0 PLANE 12 + U32! ;
 
 : CASTERS ( -- )
    \ The casters' box after the plane: x, y -0.5..0.5 and z 0..1, f32 bits.
    $BF000000 PLANE 16 + U32!  $BF000000 PLANE 20 + U32!  0 PLANE 24 + U32!
    $3F000000 PLANE 28 + U32!  $3F000000 PLANE 32 + U32!
    $3F800000 PLANE 36 + U32! ;
-
-: GROUND ( n n -- )
-   {: b:n c:n :}
-   CASTERS  17 PLANE BYTES>N b c RECORD ;
-
-: UPSIDE ( -- )
-   \ The casters' box with its lowest z 2 above its highest, 1.
-   CASTERS  $40000000 PLANE 24 + U32!  17 PLANE BYTES>N 40 0 RECORD ;
 
 : CHAR+ ( n -- )
    ECHO-U @ ECHO-CAP >= if -1 throw then
@@ -430,66 +417,48 @@ TYPED-VARIABLE SHOWN held
    {: v:r p i:n :}
    v F32:NARROW  p i 4 * +  F32-BUF:STORE ;
 
-: CLEARED ( -- )
-   16 0 do 0.0 VOLUME-MATRIX i F32! loop
-   10 0 do 0.0 VOLUME-GROUND i F32! loop ;
+: LIGHT! ( -- )
+   1 EVENT@ >BYTES LIGHT 48 BYTE-COPY ;
 
-: VOLUME-VIEW ( -- )
-   \ zoomed: world x 0.15..0.65 and y 0.55..1.05 seen straight down.
-   4.0 VOLUME-MATRIX 0 F32!  4.0 VOLUME-MATRIX 5 F32!
-   -0.25 VOLUME-MATRIX 10 F32!  -1.6 VOLUME-MATRIX 12 F32!
-   -3.2 VOLUME-MATRIX 13 F32!  0.5 VOLUME-MATRIX 14 F32!
-   1.0 VOLUME-MATRIX 15 F32! ;
+: DOWN ( -- )
+   \ x / 2, y / 2 and depth 0.5 - z / 4, column-major.
+   16 0 do 0.0 VIEW i F32! loop
+   0.5 VIEW 0 F32!  0.5 VIEW 5 F32!  -0.25 VIEW 10 F32!
+   0.5 VIEW 14 F32!  1.0 VIEW 15 F32! ;
 
-: VOLUME-FLOOR ( -- )
-   \ The plane z = 0, +z up, and the casters' box x, y -10..10, z -1..1.
-   1.0 VOLUME-GROUND 2 F32!
-   -10.0 VOLUME-GROUND 4 F32!  -10.0 VOLUME-GROUND 5 F32!
-   -1.0 VOLUME-GROUND 6 F32!  10.0 VOLUME-GROUND 7 F32!
-   10.0 VOLUME-GROUND 8 F32!  1.0 VOLUME-GROUND 9 F32! ;
+\ KEY-FIT's ground record for VIEW's matrix and PLANE's ground into
+\ FITTED; answers its length.
+: FIT ( -- n )
+   LIGHT VIEW PLANE FITTED 0 CULL STUDIO:KEY-FIT
+   {: n:n count:n pixel:r :} n ;
 
-: SKEWED-VIEW ( -- )
-   \ Clip x 0.3x + 0.1y + 0.05z - 0.1, y 0.05x + 0.25y + 0.15z + 0.2 and
-   \ depth 0.1x - 0.08y - 0.2z + 0.5, column-major.
-   0.3 VOLUME-MATRIX 0 F32!  0.05 VOLUME-MATRIX 1 F32!
-   0.1 VOLUME-MATRIX 2 F32!  0.1 VOLUME-MATRIX 4 F32!
-   0.25 VOLUME-MATRIX 5 F32!  -0.08 VOLUME-MATRIX 6 F32!
-   0.05 VOLUME-MATRIX 8 F32!  0.15 VOLUME-MATRIX 9 F32!
-   -0.2 VOLUME-MATRIX 10 F32!  -0.1 VOLUME-MATRIX 12 F32!
-   0.2 VOLUME-MATRIX 13 F32!  0.5 VOLUME-MATRIX 14 F32!
-   1.0 VOLUME-MATRIX 15 F32! ;
+: DOWN-FIT ( -- n ) UP CASTERS DOWN FIT ;
 
-: TILTED-FLOOR ( -- )
-   \ The plane 0.1x - 0.2y + z + 0.3 = 0 and the casters' box x -1..20,
-   \ y -0.8..1.2 and z -0.5..2. The box's rectangle sets M's lowest key x,
-   \ -1.886, and lowest key y, -1.114: the ground in view grown by the
-   \ reach of its rays to the softbox runs to -10.804 and -5.777.
-   0.1 VOLUME-GROUND 0 F32!  -0.2 VOLUME-GROUND 1 F32!
-   1.0 VOLUME-GROUND 2 F32!  0.3 VOLUME-GROUND 3 F32!
-   -1.0 VOLUME-GROUND 4 F32!  -0.8 VOLUME-GROUND 5 F32!
-   -0.5 VOLUME-GROUND 6 F32!  20.0 VOLUME-GROUND 7 F32!
-   1.2 VOLUME-GROUND 8 F32!  2.0 VOLUME-GROUND 9 F32! ;
+: GROUND ( n n -- )
+   {: b:n c:n :}
+   17 FITTED BYTES>N b c RECORD ;
 
-\ r's binary64 bits as 16 hex digits, after a space.
-: BITS, ( r -- )
-   IEEE754:F64>BITS {: b:n :}
-   32 CHAR+
-   16 0 do b 60 i 4 * - rshift 15 and HEX, loop ;
+\ Whether the typed text is "fit " and 208 hex digits.
+: FIT? ( -- bool )
+   2 EVENT@ 212 <> if false exit then
+   s" fit " {: s:str :}
+   4 0 ?do
+      i BYTE@ s STR:DATA i + c@ <> if false unloop exit then
+   loop true ;
 
-\ The text volume, KEY-VOLUME's count in decimal, then its 20 planes'
-\ numbers and its pixel as binary64 bits, for the event's buffer.
-: VOLUME-TEXT ( -- )
-   VOLUME-MATRIX VOLUME-GROUND 0 VOLUME-PLANES
-   STUDIO:KEY-VOLUME {: count:n pixel:r :}
-   s" volume " NAMED  count DIGITS
-   20 0 do i VOLUME-PLANES @ BITS, loop
-   pixel BITS,  ECHO-RECORD ;
+\ The value of a lowercase hex digit.
+: NIBBLE ( n -- n )
+   dup [char] a >= if [char] a - 10 + else [char] 0 - then ;
 
-\ The ground, a draw of 0 rows through the matrix, and the text.
-: VOLUME-SCENE ( -- )
-   17 VOLUME-GROUND BYTES>N 40 0 RECORD
-   VOLUME-MATRIX 0 VOLUME-MATRIX RENDER
-   VOLUME-TEXT ;
+\ Byte k of the hex digits after "fit ".
+: HEX-BYTE ( n -- n )
+   {: k:n :}
+   k 2 * 4 + BYTE@ NIBBLE 4 lshift  k 2 * 5 + BYTE@ NIBBLE or ;
+
+\ The matrix into VIEW, then the plane and casters' box into PLANE.
+: FIT-READ ( -- )
+   64 0 ?do i HEX-BYTE VIEW i + c! loop
+   40 0 ?do i 64 + HEX-BYTE PLANE i + c! loop ;
 
 : IS? ( str -- bool )
    {: s:str :}
@@ -518,9 +487,7 @@ TYPED-VARIABLE SHOWN held
    s" pick" IS? if PICKS exit then
    s" nearer" IS? if NEARER exit then
    s" seam" IS? if SEAM exit then
-   s" volume" IS? if CLEARED VOLUME-VIEW VOLUME-FLOOR VOLUME-SCENE exit then
-   s" volume-skewed" IS?
-   if CLEARED SKEWED-VIEW TILTED-FLOOR VOLUME-SCENE exit then
+   FIT? if FIT-READ FIT 0 GROUND exit then
 
    s" broken" IS? if s" <svg>" SVG exit then
    s" on" IS? if 9 1 0 0 RECORD exit then
@@ -549,17 +516,14 @@ TYPED-VARIABLE SHOWN held
    s" negative-flag" IS? if 9 -1 0 0 RECORD exit then
    s" input-b" IS? if 9 1 1 0 RECORD exit then
    s" input-c" IS? if 9 0 0 1 RECORD exit then
-   s" ground" IS? if UP 40 0 GROUND exit then
+   s" ground" IS? if DOWN-FIT 0 GROUND exit then
    s" ground-none" IS? if 17 0 0 0 RECORD exit then
-   s" ground-c" IS? if UP 40 1 GROUND exit then
-   s" ground-b" IS? if UP 12 0 GROUND exit then
+   s" ground-c" IS? if DOWN-FIT 1 GROUND exit then
+   s" ground-b" IS? if DOWN-FIT drop 12 0 GROUND exit then
    s" ground-outside" IS? if 17 -1 40 0 RECORD exit then
-   \ Rejected planes: nz NaN, n zero, and nz the least subnormal with d 1,
-   \ so d / |n| is past f32's range.
-   s" ground-nan" IS? if 0 0 $7FC00000 0 PLANE! 40 0 GROUND exit then
-   s" ground-flat" IS? if 0 0 0 $3F800000 PLANE! 40 0 GROUND exit then
-   s" ground-far" IS? if 0 0 1 $3F800000 PLANE! 40 0 GROUND exit then
-   s" ground-box" IS? if UP UPSIDE exit then ;
+   \ A fitted record whose nz is NaN.
+   s" ground-nan" IS?
+   if DOWN-FIT $7FC00000 FITTED 8 + U32! 0 GROUND exit then ;
 
 : ECHO ( str -- )
    ECHOED ECHO-RECORD ;
@@ -596,7 +560,8 @@ TYPED-VARIABLE SHOWN held
    0 EVENT@ 12 = if s" focus " ECHO exit then
    0 EVENT@ 13 = if s" highlight " ECHO exit then
    0 EVENT@ 18 = if PICKED exit then
-   0 EVENT@ 19 = if OCCLUDED then ;
+   0 EVENT@ 19 = if OCCLUDED exit then
+   0 EVENT@ 20 = if LIGHT! then ;
 
 public
 

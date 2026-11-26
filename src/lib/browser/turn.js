@@ -18,8 +18,8 @@
 // mods. Kinds: 0 start, 1 bytes, 2 pointer, 3 answered, 4 typed, 5 moved,
 // 6 released, 7 wheel, 8 key, 9 resize, 10 control, 11 load, 12 focus,
 // 13 highlight, 14 notified, 15 tick, 16 file, 17 chunk, 18 picked,
-// 19 occluded. c and d are the drawing buffer's width and height in device
-// pixels except for answered, file, chunk, picked and occluded.
+// 19 occluded, 20 light. c and d are the drawing buffer's width and height
+// in device pixels except for answered, file, chunk, picked and occluded.
 //   bytes, typed, key: a, b name the fetched bytes, the field's text or
 //     KeyboardEvent.key (sent only while the canvas has focus, or by a page
 //     control that names a key)
@@ -61,6 +61,12 @@
 //     when the box passed the view test, plus 2 when it passed the key test;
 //     0 boxes answers 0 bytes. c 0, d the record's id, buttons and mods the
 //     buffer size when the answer arrived
+//   light: a, b name 48 bytes, twelve f32 in studio coordinates (right, up,
+//     back): the key softbox's x tangent, its y tangent and the unit
+//     direction toward the key, then the softbox's half extents in x and y
+//     per unit along that direction and the shadow map's side in texels;
+//     its x tangent square to the studio's up, and every ray to its softbox
+//     rising. Sent once, after start and before every other event
 // buttons is the pointer's bitset; mods are Shift 1, Control 2, Alt 4, Meta 8.
 // The host writes all 56 bytes on every event; a field that does not apply is 0.
 //
@@ -165,15 +171,21 @@
 //     until the next draw after a ground of b 0 every traced ray is clear for
 //     the key test; both tests after a resize answer the last draw. The ground
 //     leaves no depth, so it hides no box
-//   17 ground: a, b a span of 40 bytes, ten f32: nx, ny, nz, d, the world
-//     plane n·p + d = 0, n of any nonzero length toward the side that is up,
-//     then the casters' box, its lowest x, y, z then its highest, in world,
-//     which no caster leaves: a caster outside it may cast nothing. Or b 0
-//     for none, the state before the first. c 0. A value not finite, or a
-//     lowest above its highest, is rejected. It holds for every later draw. A
-//     draw, of 0 rows too, draws a shadow when a ground is held, its eye is
-//     above the plane and the casters' box can shade some of the ground in
-//     view
+//   17 ground: a, b a span of 40 bytes, ten f32 in world: nx, ny, nz, d,
+//     the plane n·p + d = 0, n its unit normal toward the side that is up,
+//     then the studio's right and back, up being n: turntable shading and no
+//     shadow. Or 84 bytes, those ten then the key light's fit, eleven f32:
+//     M, the rectangle of the casters that shade the ground in view, lowest
+//     x, highest x, lowest y, highest y, in key x and y, the light event's
+//     tangents laid on the studio's axes; C, the catcher's rectangle on the
+//     plane, in the same order; T, the casters' greatest height above the
+//     plane; and the casters' nearest and farthest key z. M holds a point,
+//     and M or the depths have extent. A caster outside M or those depths
+//     may cast nothing. Or b 0 for none, the state before the first. c 0. A
+//     value not finite is rejected. It holds for every later draw, so a
+//     module sends it again before a draw whose matrix, plane or casters
+//     differ. A draw, of 0 rows too, draws a shadow while an 84-byte ground
+//     is held
 // A post or request is answered for every HTTP status. Request, rpc, read,
 // pick and occlude records are tagged. A host that takes tagged records, or
 // fetches and posts from a run that throws, provides error(error): the first
@@ -243,9 +255,11 @@ const FILE = 16n;
 const CHUNK = 17n;
 const PICKED = 18n;
 const OCCLUDED = 19n;
+const LIGHT = 20n;
+const LIGHT_VALUES = 12; // the light event's f32s
 const ID_BYTES = 16;
 
-const PROTOCOL = 6n;
+const PROTOCOL = 7n;
 
 // Records.
 const HELLO = 0n;
@@ -268,7 +282,8 @@ const OCCLUDE = 16n;
 const GROUND = 17n;
 const TAGGED = new Set([REQUEST, RPC, READ, PICK, OCCLUDE]);
 const BOX_BYTES = 24n; // an occlude's box: six f32
-const GROUND_BYTES = 40n; // a ground's plane and casters' box: ten f32
+const GROUND_BYTES = 40n; // a ground's plane and studio axes: ten f32
+const FIT_BYTES = 84n; // a ground with the key light's fit: 21 f32
 const CAST_ONLY = 2; // a draw row's flags bit 1
 
 const utf8 = new TextDecoder("utf-8", { fatal: true });
@@ -313,8 +328,8 @@ export class Module {
   // origin the record's three u32s as numbers, with copied Uint16Arrays,
   // unmesh(handle), draw(rows, count, matrix) with the rows'
   // bytes copied, highlight(words) with a copied Uint32Array,
-  // ground(plane, box) with copied Float32Arrays of four and six, or
-  // ground(null) for none,
+  // ground(fit) with a copied Float32Array of 10 or 21, or ground(null) for
+  // none,
   // text(string), tree(rows, selected), svg(copiedBytes), input(enabled),
   // size() -> [width, height] of the drawing buffer, and ratio() -> device
   // pixels per CSS pixel in thousandths, an integer of at least 1; 1000 for a
@@ -367,6 +382,14 @@ export class Module {
 
   resize() {
     return this.turn([RESIZE, this.host.ratio(), 0, ...this.host.size(), 0, 0]);
+  }
+
+  // The light's turn, values twelve f32 as the light event carries them.
+  async light(values) {
+    if (!(values instanceof Float32Array) || values.length !== LIGHT_VALUES)
+      throw new TypeError(`a light is a Float32Array of ${LIGHT_VALUES}`);
+    const bytes = new Uint8Array(values.buffer, values.byteOffset, values.byteLength);
+    await this.turn([LIGHT, this.place(bytes), bytes.length, ...this.host.size(), 0, 0]);
   }
 
   // A tree row selected, or opened when opened is true.
@@ -851,32 +874,19 @@ export class Module {
     this.meshes.set(handle, Math.floor(face / 32) + 1);
   }
 
-  // A ground's plane and casters' box, copied, or none for b 0. d / |n| is
-  // the plane's distance from the origin, which a host's f32 must hold.
+  // A ground's numbers, copied, or none for b 0.
   ground(a, b, c) {
     if (c !== 0n) throw new Error("ground c must be zero");
     if (b === 0n) {
       this.host.ground(null);
       return;
     }
-    if (b !== GROUND_BYTES)
-      throw new RangeError(`a ground of ${b} bytes, not 0 or ${GROUND_BYTES}`);
+    if (b !== GROUND_BYTES && b !== FIT_BYTES)
+      throw new RangeError(`a ground of ${b} bytes, not 0, ${GROUND_BYTES} or ${FIT_BYTES}`);
     const values = new Float32Array(this.span(a, b).slice().buffer);
     if (!values.every(Number.isFinite))
       throw new RangeError(`a ground of ${values.join(", ")}, not all finite`);
-    const [plane, box] = [values.slice(0, 4), values.slice(4)];
-    const [x, y, z, d] = plane;
-    const length = Math.hypot(x, y, z);
-    if (length === 0) throw new RangeError("a ground whose normal is (0, 0, 0)");
-    if (!Number.isFinite(Math.fround(d / length)))
-      throw new RangeError(`a ground whose d / |n|, ${d / length}, ` +
-        "is not a finite f32");
-    for (let k = 0; k < 3; k++)
-      if (box[k] > box[3 + k])
-        throw new RangeError(`a ground whose casters' box has lowest ` +
-          `${box.subarray(0, 3).join(", ")} above its highest ` +
-          `${box.subarray(3).join(", ")}`);
-    this.host.ground(plane, box);
+    this.host.ground(values);
   }
 
   unmesh(a, b, c) {

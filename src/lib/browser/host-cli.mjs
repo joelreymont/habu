@@ -3,10 +3,11 @@
 //
 //    bun host-cli.mjs <module.wasm> [--size W H] [--mcp URL TOKEN-FILE] [step]...
 //
-// Runs the start turn, then each step in order, once every run the steps
-// before it let happen has run. With --mcp, rpcs go to URL as host.js sends
-// them, with TOKEN-FILE's text, trailing whitespace trimmed, as a bearer token,
-// and afters fire on real time; a step is done once no relay is outstanding.
+// Runs the start turn and the light turn of viewport.js's LIGHT, then each
+// step in order, once every run the steps before it let happen has run. With
+// --mcp, rpcs go to URL as host.js sends them, with TOKEN-FILE's text,
+// trailing whitespace trimmed, as a bearer token, and afters fire on real
+// time; a step is done once no relay is outstanding.
 // The steps:
 //
 //    --pointer X Y BUTTONS MODS, --move X Y BUTTONS MODS,
@@ -63,8 +64,8 @@
 // <handle>, highlight <words> <words in
 // hex, little-endian>, draw <count> then each row's
 // <handle>/<id>/<flags>/<offset or ->/<rrggbb>/<metallic>/<roughness>, the
-// last two the u16s in decimal, ground <nx> <ny> <nz> <d> then the casters'
-// box <x0> <y0> <z0> <x1> <y1> <z1>, or ground none, svg
+// last two the u16s in decimal, ground then the record's 10 or 21 numbers,
+// or ground none, svg
 // <length> <bytes in hex>, input <0|1>, text <string>; a highlight or draw of
 // none prints only its count. At the end,
 // outstanding <fetch|post> <path>, outstanding request <method> <path> <id>,
@@ -78,6 +79,7 @@
 // on; it exits 1 if any happened, else 0.
 import { readFileSync } from "node:fs";
 import { Module } from "./turn.js";
+import { LIGHT } from "./viewport.js";
 import { mcpRpc } from "./mcp.js";
 
 const USAGE =
@@ -465,15 +467,16 @@ try {
         words.byteLength).toString("hex");
       print(`highlight ${words.length}${words.length ? ` ${hex}` : ""}`);
     },
-    ground: (plane, box) =>
-      print(`ground ${plane ? `${plane.join(" ")} ${box.join(" ")}` : "none"}`),
+    ground: (fit) => print(`ground ${fit ? fit.join(" ") : "none"}`),
     svg: (bytes) => print(`svg ${bytes.length} ${Buffer.from(bytes).toString("hex")}`),
     input: (enabled) => print(`input ${enabled ? 1 : 0}`),
     text: (s) => print(`text ${s}`),
     size: () => state.size,
     ratio: () => 1000,
   });
-  module.start().catch(report);
+  // The start and light turns report their first failure once: a module
+  // that ends at hello rejects both.
+  Promise.all([module.start(), module.light(LIGHT)]).catch(report);
   await quiet();
   for (const step of steps) {
     let wait;

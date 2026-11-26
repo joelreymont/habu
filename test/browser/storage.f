@@ -4,13 +4,14 @@
 \ test/browser/storage-test.f runs it under src/lib/browser/host-cli.mjs.
 \
 \ Start reserves two pages, P and P+1, then answers hello, a fetch of `fixture`
-\ and the text "loading". Bytes keeps the fetched bytes for the instance and
-\ grows the buffer to four pages, which keeps its last byte and frees P's two;
-\ released and reserved again at three pages, it then answers the text of the
-\ checksum of the fetched bytes. Pointer releases the buffer and reserves two
-\ pages, which take P back cleared, and answers "x,y". Typed checks its one
+\ and the text "loading". The light's delivery takes P+2, which its turn frees.
+\ Bytes keeps the fetched bytes for the instance and grows the buffer to four
+\ pages, which keeps its last byte and frees P's two, joining P+2; released and
+\ reserved again at three pages, which take P to P+2, it then answers the text
+\ of the checksum of the fetched bytes. Pointer releases the buffer and reserves
+\ two pages, which take P back cleared, and answers "x,y". Typed checks its one
 \ byte, 'a' for the first 500 and 'b' after, and frees it: every typed
-\ delivery must take the first one's address, so memory does not grow with
+\ delivery must take the first one's address, P+2, so memory does not grow with
 \ keystrokes. The 1000th checks that the fetched bytes kept their checksum and
 \ answers "typed 1000". A failed check throws its code, which the host shows.
 require src/lib/string.f
@@ -111,6 +112,7 @@ public
    kind 0 = if START exit then
    kind 1 = if BYTES exit then
    kind 4 = if TYPED exit then
+   kind 20 = if DELIVERY str> FREE exit then
    POINTER ;
 
 ;using
