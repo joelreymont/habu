@@ -37,13 +37,17 @@ variable SEC-END
 
 \ How a word of a shadow routine may differ from the host's: not at all, in a
 \ call row's `bl`/`b` field (the shadow's is 0, the host's the placed
-\ distance), or in a created word's patch slot (the host's `ret` became `b`).
+\ distance), in a created word's patch slot (the host's `ret` became `b`), or
+\ in the immediates of a code address's `adrp`/`add` pair (the shadow's are 0).
 0 constant PLAIN
 1 constant CALL-ROW
 2 constant PATCH-ROW
+3 constant ADDR-ROW
 
 $FC000000 constant OP6               \ an arm64 branch's opcode bits
 $14000000 constant B-OP              \ `b` imm26
+$9F00001F constant ADRP-KEEP         \ `adrp` without immlo (29-30) and immhi (5-23)
+$FFC003FF constant ADD-KEEP          \ `add` imm without imm12 (10-21)
 
 CAST: CODE>BYTES ( n -- ^u8 )
 
@@ -98,11 +102,14 @@ CAST: CODE>BYTES ( n -- ^u8 )
    repeat
    drop ;
 
-: .HEX ( n -- ) {: v:n :}
+: .DIGITS ( n n -- ) {: v:n k:n :}
    s" $" type
-   8 0 ?do
-      s" 0123456789ABCDEF" STR:DATA  v 28 i 4 * - rshift $F and +  c@ emit
+   k 0 ?do
+      s" 0123456789ABCDEF" STR:DATA  v k 1- i - 4 * rshift $F and +  c@ emit
    loop ;
+
+: .HEX ( n -- ) 8 .DIGITS ;
+: .ADDR ( n -- ) 16 .DIGITS ;
 
 : SKIP? ( n -- bool )
    XREF-REC XREF-WORDLIST {: wid:n :}
@@ -134,18 +141,34 @@ CAST: CODE>BYTES ( n -- ^u8 )
       i SHADOW-ROW 0< 0= and if drop i then
    loop ;
 
-\ What kind of word emission e holds at offset at.
+\ Whether emission e's address site k holds a code address.
+: CODE-SITE? ( n n -- bool ) NSHADOW:ADDR-SITE-KIND@ NEMIT:ADDR-CODE = ;
+
+\ What kind of word emission e holds at offset at; a call site wins.
 : ROW-AT ( n n -- n ) {: e:n at:n :}
-   PLAIN
    e NSHADOW:CALL-SITES 0 ?do
       e i NSHADOW:CALL-SITE@ at = if
-         drop  e i NSHADOW:PATCH-CALL? if PATCH-ROW else CALL-ROW then  leave
+         e i NSHADOW:PATCH-CALL? if PATCH-ROW else CALL-ROW then  unloop exit
+      then
+   loop
+   PLAIN
+   e NSHADOW:ADDR-SITES 0 ?do
+      e i CODE-SITE?  at e i NSHADOW:ADDR-SITE@ -  dup 0= swap 4 = or  and if
+         drop ADDR-ROW leave
       then
    loop ;
 
-: SAME? ( n n n -- bool ) {: h:n s:n row:n :}
+\ An ADDR-ROW word's bits that must match: the `adrp` is the site's own word.
+: ADDR-KEEP ( n n -- n ) {: e:n at:n :}
+   ADD-KEEP
+   e NSHADOW:ADDR-SITES 0 ?do
+      e i CODE-SITE?  e i NSHADOW:ADDR-SITE@ at = and if drop ADRP-KEEP leave then
+   loop ;
+
+: SAME? ( n n n n n -- bool ) {: h:n s:n row:n e:n at:n :}
    row PLAIN = if h s = exit then
    row CALL-ROW = if h OP6 and  s OP6 and = exit then
+   row ADDR-ROW = if e at ADDR-KEEP {: m:n :}  h m and  s m and = exit then
    h OP6 and B-OP = ;
 
 \ The first record-relative offset among n bytes where the host routine at
@@ -155,7 +178,7 @@ CAST: CODE>BYTES ( n -- ^u8 )
    n 4 / 0 ?do
       start i 4 * + CODE>BYTES LE:U32@
       e NSHADOW:BYTES ent + i 4 * + LE:U32@
-      e ent i 4 * + ROW-AT
+      e ent i 4 * + ROW-AT  e ent i 4 * +
       SAME? 0= if drop i 4 * leave then
    loop ;
 
@@ -167,6 +190,33 @@ CAST: CODE>BYTES ( n -- ^u8 )
    s" host " type  start off + CODE>BYTES LE:U32@ .HEX
    s"  shadow " type  e NSHADOW:BYTES ent + off + LE:U32@ .HEX
    e ent off + ROW-AT CALL-ROW = if s"  (call row)" type then ;
+
+\ The address the host's placed `adrp`/`add` pair at p loads: p's 4 KiB page
+\ plus adrp's signed 21-bit page delta, plus add's 12-bit immediate.
+: PAIR-VALUE ( n -- n ) {: p:n :}
+   p CODE>BYTES LE:U32@ {: adrp:n :}
+   adrp 5 rshift $7FFFF and 2 lshift  adrp 29 rshift 3 and  or
+   $100000 xor $100000 - {: d:n :}
+   p $FFF invert and  d 12 lshift +
+   p 4 + CODE>BYTES LE:U32@ 10 rshift $FFF and + ;
+
+\ Whether every code address pair in the n compared bytes of the host routine
+\ at start loads emission e's row value; the first that does not fails idx.
+: ADDRS-OK? ( n n n n n -- bool ) {: idx:n start:n e:n ent:n n:n :}
+   e NSHADOW:ADDR-SITES 0 ?do
+      e i NSHADOW:ADDR-SITE@ ent - {: off:n :}
+      e i CODE-SITE?  off 0< 0= and  off 8 + n <= and if
+         start off + PAIR-VALUE {: v:n :}
+         e i NSHADOW:ADDR-SITE-VALUE@ {: want:n :}
+         v want <> if
+            idx XREF-REC XREF-NAME$ FAIL-HEAD
+            s" code address at " type off .N  s"  host loads " type v .ADDR
+            s"  row holds " type want .ADDR cr
+            false unloop exit
+         then
+      then
+   loop
+   true ;
 
 : CHECK ( n -- ) {: idx:n :}
    idx XREF-REC {: rec:^ :}
@@ -187,6 +237,7 @@ CAST: CODE>BYTES ( n -- ^u8 )
    e NSHADOW:SIZE ent - {: slen:n :}
    slen hlen =  slen hlen e NSHADOW:RET-BYTES + = or {: sized:bool :}
    start e ent  slen hlen min  FIRST-DIFF {: off:n :}
+   idx start e ent  slen hlen min  ADDRS-OK? 0= if exit then
    sized off 0< and if s" ok " type rec XREF-NAME$ type cr exit then
    rec XREF-NAME$ FAIL-HEAD
    sized 0= if hlen slen SIZES then
