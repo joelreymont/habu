@@ -2491,7 +2491,7 @@ public
 : FORK ( -- )                         \ ( -- pid|-1 )
    HB-TARGET-LINUX-ARM64? IF
       LBL LBL LBL LBL LBL {: unfd:label failed:label parent:label done:label dead:label :}
-      LBL LBL LBL LBL LBL {: scan:label next:label full:label scanned:label plain:label :}
+      LBL LBL LBL LBL {: scan:label next:label scanned:label plain:label :}
       LBL LBL {: span:label out:label :}
       SP SP 32 SUBI,                    \ [0] the child's memfd, [8] its filling view, [16] code end
       \ Delta 0 = no alias (a stripped image): the startup maps one anywhere but DBASE.
@@ -2525,8 +2525,6 @@ public
       span LBL,
          13 11 0 LDR,  14 11 8 LDR,
          15 CODE-SPAN:MASK LIT64,  15 14 15 AND,
-         3 CODE-SPAN:FULL LIT64,  3 14 3 AND,  3 full CBNZ,  15 15 CODE-SPAN:INSN-BYTES ADDI,
-         full LBL,
          15 13 15 ADD,  15 9 CMP,  C-LS next BCOND,  9 15 0 ADDI,
       next LBL,
          10 10 1 ADDI,  scan B,
@@ -2719,13 +2717,13 @@ public
    9 NDICT CMP,  C-HI bad BCOND,
    14 CODE-SPAN:RAW-MAX LIT64,  10 14 CMP,  C-HI badlen BCOND,
    14 10 3 ANDI,  14 badlen CBNZ,               \ encoded lengths remain instruction aligned
-   14 CODE-SPAN:FULL LIT64,  10 14 CMP,  C-EQ badlen BCOND, \ exact spans cannot be empty
+   14 CODE-SPAN:MASK LIT64,  14 10 14 AND,  14 badlen CBZ,  \ spans cannot be empty
    checked B,
    bad LBL,
    s" E-SEAL-VIOLATION habu: xref-retarget record index above NDICT:"
    EXIT-STATUS:SEAL-VIOLATION A DIE-LINE-VALUE,
    badlen LBL,
-   s" E-SEAL-VIOLATION habu: xref-retarget length above CODE-SPAN:RAW-MAX, not whole instructions or an empty exact span:"
+   s" E-SEAL-VIOLATION habu: xref-retarget length above CODE-SPAN:RAW-MAX, not whole instructions or empty:"
    EXIT-STATUS:SEAL-VIOLATION B DIE-LINE-VALUE,
    checked LBL,
    SP SP 32 SUBI,  30 SP 0 STR,  9 SP 8 STR,  10 SP 16 STR,  11 SP 24 STR,
@@ -2994,7 +2992,7 @@ private
 \ Retire each affected slot before those bytes are reusable. Namespace rows
 \ contain WIDs in their first two cells and have no code span.
 : EMIT-DEF-OCC-RECLAIM ( -- )
-   LBL LBL LBL LBL LBL {: loop:label next:label full:label span:label done:label :}
+   LBL LBL LBL LBL {: loop:label next:label span:label done:label :}
    EM-DEF-OCC:LRECLAIM LABEL@ LBL,
    SP SP 16 SUBI,  30 SP 0 STR,
    PROF-ABI:LPROFRECLAIM LABEL@ BL,
@@ -3010,9 +3008,6 @@ private
       13 11 0 LDR,  13 CP CMP,  C-CS next BCOND,
       14 11 8 LDR,
       15 CODE-SPAN:MASK LIT64,  15 14 15 AND,
-      12 CODE-SPAN:FULL LIT64,  12 14 12 AND,
-      12 full CBNZ,  15 15 CODE-SPAN:INSN-BYTES ADDI,
-      full LBL,
       15 13 15 ADD,
       15 9 CMP,  C-LS next BCOND,
       12 XREG-RBASE DEF-OCC:PTR-CELL LDR,
@@ -4492,7 +4487,7 @@ private
 \ x9 names the four-byte patch (zero for an effect-only change); x10 names the
 \ created record. Every record covering changed bytes is replaced separately.
 : EMIT-DEF-OCC-OVERLAP ( -- )
-   LBL LBL LBL LBL {: hit:label miss:label raw:label span:label :}
+   LBL LBL LBL {: hit:label miss:label span:label :}
    LBL LBL LBL LBL LBL LBL {: clear-loop:label clear-next:label cleared:label
       issue-loop:label issue-next:label issued:label :}
    EM-DEF-OCC:LMATCH LABEL@ LBL,
@@ -4505,9 +4500,6 @@ private
    span LBL,
       15 11 0 LDR,  15 9 CMP,  C-HI miss BCOND,
       16 11 8 LDR,  17 CODE-SPAN:MASK LIT64,  17 16 17 AND,
-      12 CODE-SPAN:FULL LIT64,  16 16 12 AND,
-      16 raw CBNZ,  17 17 CODE-SPAN:INSN-BYTES ADDI,
-   raw LBL,
       15 15 17 ADD,  15 9 CMP,  C-LS miss BCOND,
    hit LBL,
       12 1 MOVZ,  RET,

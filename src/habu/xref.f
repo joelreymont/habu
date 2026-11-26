@@ -104,17 +104,16 @@ public
    wid OWNER-API-PUB-WID = wid OWNER-API-PRI-WID = or if XREF-TRUE exit then
    XREF-FALSE ;
 
-\ Keep the historical body length distinct from the exact code span. A package
-\ row's length cell, live or retired, holds a wordlist id, so it is answered raw
-\ rather than sent through CODE-SPAN; a package reader names that cell
-\ XREF-PKG-PRIVATE. A raw length is only for record serialization.
+\ A package row's length cell, live or retired, holds a wordlist id, so it is
+\ answered raw rather than sent through CODE-SPAN; a package reader names that
+\ cell XREF-PKG-PRIVATE. A raw length is only for record serialization.
 : XREF-LEN ( ^n -- n ) {: rec:^ :}
    rec XREF-WORDLIST XREF:PACKAGE-WL? if rec XREF-RAW-LEN exit then
    rec XREF-RAW-LEN dup CODE-SPAN:CHECK CODE-SPAN:BODY ;
 
 : XREF-CODE-BYTES ( ^n -- n ) {: rec:^ :}
    rec XREF-WORDLIST XREF:PACKAGE-WL? if 0 exit then
-   rec XREF-RAW-LEN CODE-SPAN:BYTES ;
+   rec XREF-LEN ;
 
 : XREF-RETIRED? ( ^n -- bool )
    XREF-WORDLIST XREF:RETIRED-WL? ;
@@ -661,8 +660,9 @@ private
 \ every survivor's, or kernel text below the arena. A start is the one address
 \ nameable without knowing the length of the routine below it. The cost, when
 \ the lowest retirement is not the first routine above the survivors, is a
-\ routine's worth of bytes left claimed. No floor is kept in a cell: an arena address moves with every
-\ launch, and a cell would carry it into a captured image.
+\ routine's worth of bytes left claimed. No floor is kept in a cell: an arena
+\ address moves with every launch, and a cell would carry it into a captured
+\ image.
 
 \ The first address of the engine's code arena. Below it are the dictionary
 \ records themselves and, lower still, the engine's own loaded text where a

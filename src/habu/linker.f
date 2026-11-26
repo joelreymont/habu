@@ -4525,16 +4525,15 @@ EXPORT TFAM:TFAM-N@
    NSHADOW:EMISSIONS 1 -  copy  fn  [: ;] [: ;] [: 2drop true ;]  NATIVE:PATCH
    h EM-OFFS @ {: at:n :}
    at OBJ@ {: s:n :}
-   s CODE-SPAN:EXACT {: recorded:n :}
    does if
-      copy s >str recorded false hoff NPUB:IMPORT-PENDING-DOES
+      copy s >str false hoff NPUB:IMPORT-PENDING-DOES
    else
       tag 5 <> if
          copy s >str false  tag x y z w RESOLVE  NPUB:IMPORT-PENDING-DEFER
       else steps STR:LEN 0<> if
          copy s >str false  steps  NPUB:IMPORT-PENDING-COPY
       else
-         copy s >str recorded false NPUB:IMPORT-PENDING
+         copy s >str false NPUB:IMPORT-PENDING
       then then
    then drop
    INTERPRETER:DEF-CLOSE

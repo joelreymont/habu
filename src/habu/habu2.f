@@ -564,8 +564,8 @@ private
 public
 
 : EMIT ( -- )
-   LBL LBL LBL LBL LBL LBL LBL
-   {: nocr:label slot:label declared:label write:label flush:label
+   LBL LBL LBL LBL LBL LBL
+   {: nocr:label declared:label write:label flush:label
       have:label before:label :}
    LDOESPATCH LABEL@ LBL,
    have EMIT-NONE
@@ -574,9 +574,8 @@ public
    11 XREG-RBASE LASTC-CELL LDR,                               \ created slot
    11 SP 40 STR,
    12 11 0 LDR,  13 11 8 LDR,
-   14 13 CODE-SPAN:FULL ANDI,  13 13 CODE-SPAN:MASK ANDI,
-   14 slot CBZ,  13 13 4 SUBI,
-   slot LBL,  12 12 13 ADD,                              \ final RET/B slot from either representation
+   13 13 CODE-SPAN:MASK ANDI,  13 13 4 SUBI,
+   12 12 13 ADD,                                         \ the final RET/B slot
    12 SP 16 STR,
    9 12 0 ADDI,
    10 before CBNZ,

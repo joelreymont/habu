@@ -63,7 +63,7 @@ variable ATTR-GENERATED variable ATTR-UNKNOWN variable ATTR-OK
 : NUM-COL ( str n -- n ) FIELD$ NUMBER ;
 
 : ROW-LEN ( str -- n ) {: s:str :}
-   s COL-LEN @ NUM-COL dup CODE-SPAN:VALID? if CODE-SPAN:BYTES else drop -1 then ;
+   s COL-LEN @ NUM-COL dup CODE-SPAN:VALID? if CODE-SPAN:BODY else drop -1 then ;
 
 : ROW-BYTES ( str -- n )
    ROW-LEN dup 0 < if

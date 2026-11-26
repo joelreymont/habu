@@ -41,7 +41,6 @@ LINUX-LAYOUT:DATA-VA VA>N MAIN-STACK-TOP-CELL + constant TOP-VA
 8 constant COLS                                 \ a row's and a caller line's count columns
 3 constant PROT-RW                              \ PROT_READ|PROT_WRITE
 0 constant ITIMER-REAL
-31 constant SPAN-FULL-BIT                       \ CODE-SPAN:FULL's bit
 48 constant HASH-SHIFT                          \ a product's top 16 bits: the slot index, PROF-CALL-SLOTS wide
 \ struct itimerval: the interval, then the first expiry, each seconds then
 \ microseconds.
@@ -192,15 +191,6 @@ variable SESSION-CELL
    free LBL,  RAX R10 MEM-AT STORE,  R11 CELL WEIGHT,  R11 R10 CELL MEM-OFF STORE,  done JMP,
    hit LBL,  R11 CELL WEIGHT,  R11 R10 CELL ADD-MEM,
    done LBL,  RET, ;
-
-\ rax = a record's raw length cell: its code bytes, the twin of prof.f
-\ C-PROF-SPAN-BYTES (src/habu/code-span.f): an exact span is its body, a
-\ legacy one its body and the final slot it is recorded before. Clobbers rbx.
-: SPAN-BYTES, ( -- )
-   RBX RAX COPY,  RBX SPAN-FULL-BIT >IMM8 ASM-SINK ENC-SHR-RI8     \ 1 for an exact span
-   RAX CODE-SPAN:MASK >IMM32 ASM-SINK ENC-AND-RI32
-   RAX CODE-SPAN:INSN-BYTES ADDI,
-   RBX RBX CODE-SPAN:INSN-BYTES SCALE,  RAX RBX ASM-SINK ENC-SUB-RR ;
 
 : REJECTED, ( str -- ) {: a:^ u:n :}
    LBL {: msg:label :}
@@ -437,7 +427,8 @@ variable SESSION-CELL
       RAX TEST,  C-NS word JCC,
       RAX WL:RETIRED >IMM8 ASM-SINK ENC-CMP-RI8  C-NE next JCC,
       word LBL,
-      RAX R11 CELL MEM-OFF LOAD,  SPAN-BYTES,  RAX TEST,  C-E next JCC,
+      RAX R11 CELL MEM-OFF LOAD,  RAX CODE-SPAN:MASK >IMM32 ASM-SINK ENC-AND-RI32
+      RAX TEST,  C-E next JCC,
       R9 R11 MEM-AT LOAD,  R9 TEST,  C-E next JCC,
       R10 R9 COPY,  R10 RAX ASM-SINK ENC-ADD-RR
       R9 R8 RID-START MEM-OFF STORE,

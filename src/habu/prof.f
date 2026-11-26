@@ -132,14 +132,6 @@ $0043 constant MACOS-SA-PROF-FLAGS        \ SA_ONSTACK | SA_RESTART | SA_SIGINFO
    HB-TARGET-LINUX-ARM64? IF rd 21 LINUX-MCTX-X0-OFF x 8 * + LDR, exit THEN
    rd 21 SS-OFF x 8 * + LDR, ;
 
-\ x13 = the record's code bytes from its raw length cell:
-\ bit 31 marks an exact span, otherwise the body precedes one final slot.
-: C-PROF-SPAN-BYTES ( -- )
-   14 13 31 LSRI,
-   13 13 CODE-SPAN:MASK ANDI,
-   13 13 CODE-SPAN:INSN-BYTES ADDI,
-   14 14 2 LSLI,  13 13 14 SUB, ;
-
 public
 
 \ LPROFFIND ( x9 = pc, x8 = arena -- x6 = index entry or 0 ): the whole of pc
@@ -1132,7 +1124,7 @@ private
       14 13 DICT-WL-OFF LDR,  14 0 CMPI,  C-GE word BCOND,
       15 WL:RETIRED invert MOVN,  14 15 CMP,  C-NE bnext BCOND,
       word LBL,
-      13 13 8 LDR,  C-PROF-SPAN-BYTES  13 bnext CBZ,
+      13 13 8 LDR,  13 13 CODE-SPAN:MASK ANDI,  13 bnext CBZ,
       12 5 RID-OWNER LDR,  15 DREC MOVZ,  12 12 15 MUL,
       12 DBASE 12 ADD,  12 12 0 LDR,  12 bnext CBZ,
       14 12 13 ADD,

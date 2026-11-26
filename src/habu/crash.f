@@ -295,7 +295,7 @@ private
 \ LFAULT-OWNER ( x3 = an address, x4 = the dictionary's base or 0, x6 = its
 \ record count -- x7 = the name of the word whose code holds the address, 0
 \ for none, x6 = its length ): a scan of the records, as many as DICT-CAP.
-\ Package rows hold wordlist ids where a word's span is. Leaf; clobbers x10..x13.
+\ Package rows hold wordlist ids where a word's span is. Leaf; clobbers x10..x12.
 : EMIT-FAULT-OWNER ( -- )
    LBL LBL LBL LBL LBL {: scan:label code:label next:label hit:label done:label :}
    LFAULT-OWNER LABEL@ LBL,
@@ -311,8 +311,7 @@ private
    code LBL,
       11 10 0 LDR,  3 11 CMP,  C-CC next BCOND,
       12 10 8 LDR,                              \ the raw span (code-span.f)
-      13 12 31 LSRI,  12 12 CODE-SPAN:MASK ANDI,
-      12 12 CODE-SPAN:INSN-BYTES ADDI,  13 13 2 LSLI,  12 12 13 SUB,
+      12 12 CODE-SPAN:MASK ANDI,
       11 11 12 ADD,  3 11 CMP,  C-CC hit BCOND,
    next LBL,
       10 10 DREC ADDI,  6 6 1 SUBI,  scan B,

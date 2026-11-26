@@ -1010,8 +1010,8 @@ SPN-ENVP0 CELL + constant SPN-FRAME
 \ still named by those records. A task reads the high-water from main DATA,
 \ not its own snapshot. This is LIBC-OS:FORK's Linux extent rule.
 : FORK-COPY, ( -- )
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
-   {: scan:label next:label span:label full:label scanned:label :}
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
+   {: scan:label next:label span:label scanned:label :}
    R10 SHARED-DATA,
    RCX R10 NDICT-HW-CELL MEM-OFF ASM-SINK ENC-MOV-RM
    RAX NDICT-REG 1 MEM-OFF ASM-SINK ENC-LEA
@@ -1035,13 +1035,8 @@ SPN-ENVP0 CELL + constant SPN-FRAME
    span X64CODE:LBL,
    RAX R8 REC-CODE MEM-OFF ASM-SINK ENC-MOV-RM
    RDX R8 REC-CODE CELL + MEM-OFF ASM-SINK ENC-MOV-RM
-   RSI RDX ASM-SINK ENC-MOV-RR
-   RSI CODE-SPAN:MASK >IMM32 ASM-SINK ENC-AND-RI32
-   R11 CODE-SPAN:FULL IMM32,
-   RDX R11 ASM-SINK ENC-TEST-RR  C-NE full JCC,
-   RSI CODE-SPAN:INSN-BYTES >IMM8 ASM-SINK ENC-ADD-RI8
-   full X64CODE:LBL,
-   RAX RSI ASM-SINK ENC-ADD-RR
+   RDX CODE-SPAN:MASK >IMM32 ASM-SINK ENC-AND-RI32
+   RAX RDX ASM-SINK ENC-ADD-RR
    R9 RAX ASM-SINK ENC-CMP-RR  C-B R9 RAX ASM-SINK ENC-CMOVCC
    next X64CODE:LBL,
    RCX ASM-SINK ENC-INC  scan JMP,
@@ -2845,8 +2840,8 @@ variable SEAL-TRAP-CELL
 
 \ xref-retarget ( n n n -- ): the twin of BXREFRETARGET. The index names a live
 \ record or the pending one, NDICT, and none past it; the length is at most
-\ CODE-SPAN:RAW-MAX and not CODE-SPAN:FULL, an empty exact span. Through the
-\ alias the length, the cell after the code cell, is stored first and
+\ CODE-SPAN:RAW-MAX and its low 31 bits are not zero, an empty span. Through
+\ the alias the length, the cell after the code cell, is stored first and
 \ the address last: under total store order a plain store publishes after the
 \ one before it, where ARM64 needs STLR.
 : RETARGET, ( -- )
@@ -2855,8 +2850,8 @@ variable SEAL-TRAP-CELL
    RCX NDICT-REG ASM-SINK ENC-CMP-RR  C-A SEAL-TRAP-LBL JCC,
    RAX CODE-SPAN:RAW-MAX IMM32,
    R9 RAX ASM-SINK ENC-CMP-RR  C-A SEAL-TRAP-LBL JCC,
-   RAX CODE-SPAN:FULL IMM32,
-   R9 RAX ASM-SINK ENC-CMP-RR  C-E SEAL-TRAP-LBL JCC,
+   RAX CODE-SPAN:MASK IMM32,
+   RAX R9 ASM-SINK ENC-AND-RR  C-E SEAL-TRAP-LBL JCC,
    RSP 16 >IMM8 ASM-SINK ENC-SUB-RI8
    RAX ZERO-REG,  RAX RSP 0 MEM-OFF ASM-SINK ENC-MOV-MR
    RCX NDICT-REG ASM-SINK ENC-CMP-RR  C-E pending JCC,
@@ -3244,8 +3239,8 @@ private
 \ A successful code rewind retires any published span that reaches its floor.
 : DEF-CODE-RECLAIM-BODY ( -- )
    X64PROF:RECLAIM,
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
-   {: scan:label next:label full:label span:label done:label :}
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
+   {: scan:label next:label span:label done:label :}
    RCX ZERO-REG,
    scan X64CODE:LBL,
       RCX NDICT-REG ASM-SINK ENC-CMP-RR  C-AE done JCC,
@@ -3257,12 +3252,7 @@ private
       R9 R8 REC-CODE MEM-OFF ASM-SINK ENC-MOV-RM
       R9 CP-REG ASM-SINK ENC-CMP-RR  C-AE next JCC,
       R10 R8 REC-CODE CELL + MEM-OFF ASM-SINK ENC-MOV-RM
-      R11 R10 ASM-SINK ENC-MOV-RR
       RAX CODE-SPAN:MASK IMM64,  R10 RAX ASM-SINK ENC-AND-RR
-      RAX CODE-SPAN:FULL IMM64,  R11 RAX ASM-SINK ENC-AND-RR
-      R11 R11 ASM-SINK ENC-TEST-RR  C-NE full JCC,
-      R10 CODE-SPAN:INSN-BYTES >IMM8 ASM-SINK ENC-ADD-RI8
-   full X64CODE:LBL,
       R9 R10 ASM-SINK ENC-ADD-RR
       R9 RDI ASM-SINK ENC-CMP-RR  C-BE next JCC,
       RAX DEF-OCC:PTR-CELL CELL@,

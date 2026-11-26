@@ -1,17 +1,13 @@
-\ Dictionary code lengths retain the legacy body-before-final-slot convention.
-\ Bit 31 marks an exact span instead: no instruction follows the recorded body.
-\ An exact span is any byte count from 1 to MASK, because an x86-64 routine may
-\ end on any byte. A legacy span is whole ARM64 instructions, and INSN-BYTES is
-\ only the final slot a legacy body is recorded before.
-\ The bit survives the compact u32 dictionary unchanged. Namespace [8] cells
-\ are wordlist IDs and must never pass through these code-only accessors.
+\ A dictionary code length is the routine's whole byte count, 1 to MASK: an
+\ x86-64 routine may end on any byte. A record an hb before this one laid
+\ carries bit 31 over the count, which BODY drops. Namespace [8] cells are
+\ wordlist IDs and must never pass through these code-only accessors.
 package CODE-SPAN
 public
 
 $80000000 constant FULL
 $7FFFFFFF constant MASK
 $FFFFFFFF constant RAW-MAX
-4 constant INSN-BYTES
 
 : FULL? ( n -- bool ) FULL and 0= 0= ;
 : BODY ( n -- n ) MASK and ;
@@ -20,9 +16,7 @@ $FFFFFFFF constant RAW-MAX
    size 1 >= size MASK <= and ;
 
 : VALID? ( n -- bool ) {: raw:n :}
-   raw 0 < raw RAW-MAX > or if 0 0= 0= exit then
-   raw FULL? if raw BODY 0 > exit then
-   raw BODY INSN-BYTES mod 0 = ;
+   raw 0 >= raw RAW-MAX <= and  raw BODY SIZE? and ;
 
 private
 \ Rejects V given to the public word W: WHAT says what V is not, OK the values
@@ -42,21 +36,17 @@ private
 : LENGTH-CK ( n str -- ) {: raw:n w:str :}
    raw VALID? 0= if
       raw w s" a dictionary code length"
-      s" whole 4-byte instructions, or bit 31 set over 1 to 2147483647 bytes"
+      s" 1 to 2147483647 bytes, bare or under bit 31"
       s" VALID?" BAD
    then ;
 
 public
 : CHECK ( n -- ) s" CHECK" LENGTH-CK ;
 
-: BYTES ( n -- n ) {: raw:n :}
-   raw s" BYTES" LENGTH-CK
-   raw FULL? if raw BODY else raw BODY INSN-BYTES + then ;
-
 : EXACT ( n -- n ) {: size:n :}
    size SIZE? 0= if
       size s" EXACT" s" a code size" s" 1 to 2147483647 bytes" s" SIZE?" BAD
    then
-   size FULL or ;
+   size ;
 
 ;package

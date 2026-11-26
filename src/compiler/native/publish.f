@@ -251,14 +251,12 @@ private
 
 \ Place a prepared body after the pending row's checks; `pad` is room the
 \ caller writes past the body.
-: IMPORT-CODE ( str n n -- n n )
-   {: code:str recorded:n pad:n :}
+: IMPORT-CODE ( str n -- n n ) {: code:str pad:n :}
    code STR:LEN {: size:n :}
    PENDING-IDX {: idx:n :}
    idx PENDING-CK
    size 0 <= size IMPORT-ALIGNED? 0= or if E-NPUB-RELOC throw then
-   recorded CODE-SPAN:VALID? 0= if E-NPUB-RELOC throw then
-   recorded CODE-SPAN:BYTES size <> if E-NPUB-RELOC throw then
+   size CODE-SPAN:EXACT {: recorded:n :}
    size pad TRAILED-SIZE ROOM-CK {: fn:n :}
    code fn CODE-WINDOW
    fn recorded idx PUBLISH-REC
@@ -272,9 +270,9 @@ public
 \ A prepared definition reuses the interpreter's pending row, whose name and
 \ wordlist the source definition wrote. All references are prepared before
 \ this call.
-: IMPORT-PENDING ( str n bool -- n )
-   {: code:str recorded:n wide:bool :}
-   code recorded 0 IMPORT-CODE drop {: idx:n :}
+: IMPORT-PENDING ( str bool -- n )
+   {: code:str wide:bool :}
+   code 0 IMPORT-CODE drop {: idx:n :}
    idx APPEND-PENDING
    wide IMPORT-MARKS
    idx ;
@@ -283,14 +281,13 @@ public
 \ body and publishes as the next record, as PUBLISH-PENDING-DOES lays it out.
 \ The checker slice installed beside it carries the clause's checker facts.
 \ PART-FRESH? links a part only when its records fit, so the clause has its record.
-: IMPORT-PENDING-DOES ( str n bool n -- n )
-   {: code:str recorded:n wide:bool off:n :}
+: IMPORT-PENDING-DOES ( str bool n -- n )
+   {: code:str wide:bool off:n :}
    off 0 <= off code STR:LEN >= or off IMPORT-ALIGNED? 0= or
    if E-NPUB-RELOC throw then
    PENDING-IDX {: idx:n :}
-   code recorded idx DOES-NAME-PAD IMPORT-CODE
-      {: at:n fn:n :}
-   fn off + recorded off - does-record
+   code idx DOES-NAME-PAD IMPORT-CODE {: at:n fn:n :}
+   fn off + code STR:LEN off - CODE-SPAN:EXACT does-record
    at APPEND-PENDING
    wide IMPORT-MARKS
    at 1+ APPEND-PENDING
@@ -299,8 +296,7 @@ public
 \ The trailer follows the host's aligned code slot, as for a fresh defer.
 : IMPORT-PENDING-DEFER ( str bool n -- n )
    {: code:str wide:bool cell:n :}
-   code  code STR:LEN CODE-SPAN:EXACT  TRAILER-BYTES IMPORT-CODE
-      {: idx:n fn:n :}
+   code TRAILER-BYTES IMPORT-CODE {: idx:n fn:n :}
    idx fn cell DEFER-TRAILER
    idx APPEND-PENDING
    wide IMPORT-MARKS
@@ -309,7 +305,7 @@ public
 \ The steps' trailer follows the host's code slot, as for a fresh copy word.
 : IMPORT-PENDING-COPY ( str bool str -- n )
    {: code:str wide:bool s:str :}
-   code  code STR:LEN CODE-SPAN:EXACT  s STR:LEN IMPORT-CODE {: idx:n fn:n :}
+   code s STR:LEN IMPORT-CODE {: idx:n fn:n :}
    idx fn s STEPS-TRAILER
    idx APPEND-PENDING
    wide IMPORT-MARKS
