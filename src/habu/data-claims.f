@@ -1,4 +1,3 @@
-split-str
 \ Build-only DATA extent checks; runtime images need only layout.f.
 require src/core/exit-status.f
 require src/habu/boot-cells.f
@@ -36,10 +35,11 @@ public
 \ TAB is the offset, the length and the name's byte count, then the name,
 \ padded to a cell. A row is named by its byte offset from TAB.
 : CLAIM ( n n -- ) {: off len :}
-   parse-name {: a u :}
+   parse-name {: name:str :}
+   name STR:LEN {: u:n :}
    u 0 = if off len NO-NAME then
    off , len , u ,
-   u 0 ?do a i + c@ c, loop  align ;
+   u 0 ?do name STR:DATA i + c@ c, loop  align ;
 parses: CLAIM 1
 
 create TAB
@@ -210,7 +210,7 @@ create TAB
    TAB + 1 cells + @ ;
 
 : NAME-AT ( n -- str ) {: row :}
-   TAB row + 3 cells +  TAB row + 2 cells + @ ;
+   TAB row + 3 cells +  TAB row + 2 cells + @ >str ;
 
 private
 : NEXT-ROW ( n -- n ) {: row :}

@@ -1,4 +1,3 @@
-split-str
 \ crash.f - the in-binary signal handlers the native engine bakes: the crash
 \ handler, the raw sa_tramp, and EMIT-SIGNAL-HANDLER, the async-signal-safe
 \ stub a program installs for an ordinary signal. Encoders are package A64ASM
@@ -49,9 +48,10 @@ package CRASH
 : CRH-BYTE+ ( ^u8 n -- ^u8 ) + ;
 
 : CRH-INIT ( -- )
-   s" habu-crash regs [sig x0..x28 fp lr sp pc], hex one-per-line:" {: a:^ u:n :}
+   s" habu-crash regs [sig x0..x28 fp lr sp pc], hex one-per-line:" {: s:str :}
+   s STR:LEN {: u:n :}
    0 BEGIN dup u < WHILE
-      dup a swap CRH-BYTE+ c@  over CRH swap CRH-BYTE+ c!
+      dup s STR:DATA swap CRH-BYTE+ c@  over CRH swap CRH-BYTE+ c!
       1 +
    REPEAT drop
    $A CRH u CRH-BYTE+ c!  u 1 + CRHL ! ;
@@ -184,23 +184,24 @@ public
 
 private
 : BAD-DIE-TEXT ( str -- )
-   {: a:^ u:n :}
+   {: t:str :}
    s" E-FAULT-SITE" REJECTION:OPEN
    s" the die line's text is empty, or is longer than the room "
    REJECTION:EMIT-STR  s" its frame holds" REJECTION:EMIT-STR
-   s" text" REJECTION:NOTE  a u REJECTION:EMIT-STR
-   s" length" REJECTION:NOTE  u REJECTION:EMIT-U
+   s" text" REJECTION:NOTE  t REJECTION:EMIT-STR
+   s" length" REJECTION:NOTE  t STR:LEN REJECTION:EMIT-U
    s" room" REJECTION:NOTE  DIE-LINE-ROOM REJECTION:EMIT-U
    REJECTION:HELP  s" give the line a text of 1 to " REJECTION:EMIT-STR
    DIE-LINE-ROOM REJECTION:EMIT-U  s"  bytes" REJECTION:EMIT-STR
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 : DIE-LINE-SITE, ( str n n -- )
-   A64ICODE:LBL {: a:^ u:n status:n flag:n msg:label :}
-   u 0= u DIE-LINE-ROOM > or IF a u BAD-DIE-TEXT THEN
+   A64ICODE:LBL {: t:str status:n flag:n msg:label :}
+   t STR:LEN {: u:n :}
+   u 0= u DIE-LINE-ROOM > or IF t BAD-DIE-TEXT THEN
    0 status A64ICODE:MOVZ,  1 msg A64ICODE:ADR,  2 u A64ICODE:MOVZ,  4 flag A64ICODE:MOVZ,
    LDIE-LINE A64ICODE:LABEL@ A64ICODE:B,
-   msg A64ICODE:LBL,  a u A64ICODE:BYTES, ;
+   msg A64ICODE:LBL,  t A64ICODE:BYTES, ;
 
 public
 \ A branch to LDIE-LINE with the text and the exit status, the text laid
@@ -210,9 +211,9 @@ public
 \ DIE-LINE, that also prints the register's value; the register is copied
 \ first, so it may be any of x0..x4.
 : DIE-LINE-VALUE, ( str n n -- )
-   {: a:^ u:n status:n reg:n :}
+   {: t:str status:n reg:n :}
    reg 3 <> IF 3 reg 0 A64ICODE:ADDI, THEN
-   a u status 1 DIE-LINE-SITE, ;
+   t status 1 DIE-LINE-SITE, ;
 
 \ ---- fault records ----
 \ A site emits FAULT-OPEN,, any notes, then FAULT-STOP, or FAULT-KEEP,. Each
@@ -245,14 +246,14 @@ private
 \ Writes the prose or the JSON text as x17 says, then empties both.
 : PIECE, ( -- )
    A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL {: prose:label json:label code:label put:label :}
-   FAULT-RECORD:FAULT-PROSE$ {: pa:^ pu:n :}
-   FAULT-RECORD:FAULT-JSON$ {: ja:^ ju:n :}
+   FAULT-RECORD:FAULT-PROSE$ {: p:str :}
+   FAULT-RECORD:FAULT-JSON$ {: j:str :}
    code A64ICODE:B,
-   prose A64ICODE:LBL,  pa pu A64ICODE:BYTES,
-   json A64ICODE:LBL,  ja ju A64ICODE:BYTES,
+   prose A64ICODE:LBL,  p A64ICODE:BYTES,
+   json A64ICODE:LBL,  j A64ICODE:BYTES,
    code A64ICODE:LBL,
-   10 prose A64ICODE:ADR,  11 pu A64ICODE:MOVZ,  17 put A64ICODE:CBZ,
-   10 json A64ICODE:ADR,  11 ju A64ICODE:MOVZ,
+   10 prose A64ICODE:ADR,  11 p STR:LEN A64ICODE:MOVZ,  17 put A64ICODE:CBZ,
+   10 json A64ICODE:ADR,  11 j STR:LEN A64ICODE:MOVZ,
    put A64ICODE:LBL,  9 0 A64ICODE:MOVZ,  LFAULT-PUT A64ICODE:LABEL@ A64ICODE:BL,
    FAULT-RECORD:FAULT-EMPTY ;
 
@@ -373,31 +374,31 @@ public
 
 \ A note with the register's value in decimal; the register is copied first.
 : FAULT-NUMBER, ( FAULT-RECORD:record str n -- FAULT-RECORD:record )
-   {: k:^ ku:n r:n :}
+   {: k:str r:n :}
    7 r 0 A64ICODE:ADDI,
-   k ku FAULT-RECORD:NOTE+  PIECE,
+   k FAULT-RECORD:NOTE+  PIECE,
    LFAULT-DEC A64ICODE:LABEL@ A64ICODE:BL, ;
 
 \ A note with the bytes at the pointer register, the length register's count of
 \ them. Both are among x3..x7, which the record's parts keep until a note writes
 \ x6 or x7.
 : FAULT-TEXT, ( FAULT-RECORD:record str n n -- FAULT-RECORD:record )
-   {: k:^ ku:n p:n l:n :}
+   {: k:str p:n l:n :}
    p 3 < p 7 > or  l 3 < or  l 7 > or IF p l BAD-TEXT-REGS THEN
-   k ku FAULT-RECORD:NOTE+  PIECE,
+   k FAULT-RECORD:NOTE+  PIECE,
    10 p 0 A64ICODE:ADDI,  11 l 0 A64ICODE:ADDI,  9 17 0 A64ICODE:ADDI,  LFAULT-PUT A64ICODE:LABEL@ A64ICODE:BL, ;
 
 \ A note with the address in the register, `0x` and 16 hex digits; the
 \ register is copied first.
 : FAULT-ADDRESS, ( FAULT-RECORD:record str n -- FAULT-RECORD:record )
-   {: k:^ ku:n r:n :}
+   {: k:str r:n :}
    7 r 0 A64ICODE:ADDI,
-   k ku FAULT-RECORD:FAULT-ADDRESS  PIECE,  7 HEX, ;
+   k FAULT-RECORD:FAULT-ADDRESS  PIECE,  7 HEX, ;
 
 \ Ends the record with its help and exits with the status.
 : FAULT-STOP, ( FAULT-RECORD:record str n -- )
-   {: h:^ hu:n status:n :}
-   h hu FAULT-RECORD:FAULT-STOP
+   {: h:str status:n :}
+   h FAULT-RECORD:FAULT-STOP
    PIECE,  FLUSH,
    0 status A64ICODE:MOVZ,  SYSCALL:NR-EXIT-GROUP SYSCALL:SYS, ;
 
@@ -556,14 +557,14 @@ variable CRS-THROW
 
 \ The record of a stack's overflow, x3, x4 and x6 as FAULT-IN, reads them.
 \ Never returns.
-: C-CRASH-GUARD-RECORD ( str -- ) {: a:^ u:n :}
-   s" E-STACK-BOUNDS" a u FAULT-OPEN,  FAULT-IN,
+: C-CRASH-GUARD-RECORD ( str -- ) {: msg:str :}
+   s" E-STACK-BOUNDS" msg FAULT-OPEN,  FAULT-IN,
    FAULT-RECORD:CRS-HELP$ EXIT-STATUS:STACK-BOUNDS FAULT-STOP, ;
 
 \ The record for the guard page hit at the label, which Habu code hit.
 : C-CRASH-GUARD-REPORT ( str label -- )
-   {: a:^ u:n hit:label :}
-   hit A64ICODE:LBL,  C-CRASH-OWNER>R3  a u C-CRASH-GUARD-RECORD ;
+   {: msg:str hit:label :}
+   hit A64ICODE:LBL,  C-CRASH-OWNER>R3  msg C-CRASH-GUARD-RECORD ;
 
 \ Row 1's record, whose pc may be C's: it names no word.
 : C-CRASH-MACHINE-REPORT ( -- )
@@ -788,7 +789,7 @@ public
       C-CRASH-PC0
       C-CRASH-PC+4
       C-CRASH-RERAISE
-   LHDR A64ICODE:LABEL@ A64ICODE:LBL,  CRH CRHL @ A64ICODE:BYTES, ;
+   LHDR A64ICODE:LABEL@ A64ICODE:LBL,  CRH CRHL @ >str A64ICODE:BYTES, ;
 
 \ The caller loads x11 with the handler's address: src/arch/arm64/boot.f
 \ STACKS, reaches it from the text base through TEXT-AT,.

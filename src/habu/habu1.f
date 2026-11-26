@@ -2354,13 +2354,15 @@ package LIBC-OS
       1 1 8 A64ICODE:ADDI,  top A64ICODE:B,
    done A64ICODE:LBL, ;
 
-\ The text's eight bytes from off as one little-endian cell, zero past len.
-: TEXT-CELL ( ^u8 n n -- n )
-   {: a:^ off:n len:n :}
+\ The text's eight bytes from off as one little-endian cell, zero past its end.
+: TEXT-CELL ( str n -- n )
+   {: s:str off:n :}
    0
    8 0 ?do
       8 lshift
-      off 7 + i -  dup len < if a swap + c@ or else drop then
+      off 7 + i -  dup s STR:LEN < if
+         s STR:DATA swap + c@ or
+      else drop then
    loop ;
 
 \ Clobbers x0-x2, x9 and the system call's registers.
@@ -2369,7 +2371,7 @@ package LIBC-OS
    s STR:LEN 15 + -16 and {: frame:n :}
    A64ICODE:SP A64ICODE:SP frame A64ICODE:SUBI,
    frame 8 / 0 ?do
-      9 s STR:DATA i 8 * s STR:LEN TEXT-CELL A64ICODE:LIT64,  9 A64ICODE:SP i 8 * A64ICODE:STR,
+      9 s i 8 * TEXT-CELL A64ICODE:LIT64,  9 A64ICODE:SP i 8 * A64ICODE:STR,
    loop
    0 2 A64ICODE:MOVZ,  1 A64ICODE:SP 0 A64ICODE:ADDI,  2 s STR:LEN A64ICODE:MOVZ,  SYSCALL:NR-WRITE SYSCALL:SYS,
    A64ICODE:SP A64ICODE:SP frame A64ICODE:ADDI, ;
