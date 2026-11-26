@@ -19,30 +19,30 @@ CREATE TABLE sparql_test.typed (s bigint NOT NULL, o_id bigint, o_text text, o_n
     o_kind bigint, CHECK (num_nonnulls(o_id, o_text, o_num, o_kind) <= 1));
 
 CREATE FUNCTION sparql_test.id(term jsonb) RETURNS bigint
-LANGUAGE sql IMMUTABLE STRICT PARALLEL SAFE AS $$
+LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
     SELECT CASE WHEN term->>'type'='uri' AND term->>'value' ~ '^urn:test:[1-9][0-9]{0,17}$'
                 THEN substring(term->>'value' FROM 10)::bigint END
 $$;
 
 CREATE FUNCTION sparql_test.id_term(id bigint) RETURNS jsonb
-LANGUAGE sql IMMUTABLE STRICT PARALLEL SAFE AS $$
-    SELECT jsonb_build_object('type','uri','value','urn:test:' || id)
+LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
+    SELECT CASE WHEN id IS NOT NULL THEN jsonb_object(ARRAY['type','uri','value','urn:test:' || id::text]) END
 $$;
 
 CREATE FUNCTION sparql_test.string(term jsonb) RETURNS text
-LANGUAGE sql IMMUTABLE STRICT PARALLEL SAFE AS $$
+LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
     SELECT CASE WHEN term->>'type'='literal' AND NOT term ? 'datatype' AND NOT term ? 'xml:lang'
                 THEN term->>'value' END
 $$;
 
 CREATE FUNCTION sparql_test.string_term(value text) RETURNS jsonb
-LANGUAGE sql IMMUTABLE STRICT PARALLEL SAFE AS $$
-    SELECT jsonb_build_object('type','literal','value',value)
+LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
+    SELECT CASE WHEN value IS NOT NULL THEN jsonb_object(ARRAY['type','literal','value',value]) END
 $$;
 
 -- Only the canonical lexical forms are in the shape, so `in` inverts `out`.
 CREATE FUNCTION sparql_test.number(term jsonb) RETURNS numeric
-LANGUAGE sql IMMUTABLE STRICT PARALLEL SAFE AS $$
+LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
     SELECT CASE WHEN term->>'type'='literal'
                  AND (term->>'datatype'='http://www.w3.org/2001/XMLSchema#integer'
                       AND term->>'value' ~ '^(0|-?[1-9][0-9]*)$'
@@ -52,12 +52,13 @@ LANGUAGE sql IMMUTABLE STRICT PARALLEL SAFE AS $$
 $$;
 
 CREATE FUNCTION sparql_test.number_term(value numeric) RETURNS jsonb
-LANGUAGE sql IMMUTABLE STRICT PARALLEL SAFE AS $$
+LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
     SELECT CASE WHEN value=trunc(value)
-        THEN jsonb_build_object('type','literal','value',trunc(value)::text,
-                                'datatype','http://www.w3.org/2001/XMLSchema#integer')
-        ELSE jsonb_build_object('type','literal','value',trim_scale(value)::text,
-                                'datatype','http://www.w3.org/2001/XMLSchema#decimal') END
+        THEN jsonb_object(ARRAY['type','literal','value',trunc(value)::text,
+                                'datatype','http://www.w3.org/2001/XMLSchema#integer'])
+        WHEN value IS NOT NULL
+        THEN jsonb_object(ARRAY['type','literal','value',trim_scale(value)::text,
+                                'datatype','http://www.w3.org/2001/XMLSchema#decimal']) END
 $$;
 
 CREATE FUNCTION sparql_test.store(bytes bigint DEFAULT 1048576) RETURNS jsonb

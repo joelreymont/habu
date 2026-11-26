@@ -7,6 +7,9 @@
 -- A reinstall drops these functions and composite types by name, never by
 -- CASCADE: a host object that still uses one makes the install fail instead of
 -- vanishing with it.
+-- The IMMUTABLE SQL functions inline into the statement that calls them. So
+-- their bodies call only immutable functions and are not STRICT, a NULL
+-- argument giving NULL through a CASE.
 DO $$
 DECLARE names text;
 BEGIN
@@ -97,7 +100,7 @@ END $$;
 -- value without a decimal point, otherwise no trailing zero. A nonfinite value
 -- has none: NULL.
 CREATE FUNCTION sparql.format_decimal(value numeric) RETURNS text
-LANGUAGE sql IMMUTABLE STRICT PARALLEL SAFE AS $$
+LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
     SELECT CASE WHEN min_scale(value) IS NOT NULL THEN trim_scale(value)::text END
 $$;
 
