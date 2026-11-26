@@ -237,7 +237,7 @@ $FFFFFF00 constant ABOVE-BYTE0
    at FIND 0 < 0= IF exit THEN                \ already set
    ctrl 1 and 0<>  TRAMP@ 0=  and if E-BP-TARGET throw then
    FREE dup 0 < IF
-      drop s" bp: table full" type cr EXIT-STATUS:FULL throw
+      drop S\" bp: table full\n" ERROR-TEXT:TYPE EXIT-STATUS:FULL throw
    THEN   \ recoverable in the REPL
    {: idx :}
    at 4 CODE-BYTES:AT STR:DATA {: xt:^ :}
@@ -252,8 +252,8 @@ $FFFFFF00 constant ABOVE-BYTE0
    ndict@ 0 ?do
       i XREF-REC {: rec:^ :}
       rec NDICT:COPY?  rec XREF-START at =  and if
-         s" bp: a mention of " type  rec XREF-NAME$ type
-         s"  compiles its steps into the caller; this fires only for a call through its xt" type cr
+         s" bp: a mention of " ERROR-TEXT:TYPE  rec XREF-NAME$ ERROR-TEXT:TYPE
+         S\"  compiles its steps into the caller; this fires only for a call through its xt\n" ERROR-TEXT:TYPE
          unloop exit
       then
    loop ;

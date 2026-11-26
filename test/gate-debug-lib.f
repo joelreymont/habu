@@ -221,12 +221,15 @@ variable GDB-CUT      \ GDB-AFTER's cut point
 \ which leaves a deferred sample with no caller. Intel's machine return stack
 \ instead names OUTER as BUSY's caller: OUTER pushes 0 after BUSY, so the call
 \ is no tail jmp and BUSY's return address on that stack lies inside OUTER.
+\ A word of at most COPY-MAX (src/habu/t0.f) steps is compiled into its callers,
+\ so LEAF is padded past it with `0 drop`, which compiles to nothing, and BUSY
+\ calls it.
 : GDB-PROF-LATE-SRC ( -- )
    GE-SRC-RESET
    s" 0 prof-on" GE-SRC-LINE
    s" package GDBLATE" GE-SRC-LINE
    s" public" GE-SRC-LINE
-   s" : LEAF ( n -- n ) 1+ ;" GE-SRC-LINE
+   s" : LEAF ( n -- n ) 1+ 0 drop 0 drop ;" GE-SRC-LINE
    s" : BUSY ( -- ) 80000000 begin 1- LEAF 1- dup dup * drop dup 0= until drop ;" GE-SRC-LINE
    s" : OUTER ( -- n ) BUSY 0 ;" GE-SRC-LINE
    s" ;package" GE-SRC-LINE
@@ -579,11 +582,13 @@ variable GDB-SKEWED
    s" error[E-SEALED-PACKAGE]: `DEBUG` would change a sealed package" s" reopening package DEBUG names it sealed" GE-EXPECT-ERR-HAS
    s" PASS: the baked package DEBUG is sealed" type cr ;
 
+\ SUBJECT is padded past COPY-MAX steps with `0 drop`, as LEAF is, so its
+\ mentions call it and the trap at its entry fires.
 : GDB-BREAKPOINT-NATIVE ( -- )
    GE-HB-RESET GE-SRC-RESET
    s" require src/habu/debug.f" GE-SRC-LINE
    s" package GDBNBP" GE-SRC-LINE
-   s" : SUBJECT ( n -- n ) 3 + ; ' SUBJECT DEBUG:BP+ 4 SUBJECT . 5 SUBJECT . ;package" GE-SRC-LINE
+   s" : SUBJECT ( n -- n ) 3 + 0 drop 0 drop ; ' SUBJECT DEBUG:BP+ 4 SUBJECT . 5 SUBJECT . ;package" GE-SRC-LINE
    s" native breakpoint resumes" GE-HB-RUN-STDIN
    S\" 7\n8\n" s" native target resumes and runs again" GE-EXPECT-OUT
    s" habu-bp:" s" native breakpoint was hit" GE-EXPECT-ERR-HAS
