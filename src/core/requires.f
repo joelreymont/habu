@@ -87,7 +87,7 @@ SCRATCH-VARIABLE SPAN-ROWS-CAP       \ in cells
    need capv @ 2 * max 1024 max {: cap:n :}
    cap cells ARENA-ALLOC {: fresh:^ :}
    pv @ {: old:^ :}
-   old fresh capv @ ARENA-CELLS-COPY
+   old fresh capv @ ARENA-FRESH-COPY
    old capv @ UNMAP-CELLS
    fresh pv !  cap capv ! ;
 

@@ -957,7 +957,7 @@ PTR-VARIABLE SR-CHUNK   variable SR-USED   variable SR-SIZE
 \ The old bytes stay mapped: the region gives nothing back.
 : SR-GROW ( ^n n n -- ^n ) {: base:^ oldbytes:n newbytes:n :}
    newbytes SR-TAKE {: nb:^ :}
-   base nb oldbytes CELL + 1- CELL / ARENA-CELLS-COPY
+   base nb oldbytes CELL + 1- CELL / ARENA-FRESH-COPY
    nb ;
 
 \ TVT, RVT, EC-TV and EC-RV store logical values plus one: zero means UNBOUND.
@@ -1000,7 +1000,7 @@ PTR-VARIABLE EC-LET-P
 
 : TV-COPY-AT ( n ^a ^a n n -- )
    {: plane:n old:^ next:^ oc:n nc:n :}
-   old oc plane TV-PLANE next nc plane TV-PLANE oc ARENA-CELLS-COPY ;
+   old oc plane TV-PLANE next nc plane TV-PLANE oc ARENA-FRESH-COPY ;
 
 : TV-FILL-AT ( ^n n n n -- ) {: base:^ cap:n plane:n from:n :}
    base cap plane TV-PLANE from cap ARENA-CELLS-UNBOUND ;

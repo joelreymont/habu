@@ -10,7 +10,7 @@
 \ Callers reset their counters per definition, so no tail init is needed.
 : ARENA-BYTES-GROW ( ^a n n -- ^a ) {: base:^ oldbytes:n newbytes:n :}
    newbytes ARENA-ALLOC {: nb:^ :}
-   base nb oldbytes CELL + 1- CELL / ARENA-CELLS-COPY
+   base nb oldbytes CELL + 1- CELL / ARENA-FRESH-COPY
    base oldbytes ARENA-ABANDON
    nb ;
 

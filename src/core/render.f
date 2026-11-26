@@ -65,7 +65,7 @@ $7FFFFFFFFFFFFFFF CELL / constant SEEN-MAX-CAP
    need SEEN-GROW-CAP {: nc:n :}
    SEEN-CAP @ {: oc:n :}
    nc cells ARENA-ALLOC {: next:^ :}
-   oc 0 > IF SEEN-P @ next oc ARENA-CELLS-COPY THEN
+   oc 0 > IF SEEN-P @ next oc ARENA-FRESH-COPY THEN
    next oc nc ARENA-CELLS-UNBOUND
    SEEN-P @ oc SEEN-UNMAP-RC 0 <> IF
       next nc SEEN-UNMAP-RC 0 <> IF

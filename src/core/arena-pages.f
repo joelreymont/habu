@@ -35,13 +35,22 @@ global
       0 over dst + c! 1+
    repeat drop ;
 
-\ A caller holding a byte count passes it rounded up to cells. The rounded read
-\ stays mapped because every source is a page-granular map-anon mapping or lies
-\ inside DATA; the rounded write stays inside the destination because that is a
-\ fresh map-anon mapping (whole pages), CHECKER-REG:GROW's whole cells at a build's
-\ `here`, or an SR-TAKE, which starts the next take on a cell boundary past it.
+\ A caller of either copy holding a byte count passes it rounded up to cells.
+\ The rounded read stays mapped because every source is a page-granular map-anon
+\ mapping or lies inside DATA; the rounded write stays inside the destination
+\ because that is a fresh map-anon mapping (whole pages), CHECKER-REG:GROW's
+\ whole cells at a build's `here`, or an SR-TAKE, which starts the next take on
+\ a cell boundary past it.
 : ARENA-CELLS-COPY ( ^a ^a n -- ) {: src:^ dst:^ n:n :}
    n 0 ?do src i cells + @ dst i cells + ! loop ;
+
+\ Copies into a fresh map-anon mapping, which reads zero already: no zero cell is
+\ written, so a page of zeroes holds no memory.
+: ARENA-FRESH-COPY ( ^a ^a n -- ) {: src:^ dst:^ n:n :}
+   n 0 ?do
+      src i cells + BYTE-VIEW CELL-VIEW @
+      dup 0 <> IF dst i cells + BYTE-VIEW CELL-VIEW ! ELSE drop THEN
+   loop ;
 
 : ARENA-CELLS-UNBOUND ( ^n n n -- ) {: base:^ from:n to:n :}
    from begin dup to < while {: i:n :}
