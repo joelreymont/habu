@@ -1,9 +1,10 @@
 ---
 title: Pass task, signal and guard suites on x86-64
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.791095+03:00"
+closed-at: "2026-11-26T19:20:16.904781+01:00"
 blocks:
   - habu-port-the-crash-99c87339
   - habu-port-the-profiler-97103e6e
