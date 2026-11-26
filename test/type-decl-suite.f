@@ -1023,7 +1023,7 @@ NEWTYPE tres<a>
 ;package
 
 \ package-scoped SIG resolution: unqualified family tokens resolve through the
-\ ACTIVE package, then the globals and `using` imports; qualified PKG:tail folds
+\ ACTIVE package, then the globals; qualified PKG:tail folds
 \ the qualifier, requires a lowercase tail, and resolves public rows only (plus
 \ the active package's own private rows).
 package tdpa

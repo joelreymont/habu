@@ -243,7 +243,7 @@ no longer fits the build, such as one whose source was edited, compiles its
 part.
 
 **A part whose load a link could not repeat never links** and compiles on
-every build: one that starts or ends inside an open package or `using`, one
+every build: one that starts or ends inside an open package, one
 whose request is not a plain one at its top level (made inside a definition,
 with cells on the stack or from evaluated text), the part after such a
 request, one that catches a load it asks for before the load runs, every part

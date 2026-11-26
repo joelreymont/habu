@@ -397,8 +397,7 @@ CAST: TOKEN>N ( XML:kind -- n )
 \ can be neither read nor dropped, so each body is a name reached by `[']`: an
 \ exceptional edge is not part of a quotation's TYPE, so that route keeps the
 \ window typed until callee evidence lets the checker prove the handle intact.
-\ ATTR-RESET already has that shape and is ticked by its bare name, the one a
-\ `using` import resolves.
+\ ATTR-RESET already has that shape and is ticked as XML:ATTR-RESET.
 : NEXT-ONE ( XML:reader -- XML:reader ) XML:NEXT drop ;
 : ATTR-NEXT-ONE ( XML:reader -- XML:reader ) XML:ATTR-NEXT drop ;
 : NAME-READ ( XML:reader -- XML:reader ) XML:NAME$ drop ;

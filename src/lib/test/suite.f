@@ -182,7 +182,7 @@ defer STDIN-RUNNER ( str str -- )
 : NAME-TOKEN ( -- str )
    REQUIRED-NAME CHECK-NAME ;
 
-: ;SUITE? ( str -- bool )              \ suite terminator: qualified TEST:;SUITE or bare ;SUITE under `using TEST`
+: ;SUITE? ( str -- bool )              \ suite terminator: qualified TEST:;SUITE or bare ;SUITE
    dup s" TEST:;SUITE" STR:= if drop TRUE exit then
    s" ;SUITE" STR:= ;
 

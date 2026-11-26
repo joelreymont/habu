@@ -66,13 +66,12 @@ rules. Build and test procedures live in [bootstrap.md](bootstrap.md) and
   preceding scope.
 - **Names fold case, and a wordlist holds each once**: a top-level `: dup` is
   rejected (`E-DUPLICATE-DEFINITION`). A package's own word may spell a global
-  or an engine word; a public one that does is rejected at a bare call through
-  `using` (`E-USING-SHADOW-GLOBAL`), so name it otherwise.
+  or an engine word.
 - **A keyword cannot be a definition name.** Every definer (`:`,
   `TRUSTED:`, `KERNEL:`, `create`, `variable`, `constant`, `defer`, …)
   rejects a word a body's compiler reads before it looks a name up (`IF`,
   `DO`, `I`, `LEAVE`, `;match`, `[']`, `{:`, …), a top-level keyword but
-  `host` and `target` (`package`, `public`, `using`, `create`, `variable`,
+  `host` and `target` (`package`, `public`, `create`, `variable`,
   `immediate`, …), `;`, `:}` and the parsers `char` and `'`:
   `E-RESERVED-DEFINITION`, rc 70, under `--load` and `tools/check.f` alike.
   Lexical locals such as `{: i:n :}` stay legal.
@@ -146,20 +145,19 @@ private
   or the checker, except after a part. It closes only a package its file or
   evaluated string opened, or one a file or string it ran left open; closing
   its includer's package is rejected `E-PKG-CONTEXT`, rc 70.
-- In package A's private section, under no `using` A opened, in the file or
-  evaluated string A is open in, `package B` opens B as a part of A, whose row
-  is named by the path `A:B`. Anywhere else inside a package `package` is
-  rejected (`E-PKG-CONTEXT`): in a public section, under a using the
-  package opened, inside a part, and in a file or string that began inside the
-  package, so a file required inside a package cannot open one. A package a
-  file or string leaves open is its includer's from then on. `;package` of
-  a part reopens A in its private section with A's using floor. Inside A and its
-  parts a qualifier `B:X` in a word or a family type, `using B` and a qualified
+- In package A's private section, in the file or evaluated string A is open
+  in, `package B` opens B as a part of A, whose row is named by the path
+  `A:B`. Anywhere else inside a package `package` is rejected
+  (`E-PKG-CONTEXT`): in a public section, inside a part, and in a file or
+  string that began inside the package, so a file required inside a package
+  cannot open one. A package a file or string leaves open is its includer's
+  from then on. `;package` of a part reopens A in its private section. Inside
+  A and its parts a qualifier `B:X` in a word or a family type and a qualified
   definition `: B:Q` name the part `A:B` first, then a top-level package B,
   which the part shadows there, a system package such as MATCH
   included; a qualified definition naming neither makes a top-level package B.
-  Outside A no name reaches the part: at top level `B:X`, `A:B:X` and `using B`
-  find nothing, and a top-level `package B` is a separate package. A
+  Outside A no name reaches the part: at top level `B:X` and `A:B:X` find
+  nothing, and a top-level `package B` is a separate package. A
   `DEFLINEAR` or `VALUE-RECORD` name `B:X` is an exact global spelling, which
   no part shadows. It is rejected while top-level B or any part named B
   declares the family tail X, and while it exists neither may declare X
@@ -172,8 +170,7 @@ private
   unqualified only while its package is open; `NAME:PRIVATE-WORD` never
   resolves. While a package is open, unqualified lookup tries the private
   wordlist, then the public wordlist, inside a part `A:B` then A's private
-  and public wordlists, then the saved global path, then each used public
-  wordlist.
+  and public wordlists, then the saved global path.
 - `global`, valid only inside a package, switches new definitions to the
   global wordlist until `public` or `private`; lookup is unchanged, so their
   bodies still call the package's private words. It is how a package
@@ -334,7 +331,10 @@ public
   but both effects must move the same number of
   CELLS, because the bare tail binds the private word and a definition's
   contract is read from that binding. A mismatch is rejected where written,
-  `E-SHADOWED-ARITY`, naming the package, the tail and both widths. The rule
+  `E-SHADOWED-ARITY`, naming the package, the tail and both widths; under
+  `tools/check.f --all-errors` or `--verify-only` the rejected definition keeps
+  its declared effect for later callers and the check goes on to report every
+  later rejection. The rule
   judges only a colon definition with a DECLARED signature; a public word made
   by a storage definer (`constant`, `variable`, `create`) is judged by its
   definer's row, so a private and a public `SHARED` constant in one package
@@ -351,8 +351,7 @@ public
   section this way. A primitive a package owns is one of its private words:
   `EXPORT BOOT:data-base` takes it while `BOOT` is open, its calls typed by the
   primitive's rows. Rejected: an undefined source (`E-EXPORT-UNDEFINED`), a
-  keyword (`E-EXPORT-UNDEFINED`), a bare name only a `using` brings in
-  (`E-EXPORT-UNDEFINED`: write `EXPORT U:NAME`), a private word of a sealed package
+  keyword (`E-EXPORT-UNDEFINED`), a private word of a sealed package
   (`E-SEALED-PACKAGE`), a global primitive such as `dup` (`E-EXPORT-PRIM`), a word the checker
   judges at each use such as `execute` (`E-EXPORT-PRIM`), an internal engine
   word (`E-EXPORT-UNSAFE`), a declaration hb runs under its own name such as
@@ -365,70 +364,11 @@ public
   (`E-EXPORT-NO-PACKAGE`).
 - **A process can be sealed to the packages a harness admits**:
   `src/lib/vocabulary.f` states the vocabulary and the rejections.
-
-#### Importing a package's public words with `using`
-
-`using NAME` makes package `NAME`'s **public** wordlist visible to bare lookup
-in the current scope without opening `NAME`; `require` loads source and
-imports nothing. Call another package's public word as `NAME:WORD`, however
-often a file calls it; Habu code does not import with `using`.
-
-- `using NAME` consumes the next token and rejects a missing name, a name with
-  `:` and an unknown package; it is valid at top level and inside an open
-  package. Only the public wordlist joins the search; definitions still target
-  the current scope's wordlist. A required file may open `NAME`; when the
-  require returns, the consumer is back in its original scope. A file loaded or
-  a buffer evaluated while a `using` is open resolves through it, at top level
-  and in definitions.
-- The scope ends at the matching `;using`, at the enclosing `;package` for a
-  `using` opened inside a package, or at the end of the load file, whichever
-  comes first; consumer files close explicitly with `;using`. `;using` closes
-  the most recent `using`; one with none open is an error. At most 16 usings
-  are open at once; a further one is rejected.
-- Inside a package `;using` closes only a `using` the package opened; close one
-  opened before `package` after `;package`. A `;using` inside the package that
-  would close an outer one is rejected as `E-USING-OUTER`, status 70.
-- A load file is a using scope the same way: an included file or an
-  `evaluate`d buffer closes only the usings it opens. A `;using` in it that
-  would close one its includer opened is rejected the same way.
-- A bare tail reaches the used public wordlists last, in the lookup order
-  under "Packages": the open-package scope silently wins over a used public.
-  A tail in MORE THAN ONE used public wordlist is `E-USING-AMBIGUOUS`; the
-  same package named twice is not ambiguous. `using` never silently changes
-  an existing binding: it is the sole resolver of an otherwise-unresolved
-  name, or a hard error.
-- An ambiguous tail is rejected at the reference site, naming each used package
-  it resolves in; qualify the one meant or rename the collision. Under
-  `tools/check.f --all-errors` or `--verify-only` the rejected definition keeps
-  its declared effect for later callers and the check goes on to report every
-  later rejection; the same holds for the shadow below and `E-SHADOWED-ARITY`.
-- A bare tail resolving to a GLOBAL while a used package ALSO exports it is
-  `E-USING-SHADOW-GLOBAL` at the reference site, naming both candidates
-  (`global TOK`, `PKG:TOK`) with arities. So a package whose public tails are
-  ordinary verbs cannot be imported: `using TCP4` rejects at the first bare
-  `READ`, `WRITE` or `CLOSE`. Qualify the package word (always certifies) or
-  rename the collision. The checker enforces this in every checked body, and
-  the interpreter at top level and for `'` (status 70, a throw inside
-  `evaluate`). A `TRUSTED:` body is rejected the same way.
-- The colliding global need not be one the checker knows: an unsigned engine
-  word counts. Likewise a word in the open
-  package's wordlist wins over a used public even when the checker never
-  recorded it, and lacking a signature the reference is then `E-UNDEFINED`.
-- Resolution happens at certify time: a call compiled inside a `using` scope
-  keeps resolving after `;using`, and saved images carry no using-state. A
-  checked body reading a used public certifies; a used private or an ambiguous
-  tail is rejected before runtime; certification and execution name the same
-  word. A global that appears AFTER a reference was certified does not change
-  what it runs; the next reference to that tail is rejected.
-- `using` state is file-local: a `using` left open in an included file, or
-  aborted by a throw, never leaks to the caller, and a package an included file
-  leaves open keeps none of that file's usings.
 - **A package word shadows the same-named global or primitive, and nothing
-  reaches past it.** Inside `package APP` a bare `open` is `APP:OPEN`; in
-  a checked body under `using DOC` a bare `close` is rejected against
-  `DOC:CLOSE`. There is no qualifier for the global "" wordlist: reach the
-  operation through a differently named word (`FS:OPEN-APPEND-FD`, the primitive's
-  sibling `close-rc`) or rename the package word. Operator spellings too: once a
+  reaches past it.** Inside `package APP` a bare `open` is `APP:OPEN`. There
+  is no qualifier for the global "" wordlist: reach the operation through a
+  differently named word (`FS:OPEN-APPEND-FD`) or rename the
+  package word. Operator spellings too: once a
   package defines `@` or `+`, a bare `@` or `+` in its later bodies is the
   package word, whatever its operands; a body compiled before the definition
   keeps the engine word.
@@ -574,9 +514,8 @@ multi-cell type rationale is `docs/design.md` "Types".
   share a tail with a global family or another package's, even at different
   arities. A qualified token resolves only its package row; a bare token
   resolves the open package's own row (private or public), inside a part
-  `A:B` then A's row, then the global row, then the public row of a package
-  `using` opened; two eligible rows at that last step are an error, and
-  another package's family needs `PKG:tail` or an import. So adding
+  `A:B` then A's row, then the global row; another package's family needs
+  `PKG:tail`. So adding
   `MEM:span` cannot change what a top-level `span` means. Same-package
   duplicates, reserved grammar names and foreign private rows reject.
 - `STRUCTURE name[<params>] [ header… ] FIELD f type … ;STRUCTURE` declares a
@@ -676,8 +615,8 @@ multi-cell type rationale is `docs/design.md` "Types".
   whose family arguments are still open is `E-MATCH-OPEN-ARGS`; and `MATCH` in
   a `[: ;]` quotation is `E-MATCH-QUOTATION` ("quotation rows cannot carry a
   scrutinee"), because a quotation's row is inferred forward. The family
-  resolves as a bare word does in a signature (own package, globals, `using`
-  imports, or `PKG:tail`): whatever is nameable can be matched, unlike
+  resolves as a bare word does in a signature (own package, globals, or
+  `PKG:tail`): whatever is nameable can be matched, unlike
   `construct`.
   This program prints 5, 4 and 3:
 
@@ -1272,8 +1211,8 @@ and as `E-BAD-STORED-SIGNATURE` in a stored signature.
 ### Rows, variables, and lexing
 
 - A **type name** is looked up only where a type is expected (an effect, a
-  local, a type argument), by the word rules: the open package, the globals
-  and `using` imports. A word lookup never finds a type, so a type and a word
+  local, a type argument), by the word rules: the open package and the
+  globals. A word lookup never finds a type, so a type and a word
   may share a name.
 - A **row var** (`R`, `S`, …) at the front of a stack stands for the rest of
   the stack below. It is recognised only in leading position; an upper-case
@@ -1812,8 +1751,7 @@ A live compile sees the records that exist at that moment, so a package word
 declared later cannot shadow the global a body named. A verifier that rereads
 recorded source in an engine already holding it (the build's certify step,
 `--all-errors`) binds each body token the same way: to the newest record before
-the definition, package first, used publics included, so a used public exported
-later is neither a candidate nor a shadow. One limit: an `undefine`d spelling
+the definition, package first. One limit: an `undefine`d spelling
 defined again binds its earlier text against every later record too.
 
 ## Checker & type model
@@ -2420,8 +2358,8 @@ runtime or analysis layer.
 - **Control words and ticks are compile-only**: `if`/`else`/`then`,
   `begin`/`while`/`repeat`, `[']`, `i`, `?do` and `;` live inside a `:`
   definition, never at top level; interpreted tests use `'` (`' WORD catch`).
-  Both ticks resolve the name as a bare word does (the open scope, the globals,
-  then the used publics), and a miss is `E-UNDEFINED`, catchable under
+  Both ticks resolve the name as a bare word does (the open scope, then the
+  globals), and a miss is `E-UNDEFINED`, catchable under
   `evaluate`. A tick is no presence probe: require the file that defines the
   word first.
 - **A `begin <cond> while <body> repeat` condition may only add a flag.** The
@@ -2664,8 +2602,7 @@ sections above.
   other products. An undefined D, a deferred D, a D no `parse-name` reaches
   through the words it calls (a `defer` or executed quotation counts only
   when its type states `parses`), a duplicate declaration (including a clause or inherited
-  definer effect), or an invalid effect is `E-GENERATES-ROW`. A used-scope
-  conflict is `E-USING-SHADOW-GLOBAL` or `E-USING-AMBIGUOUS`. The
+  definer effect), or an invalid effect is `E-GENERATES-ROW`. The
   name is one blank-delimited token; the signature opens at the first `(`
   after blanks, attached to a token or not, and closes at the first `)` byte;
   a line feed inside it stays in its token. The signature has a fixed byte
@@ -2720,8 +2657,7 @@ sections above.
   `is` are `E-UNDEFINED` at their tokens before they run, and a compile-only
   word's record says to move it into a definition; `;` with no definition
   open is `E-NO-DEFINITION`. A malformed qualified name is
-  `E-BAD-QUALIFIED-TOP-LEVEL`; ambiguous and global-shadowing `using` names
-  get their body diagnostics. Top-level `PKG:tail` while PKG is open may find
+  `E-BAD-QUALIFIED-TOP-LEVEL`. Top-level `PKG:tail` while PKG is open may find
   global `tail` if its public section lacks one; the selected word's own
   facts govern subsequent parsing and definitions. An uncertain resident
   immediate or loader may leave dependent source deferred rather than publish
@@ -2771,7 +2707,6 @@ sections above.
   `undefine dup  : dup ( n -- n ) 100 + ;`, `5 dup` answers 105 at either
   tier. Intrinsic typing belongs to the original engine word, not the new
   spelling; the same applies to package shadows and `EXPORT` aliases. A
-  pending definition binds its own name before competing used publics. A
   checker-only row with no engine word is `E-UNDEFINED` in compiled code,
   except that generated definitions in one checker scope may refer to rows
   recorded earlier in that scope (see **Naming**).
