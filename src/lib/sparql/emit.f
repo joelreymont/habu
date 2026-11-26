@@ -72,12 +72,24 @@
 \ PostgreSQL would count the column's null fraction twice. The group's
 \ FILTERs read the folded bindings. An
 \ expression has two SQL forms, its term, JSONB, and its test, an SQL
-\ boolean; a FILTER and HAVING hold its test, all else its term. Each
-\ conjunct of such a test that is `=` of a natively bound variable and an
-\ IRI or a plain or language-tagged string, either way round, IN a list of
-\ only those, or sameTerm of it and any constant also adds the native
-\ equality it implies, which an index can serve; the test stays and
-\ decides.
+\ boolean; a FILTER and HAVING hold its test, all else its term. A
+\ comparison (`=`, `!=`, `<`, `<=`, `>`, `>=`, IN or NOT IN of a list)
+\ lowers to SQL's own on the native columns, which an index on the
+\ column serves, when one operand is a natively bound variable and all
+\ are numbers or all strings: a variable bound to a column of a numeric
+\ shape holding xsd:integer and xsd:decimal or an xsd:integer or
+\ xsd:decimal literal, or a variable bound to a text shape holding
+\ xsd:string or a literal with no language tag and no datatype but
+\ xsd:string. Strings order by code point, as SPARQL's do: COLLATE "C",
+\ which only an index COLLATE "C" serves; `=`, `!=`, IN and NOT IN take
+\ the columns' one deterministic collation, under which strings are equal
+\ exactly when their code points are, so an index on the column serves
+\ them. A lowered comparison answers as the generic call does; an unbound
+\ operand and an ill-typed number are NULL in both. Each other conjunct of
+\ such a test that is `=` of a natively bound variable and an IRI or a
+\ plain or language-tagged string, either way round, IN a list of only
+\ those, or sameTerm of it and any constant also adds the native equality
+\ it implies; the test stays and decides.
 \
 \ [NOT] EXISTS substitutes the solution it reads (SPARQL 1.1 section
 \ 18.6): each binding of a variable that solution binds meets its binding
@@ -1947,6 +1959,38 @@ STRUCTURE pruning DERIVE addr
       plan TREE each NODE-B@
    repeat drop true ;
 
+\ Whether the datatypes are iri and other alone.
+: ONLY$? ( ^VEC:vector<datatype> str str -- bool )
+   {: list:^ iri:str other:str :}
+   list VEC:COUNT 0 ?do
+      list i VEC:AT DATATYPE-IRI @ {: d:str :}
+      d iri STR:= d other STR:= or 0= if false unloop exit then
+   loop list iri LISTED$? list other LISTED$? and ;
+
+\ Whether shape k has type t and holds iri and other literals alone.
+: CLASS? ( ^plan n str str str -- bool )
+   {: plan k:n t:str iri:str other:str :}
+   plan k SHAPE@ {: y:^ :}
+   y SHAPE-TYPE @ t STR:=CI 0= if false exit then
+   y SHAPE-HOLDS @ MATCH holds
+      any OF false ENDOF
+      uris OF false ENDOF
+      literals OF iri other ONLY$? ENDOF
+   ;MATCH ;
+
+\ Whether shape k holds xsd:integer and xsd:decimal, its values numeric.
+\ A float or double column stays generic: its native sum raises on
+\ overflow, where sparql.aggregate answers unbound, and its min and max do
+\ not tell -0 from 0, which ORDER BY's order does.
+: NUMBERS? ( ^plan n -- bool )
+   s" numeric" s" http://www.w3.org/2001/XMLSchema#integer"
+   s" http://www.w3.org/2001/XMLSchema#decimal" CLASS? ;
+
+\ Whether shape k holds strings, its values text.
+: STRINGS? ( ^plan n -- bool )
+   s" text" s" http://www.w3.org/2001/XMLSchema#string"
+   s" http://www.w3.org/2001/XMLSchema#string" CLASS? ;
+
 \ The index of the expression's binding, a variable's in the plan's
 \ scope, when native; else -1.
 : NATIVE-VAR ( ^plan n -- n )
@@ -1956,6 +2000,94 @@ STRUCTURE pruning DERIVE addr
    bs plan e VAR FIND-VAR {: k:n :}
    k 0< if -1 exit then
    bs k VEC:AT BINDING-SHAPE @ 0< if -1 else k then ;
+
+\ The classes of a comparison's operands that compare natively.
+1 constant NUMERIC
+2 constant TEXTUAL
+
+\ The literal's class: NUMERIC for xsd:integer or xsd:decimal, TEXTUAL
+\ for a string with no language tag, else 0.
+: LITERAL-CLASS ( ^plan n -- n )
+   {: plan e:n :}
+   plan TREE e NODE-K N-LITERAL <> if 0 exit then
+   plan e NODE-KNOWN KNOWN-TERM-DATATYPE @ {: d:str :}
+   d s" http://www.w3.org/2001/XMLSchema#integer" STR:=
+   d s" http://www.w3.org/2001/XMLSchema#decimal" STR:= or
+   if NUMERIC exit then
+   d s" http://www.w3.org/2001/XMLSchema#string" STR:=
+   if TEXTUAL else 0 then ;
+
+\ Operand e's class: a natively bound variable's shape's, else a
+\ literal's.
+: OPERAND-CLASS ( ^plan n -- n )
+   {: plan e:n :}
+   plan e NATIVE-VAR {: k:n :}
+   k 0< if plan e LITERAL-CLASS exit then
+   plan PLAN-SCOPE @ k VEC:AT BINDING-SHAPE @ {: y:n :}
+   plan y NUMBERS? if NUMERIC exit then
+   plan y STRINGS? if TEXTUAL else 0 then ;
+
+\ Folds operand e into class c of the operands before it, -1 before the
+\ first: 0 once two differ or one has none.
+: JOIN-CLASS ( ^plan n n -- n )
+   {: plan c:n e:n :}
+   plan e OPERAND-CLASS {: x:n :}
+   c 0< if x exit then
+   c x = if c else 0 then ;
+
+\ The binding of the comparison's first natively bound operand, else -1.
+: PAIR-NATIVE ( ^plan n -- n )
+   {: plan e:n :} plan TREE {: state :}
+   plan state e NODE-A@ NATIVE-VAR dup -1 > if exit then drop
+   plan state e NODE-B@ NATIVE-VAR ;
+
+\ The class the comparison's operands share, else 0; 0 also when
+\ neither is a natively bound variable.
+: PAIR-CLASS ( ^plan n -- n )
+   {: plan e:n :} plan TREE {: state :}
+   plan e PAIR-NATIVE 0< if 0 exit then
+   plan plan -1 state e NODE-A@ JOIN-CLASS state e NODE-B@ JOIN-CLASS ;
+
+\ The binding of the first natively bound operand of `a IN (list)`,
+\ else -1.
+: IN-NATIVE ( ^plan n -- n )
+   {: plan e:n :} plan TREE {: state :}
+   plan state e NODE-A@ NATIVE-VAR dup -1 > if exit then drop
+   state e NODE-B@ begin dup 0<> while
+      {: each:n :}
+      plan state each NODE-A@ NATIVE-VAR dup -1 > if exit then drop
+      state each NODE-B@
+   repeat drop -1 ;
+
+\ The class `a IN (list)`'s operands share, else 0; 0 also for an empty
+\ list, which SQL's IN cannot write, and when no operand is a natively
+\ bound variable.
+: IN-CLASS ( ^plan n -- n )
+   {: plan e:n :} plan TREE {: state :}
+   state e NODE-B@ 0= if 0 exit then
+   plan e IN-NATIVE 0< if 0 exit then
+   plan -1 state e NODE-A@ JOIN-CLASS
+   state e NODE-B@ begin dup 0<> while
+      {: c:n each:n :}
+      plan c state each NODE-A@ JOIN-CLASS state each NODE-B@
+   repeat drop ;
+
+\ Operand e of a comparison in class c, k the binding of its first
+\ natively bound operand: a variable's column; a number the value
+\ sparql.numeric reads, as the generic call does, since `in` is NULL
+\ for a term the shape does not hold, such as 1.0; a string k's shape's
+\ `in` of it.
+: NATIVE-SQL ( ^plan n n n -- str )
+   {: plan c:n k:n e:n :}
+   plan PLAN-SCOPE @ {: bs:^ :}
+   plan e NATIVE-VAR {: j:n :}
+   j -1 > if bs j VEC:AT BINDING-SQL @ exit then
+   plan plan e TERM-JSON TERM-ARG {: t:str :}
+   plan NEW-SQL {: v:^ :}
+   c NUMERIC = if v s" sparql.numeric" t +CALL
+   else
+      v plan bs k VEC:AT BINDING-SHAPE @ SHAPE@ SHAPE-IN @ t +CALL
+   then v VEC:BYTES ;
 
 \ The condition that native binding k of the plan's scope is constant c.
 : FIXED-SQL ( ^plan n n -- str )
@@ -1976,6 +2108,7 @@ STRUCTURE pruning DERIVE addr
 
 : +EQUAL-FIXED ( ^plan n ^VEC:vector<u8> -- )
    {: plan e:n where:^ :}
+   plan e PAIR-CLASS 0<> if exit then
    plan TREE e NODE-A@ {: a:n :} plan TREE e NODE-B@ {: b:n :}
    plan a UNTYPED? plan b UNTYPED? or 0= if exit then
    plan a b where +FIXED-EITHER ;
@@ -1989,6 +2122,7 @@ STRUCTURE pruning DERIVE addr
 
 : +IN-FIXED ( ^plan n ^VEC:vector<u8> -- )
    {: plan e:n where:^ :}
+   plan e IN-CLASS 0<> if exit then
    plan TREE {: state :}
    state e NODE-B@ {: list:n :}
    plan list ALL-UNTYPED? 0= if exit then
@@ -3452,45 +3586,6 @@ STRUCTURE walk DERIVE addr
    {: plan sep:n :}
    sep 0= if s" NULL::text" exit then
    plan plan TREE sep TEXT$ TEXT-ARG ;
-
-\ Whether one of the datatypes is d.
-: HELD$? ( ^VEC:vector<datatype> str -- bool )
-   {: list:^ d:str :}
-   list VEC:COUNT 0 ?do
-      list i VEC:AT DATATYPE-IRI @ d STR:= if true unloop exit then
-   loop false ;
-
-\ Whether the datatypes are iri and other alone.
-: ONLY$? ( ^VEC:vector<datatype> str str -- bool )
-   {: list:^ iri:str other:str :}
-   list VEC:COUNT 0 ?do
-      list i VEC:AT DATATYPE-IRI @ {: d:str :}
-      d iri STR:= d other STR:= or 0= if false unloop exit then
-   loop list iri HELD$? list other HELD$? and ;
-
-\ Whether shape k has type t and holds iri and other literals alone.
-: CLASS? ( ^plan n str str str -- bool )
-   {: plan k:n t:str iri:str other:str :}
-   plan k SHAPE@ {: y:^ :}
-   y SHAPE-TYPE @ t STR:=CI 0= if false exit then
-   y SHAPE-HOLDS @ MATCH holds
-      any OF false ENDOF
-      uris OF false ENDOF
-      literals OF iri other ONLY$? ENDOF
-   ;MATCH ;
-
-\ Whether shape k holds xsd:integer and xsd:decimal, its values numeric.
-\ A float or double column stays generic: its native sum raises on
-\ overflow, where sparql.aggregate answers unbound, and its min and max do
-\ not tell -0 from 0, which ORDER BY's order does.
-: NUMBERS? ( ^plan n -- bool )
-   s" numeric" s" http://www.w3.org/2001/XMLSchema#integer"
-   s" http://www.w3.org/2001/XMLSchema#decimal" CLASS? ;
-
-\ Whether shape k holds strings, its values text.
-: STRINGS? ( ^plan n -- bool )
-   s" text" s" http://www.w3.org/2001/XMLSchema#string"
-   s" http://www.w3.org/2001/XMLSchema#string" CLASS? ;
 
 \ The binding in r of the call's operand, a variable r binds.
 : OPERAND-BINDING ( ^plan ^relation n -- ^binding )

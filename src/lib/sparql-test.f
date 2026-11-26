@@ -630,9 +630,14 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    s"  AND t1.id = sparql_test.id(" 1
    s" {'head':{'vars':['l']},'results':{'bindings':[{'l':{'type':'literal','value':'Lathe'}}]}}"
    ON-NODES
+   \ A string `=` or IN on a text column lowers to the comparison alone.
    s" SELECT ?s WHERE { ?s rdfs:label ?l FILTER(?l = 'Lathe') }"
-   s"  AND t1.label = sparql_test.string(" 1
+   s" t1.label = sparql_test.string(" 1
    s" {'head':{'vars':['s']},'results':{'bindings':[{'s':{'type':'uri','value':'urn:test:1'}}]}}"
+   ON-NODES
+   s" SELECT ?s WHERE { ?s rdfs:label ?l FILTER(?l IN ('Lathe', 'Mill')) }"
+   s" t1.label = sparql_test.string(" 0
+   s" {'head':{'vars':['s']},'results':{'bindings':[{'s':{'type':'uri','value':'urn:test:1'}},{'s':{'type':'uri','value':'urn:test:2'}}]}}"
    ON-NODES
    s" SELECT ?s WHERE { ?s t:30 ?w FILTER(sameTerm(?w, 12)) }"
    s"  AND t1.v = sparql_test.number(" 1
@@ -1090,60 +1095,132 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    a TEXT-VEC {: out:^ :}
    sql a EDGE-SOURCES $ out RUN-TEXT TTRUE out ;
 
-: TYPED-IN ( str bool ^ARENA:arena -- )
-   {: q:str generic:bool a:^ :}
+: TYPED-IN ( str bool str ^ARENA:arena -- )
+   {: q:str generic:bool call:str a:^ :}
    TYPED-SQL a EDGE-STORE {: typed:^ :}
    UNTYPED-SQL a EDGE-STORE {: plain:^ :}
    q typed a ANSWER-ON {: tsql:^ tdoc:^ :}
    q plain a ANSWER-ON {: psql:^ pdoc:^ :}
-   tsql $ s" sparql.aggregate(" STR:CONTAINS? generic xor TFALSE
-   psql $ s" sparql.aggregate(" STR:CONTAINS? TTRUE
+   tsql $ call STR:CONTAINS? generic xor TFALSE
+   psql $ call STR:CONTAINS? TTRUE
    tdoc $ pdoc $ a false SAME? dup TTRUE
    0= if tdoc $ type cr pdoc $ type cr then ;
 
 \ The query answers alike on EDGE-SOURCES with and without the shapes'
-\ `type`; with it, its statement calls sparql.aggregate when generic.
-: TYPED ( str bool -- ) [: TYPED-IN ;] ARENA:WITH ;
+\ `type`; with it, its statement holds the generic call, named up to its
+\ `(`, when generic.
+: TYPED ( str bool str -- ) [: TYPED-IN ;] ARENA:WITH ;
 
 \ SUM, AVG, MIN and MAX of a numeric column and MIN and MAX of a text
 \ one aggregate natively, alone, in a union's groups and regrouped from
 \ a union's partials.
 : TYPED-AGGREGATES ( -- )
    s" SELECT ?s (SUM(?x) AS ?t) (AVG(?x) AS ?a) (MIN(?x) AS ?lo) (MAX(?x) AS ?hi) WHERE { ?s t:97 ?x } GROUP BY ?s"
-   false TYPED
+   false s" sparql.aggregate(" TYPED
    s" SELECT (SUM(?x) AS ?t) (AVG(?x) AS ?a) (MIN(?x) AS ?lo) (MAX(?x) AS ?hi) WHERE { ?s t:97 ?x }"
-   false TYPED
-   s" SELECT (SUM(?x) AS ?t) (AVG(?x) AS ?a) (MIN(?x) AS ?lo) (MAX(?x) AS ?hi) WHERE { ?s t:97 ?x }"
-   false TYPED
+   false s" sparql.aggregate(" TYPED
    s" SELECT (SUM(?x) AS ?t) (AVG(?x) AS ?a) (MIN(?x) AS ?lo) (MAX(?x) AS ?hi) WHERE { ?s t:97 ?x FILTER(?s = t:99) }"
-   false TYPED
+   false s" sparql.aggregate(" TYPED
    \ A native SUM is always bound: it meets the column as a term.
    s" SELECT ?s WHERE { { SELECT (SUM(?x) AS ?t) WHERE { ?r t:97 ?x FILTER(?r = t:6) } } ?s t:97 ?t }"
-   false TYPED
+   false s" sparql.aggregate(" TYPED
    s" SELECT ?s (SUM(?x) AS ?t) (AVG(?x) AS ?a) (MIN(?x) AS ?lo) (MAX(?x) AS ?hi) WHERE { ?s t:95 ?x } GROUP BY ?s"
-   false TYPED
+   false s" sparql.aggregate(" TYPED
    s" SELECT ?s (MIN(?x) AS ?lo) (MAX(?x) AS ?hi) (COUNT(*) AS ?n) WHERE { ?s t:95 ?x } GROUP BY ?s"
-   false TYPED
+   false s" sparql.aggregate(" TYPED
    s" SELECT (MIN(?x) AS ?lo) (MAX(?x) AS ?hi) WHERE { ?s t:95 ?x }"
-   false TYPED
+   false s" sparql.aggregate(" TYPED
    s" SELECT (MIN(?x) AS ?lo) (MAX(?x) AS ?hi) WHERE { ?s t:95 ?x FILTER(?s = t:99) }"
-   false TYPED
+   false s" sparql.aggregate(" TYPED
    s" SELECT ?s (MIN(?x) AS ?lo) (MAX(?x) AS ?hi) WHERE { ?s t:96 ?x } GROUP BY ?s"
-   false TYPED
+   false s" sparql.aggregate(" TYPED
    s" SELECT (MIN(?x) AS ?lo) (MAX(?x) AS ?hi) WHERE { ?s t:96 ?x }"
-   false TYPED
+   false s" sparql.aggregate(" TYPED
    s" SELECT ?s (MIN(?x) AS ?lo) (MAX(?x) AS ?hi) WHERE { ?s t:98 ?x } GROUP BY ?s"
-   false TYPED
+   false s" sparql.aggregate(" TYPED
    s" SELECT (MIN(?x) AS ?lo) (MAX(?x) AS ?hi) WHERE { ?s t:98 ?x FILTER(?s = t:99) }"
-   false TYPED
+   false s" sparql.aggregate(" TYPED
    \ DISTINCT, SUM of strings, GROUP_CONCAT and a shape holding xsd:decimal
    \ alone stay generic.
    s" SELECT ?s (SUM(?x) AS ?t) WHERE { ?s t:94 ?x } GROUP BY ?s"
-   true TYPED
+   true s" sparql.aggregate(" TYPED
    s" SELECT ?s (SUM(DISTINCT ?x) AS ?t) (MIN(DISTINCT ?x) AS ?lo) WHERE { ?s t:97 ?x } GROUP BY ?s"
-   true TYPED
+   true s" sparql.aggregate(" TYPED
    s" SELECT ?s (SUM(?x) AS ?t) (GROUP_CONCAT(?x) AS ?c) WHERE { ?s t:96 ?x } GROUP BY ?s"
-   true TYPED ;
+   true s" sparql.aggregate(" TYPED ;
+
+: EQUAL-CALL ( -- str ) s" sparql.equal(" ;
+: RELATION-CALL ( -- str ) s" sparql.relation(" ;
+: IN-CALL ( -- str ) s" sparql.in(" ;
+
+\ A comparison of numeric columns, numbers, text columns and strings
+\ without a language tag compares natively, alike with the generic call
+\ on edge values: non-canonical literals, a constant on the left, an
+\ empty string, case and code point order.
+: TYPED-FILTERS ( -- )
+   s" SELECT ?s ?x WHERE { ?s t:97 ?x FILTER(?x = 6) }"
+   false EQUAL-CALL TYPED
+   s" SELECT ?s ?x WHERE { ?s t:97 ?x FILTER(6.0 = ?x || ?x = 1.50) }"
+   false EQUAL-CALL TYPED
+   s" SELECT ?s ?x WHERE { ?s t:97 ?x FILTER(?x != '01'^^<http://www.w3.org/2001/XMLSchema#integer>) }"
+   false EQUAL-CALL TYPED
+   s" SELECT ?s ?x WHERE { ?s t:97 ?x FILTER(?x < -0.1 || ?x < 1.0) }"
+   false RELATION-CALL TYPED
+   s" SELECT ?s ?x WHERE { ?s t:97 ?x FILTER(?x <= 2.50) }"
+   false RELATION-CALL TYPED
+   s" SELECT ?s ?x WHERE { ?s t:97 ?x FILTER(?x > 999999999999999999999999999999) }"
+   false RELATION-CALL TYPED
+   s" SELECT ?s ?x WHERE { ?s t:97 ?x FILTER(?x >= +4) }"
+   false RELATION-CALL TYPED
+   s" SELECT ?s ?x WHERE { ?s t:97 ?x FILTER(?x IN (1, 2.5, 6.0, -0.1)) }"
+   false IN-CALL TYPED
+   s" SELECT ?s ?x WHERE { ?s t:97 ?x FILTER(?x NOT IN (1, 2)) }"
+   false IN-CALL TYPED
+   s" SELECT ?s ?x ?y WHERE { ?s t:97 ?x . ?s t:95 ?y FILTER(?x = ?y) }"
+   false EQUAL-CALL TYPED
+   s" SELECT ?s ?x ?y WHERE { ?s t:97 ?x . ?s t:95 ?y FILTER(?x < ?y) }"
+   false RELATION-CALL TYPED
+   s" SELECT ?s ?x ?y WHERE { ?s t:97 ?x . ?s t:95 ?y FILTER(?x IN (?y, 0.5)) }"
+   false IN-CALL TYPED
+   s" SELECT ?s ?x WHERE { ?s t:96 ?x FILTER(?x = 'é' || 'B' = ?x) }"
+   false EQUAL-CALL TYPED
+   s" SELECT ?s ?x WHERE { ?s t:96 ?x FILTER(?x != '') }"
+   false EQUAL-CALL TYPED
+   s" SELECT ?s ?x WHERE { ?s t:96 ?x FILTER(?x < 'b') }"
+   false RELATION-CALL TYPED
+   s" SELECT ?s ?x WHERE { ?s t:96 ?x FILTER(?x >= 'B' && 'é' > ?x) }"
+   false RELATION-CALL TYPED
+   s" SELECT ?s ?x WHERE { ?s t:96 ?x FILTER(?x <= 'b'^^<http://www.w3.org/2001/XMLSchema#string>) }"
+   false RELATION-CALL TYPED
+   s" SELECT ?s ?x WHERE { ?s t:96 ?x FILTER(?x > 'z') }"
+   false RELATION-CALL TYPED
+   s" SELECT ?s ?x WHERE { ?s t:96 ?x FILTER(?x IN ('b', '', '😀')) }"
+   false IN-CALL TYPED
+   s" SELECT ?s ?x WHERE { ?s t:96 ?x FILTER(?x NOT IN ('B')) }"
+   false IN-CALL TYPED
+   \ NULL where an operand is unbound, under `!`, `||` and in a BIND.
+   s" SELECT ?s ?x WHERE { ?s t:97 ?x FILTER(!(?x < 2)) }"
+   false RELATION-CALL TYPED
+   s" SELECT ?s ?x ?w WHERE { ?s t:97 ?x OPTIONAL { ?s t:96 ?w } FILTER(?x > 3 || ?w < 'b') }"
+   false RELATION-CALL TYPED
+   s" SELECT ?s ?x ?w WHERE { ?s t:97 ?x OPTIONAL { ?s t:96 ?w } FILTER(!(?w < 'b')) }"
+   false RELATION-CALL TYPED
+   s" SELECT ?s ?x ?w WHERE { ?s t:97 ?x OPTIONAL { ?s t:96 ?w } FILTER(!(?w IN ('b', 'z'))) }"
+   false IN-CALL TYPED
+   s" SELECT ?s ?x ?b WHERE { ?s t:97 ?x BIND((?x >= 2) AS ?b) }"
+   false RELATION-CALL TYPED
+   s" SELECT ?s ?w ?b WHERE { ?s t:97 ?x OPTIONAL { ?s t:96 ?w } BIND((?w = 'B') AS ?b) }"
+   false EQUAL-CALL TYPED
+   \ A double, a language-tagged string, a string against numbers and
+   \ numbers against strings stay generic.
+   s" SELECT ?s ?x WHERE { ?s t:97 ?x FILTER(?x = 1.0e0) }"
+   true EQUAL-CALL TYPED
+   s" SELECT ?s ?x WHERE { ?s t:96 ?x FILTER(?x < 'b'@en) }"
+   true RELATION-CALL TYPED
+   s" SELECT ?s ?x WHERE { ?s t:97 ?x FILTER(?x != 'b') }"
+   true EQUAL-CALL TYPED
+   s" SELECT ?s ?x ?y WHERE { ?s t:97 ?x . ?s t:96 ?y FILTER(?x < ?y) }"
+   true RELATION-CALL TYPED ;
 
 \ A union grouped branch by branch answers as the whole union does when a
 \ branch has an error or no solution. STRLEN of an IRI is an error.
@@ -1328,8 +1405,8 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    NULL-TESTS SUBJECT-ROWS FILTERS FILTER-EQUALITIES GRAPHS NAMED-GRAPHS OPTIONALS
    UNIONS MINUSES FILTER-EXISTS
    SUBSTITUTIONS MANY CONSTANTS WIDE FORMS
-   PROJECTIONS GROUPING AGGREGATES TYPED-AGGREGATES BRANCH-GROUPING
-   ORDERS DISTINCTS
+   PROJECTIONS GROUPING AGGREGATES TYPED-AGGREGATES TYPED-FILTERS
+   BRANCH-GROUPING ORDERS DISTINCTS
    SUBQUERIES
    BINDS CHAINS UUIDS VOLATILE-BINDS DATA-BLOCKS PATHS ;
 

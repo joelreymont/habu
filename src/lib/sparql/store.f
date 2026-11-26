@@ -13,9 +13,10 @@
 \ xsd:integer and xsd:decimal holds the integer term for a whole value and
 \ the decimal one otherwise, so its values are finite, and their text is
 \ at most 16,383 bytes; one of type text holding xsd:string holds the
-\ plain literal of its text. Different shapes hold disjoint terms unless
-\ one is within the other, directly or through parts; parts of one parent
-\ are disjoint. Optionally `keys`, an object naming each key set
+\ plain literal of its text. The columns of shapes of type text share one
+\ collation, and it is deterministic. Different shapes hold disjoint terms
+\ unless one is within the other, directly or through parts; parts of one
+\ parent are disjoint. Optionally `keys`, an object naming each key set
 \ `{"type": t, "values": {i: a}}`, t a SQL array type and a,
 \ a string, the SQL array literal of IRI i's keys. `sources`, an array of
 \ triple sources `{"from", "graph", "s", "p", "o"}`: `from` a SQL FROM item

@@ -144,8 +144,28 @@ private
    plan node negative INFIX-IS?
    dup if plan s" (NOT " SQL+ then ;
 
+: NATIVE+ ( ^plan n n n -- )
+   {: plan c:n k:n e:n :} plan plan c k e NATIVE-SQL SQL+ ;
+
+\ `(a IN (list))` or NOT IN of the node's native operands in class c.
+: NATIVE-IN+ ( ^plan n n -- )
+   {: plan node:n c:n :} plan TREE {: state :}
+   plan node IN-NATIVE {: k:n :}
+   plan s" (" SQL+ plan c k state node NODE-A@ NATIVE+
+   plan node s" NOT IN" INFIX-IS? if plan s"  NOT" SQL+ then
+   plan s"  IN (" SQL+
+   state node NODE-B@ {: list:n :}
+   list begin dup 0<> while
+      {: each:n :}
+      each list <> if plan s" ," SQL+ then
+      plan c k state each NODE-A@ NATIVE+
+      state each NODE-B@
+   repeat drop plan s" ))" SQL+ ;
+
 : IN+ ( ^plan n -- )
    {: plan node:n :} plan TREE {: state :}
+   plan node IN-CLASS {: c:n :}
+   c 0<> if plan node c NATIVE-IN+ exit then
    plan node s" NOT IN" NEGATED+ {: negated:bool :}
    plan s" sparql.in(" SQL+
    plan state node NODE-A@ SQL-EXPRESSION
@@ -160,14 +180,32 @@ private
    plan state node NODE-A@ SQL-EXPRESSION plan s" ," SQL+
    plan state node NODE-B@ SQL-EXPRESSION plan s" )" SQL+ ;
 
+\ `(a op b)` of the node's native operands in class c.
+: NATIVE-PAIR+ ( ^plan n n str bool -- )
+   {: plan node:n c:n op:str ordered:bool :} plan TREE {: state :}
+   plan node PAIR-NATIVE {: k:n :}
+   plan s" (" SQL+ plan c k state node NODE-A@ NATIVE+
+   ordered c TEXTUAL = and if plan s\"  COLLATE \"C\"" SQL+ then
+   plan s"  " SQL+ plan op SQL+ plan s"  " SQL+
+   plan c k state node NODE-B@ NATIVE+ plan s" )" SQL+ ;
+
 : EQUAL+ ( ^plan n -- )
    {: plan node:n :}
+   plan node PAIR-CLASS {: c:n :}
+   c 0<> if
+      plan node s" !=" INFIX-IS? if s" <>" else s" =" then {: op:str :}
+      plan node c op false NATIVE-PAIR+ exit
+   then
    plan node s" !=" NEGATED+ {: negated:bool :}
    plan s" sparql.equal(" SQL+ plan node OPERANDS+
    negated if plan s" )" SQL+ then ;
 
 : ORDERED+ ( ^plan n -- )
    {: plan node:n :}
+   plan node PAIR-CLASS {: c:n :}
+   c 0<> if
+      plan node c plan TREE node TEXT$ true NATIVE-PAIR+ exit
+   then
    plan s" sparql.relation('" SQL+
    plan node s" <" INFIX-IS? if plan s" <" SQL+ then
    plan node s" <=" INFIX-IS? if plan s" <=" SQL+ then
