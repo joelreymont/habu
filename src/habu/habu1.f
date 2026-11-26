@@ -1,4 +1,3 @@
-split-str
 \ habu1.f, engine builder part 1: emits the native engine's primitive bodies,
 \ helper routines and seed dictionary for arm64 (Linux and macOS).
 \ Requests run before any package or `using` opens, so each file links
@@ -70,19 +69,18 @@ public
 $D65F03C0 constant W-RET
 ;package
 package ENGINE-EMIT
-PTR-VARIABLE FP-A  variable FP-U
+TYPED-VARIABLE FP-NAME str SCRATCH-ONLY
 
 defer FP-EMIT ( -- )
-: FP-A@ ( -- ^u8 ) FP-A @ ;
 
 variable FPL  variable FPE
 
 : FP-ARGS ( str [ -- ] -- )
-   is FP-EMIT  FP-U !  FP-A !
-   FP-A@ FP-U @ ENGINE-PRIMS:SPEC-CHECK ;
+   is FP-EMIT  FP-NAME !
+   FP-NAME @ ENGINE-PRIMS:SPEC-CHECK ;
 
 : FP-REG ( -- )
-   FP-A@ FP-U @ FPL A64ICODE:LABEL@ FPE A64ICODE:LABEL@ ENGINE-PRIMS:ADD drop ;
+   FP-NAME @ FPL A64ICODE:LABEL@ FPE A64ICODE:LABEL@ ENGINE-PRIMS:ADD drop ;
 
 public
 : FPRIM ( str [ -- ] -- )
@@ -1297,11 +1295,11 @@ $4000 constant POSIX-SPAWN-CLOEXEC-DEFAULT
 private
 \ x3 = the lr, copied before FAULT-OPEN,'s calls replace x30.
 : GUARD-RECORD, ( str str str str -- )
-   {: c:^ cu:n p:^ pu:n r:^ ru:n h:^ hu:n :}
+   {: c:str p:str r:str h:str :}
    3 30 0 A64ICODE:ADDI,
-   c cu  p pu r ru FAULT-RECORD:GUARD-MSG$  CRASH:FAULT-OPEN,
+   c  p r FAULT-RECORD:GUARD-MSG$  CRASH:FAULT-OPEN,
    4 DBASE 0 A64ICODE:ADDI,  6 NDICT 0 A64ICODE:ADDI,  CRASH:FAULT-IN,
-   h hu EXIT-STATUS:TASK-COMPILE CRASH:FAULT-STOP, ;
+   h EXIT-STATUS:TASK-COMPILE CRASH:FAULT-STOP, ;
 
 public
 \ The main thread is the compiler: only the thread whose DATA is the main
@@ -1311,10 +1309,10 @@ public
 \ the primitive, its note `in` the word whose code holds the lr, so it runs
 \ before the body's first BL. Clobbers x9.
 : B-TASK-GUARD ( str str -- )
-   {: c:^ cu:n p:^ pu:n :}
+   {: c:str p:str :}
    A64ICODE:LBL {: ok:label :}
    9 XREG-RBASE TASK-TCB-CELL A64ICODE:LDR,  9 ok A64ICODE:CBZ,
-      c cu p pu  FAULT-RECORD:TASK-GUARD$  FAULT-RECORD:TASK-GUARD-HELP$
+      c p  FAULT-RECORD:TASK-GUARD$  FAULT-RECORD:TASK-GUARD-HELP$
       GUARD-RECORD,
    ok A64ICODE:LBL, ;
 ;package
@@ -2092,13 +2090,13 @@ $58 constant CBT-LR                     \ C's x30
 \ A callback rejection at the label, sp at the thunk's frame: its record with
 \ the slot and C's lr, which no word owns, then exit EXIT-STATUS:CALLBACK.
 \ FAULT-OPEN, moves sp and the record writes no x3 or x4, so both are read first.
-: CBT-DIE, ( str str label -- ) {: msg:^ mu:n help:^ hu:n at:label :}
+: CBT-DIE, ( str str label -- ) {: msg:str help:str at:label :}
    at A64ICODE:LBL,
    3 A64ICODE:SP CBT-SLOT A64ICODE:LDR,  4 A64ICODE:SP CBT-LR A64ICODE:LDR,
-   s" E-CALLBACK" msg mu CRASH:FAULT-OPEN,
+   s" E-CALLBACK" msg CRASH:FAULT-OPEN,
    s" slot" 3 CRASH:FAULT-NUMBER,
    s" caller" 4 CRASH:FAULT-ADDRESS,
-   help hu EXIT-STATUS:CALLBACK CRASH:FAULT-STOP, ;
+   help EXIT-STATUS:CALLBACK CRASH:FAULT-STOP, ;
 
 \ Entered from a stub with the slot in x9. The row is claimed before the region
 \ it names is read: LDAR the row owner; a thread already nested through this
@@ -2367,13 +2365,13 @@ package LIBC-OS
 
 \ Clobbers x0-x2, x9 and the system call's registers.
 : ERR-TEXT, ( str -- )
-   {: a:^ u:n :}
-   u 15 + -16 and {: frame:n :}
+   {: s:str :}
+   s STR:LEN 15 + -16 and {: frame:n :}
    A64ICODE:SP A64ICODE:SP frame A64ICODE:SUBI,
    frame 8 / 0 ?do
-      9 a i 8 * u TEXT-CELL A64ICODE:LIT64,  9 A64ICODE:SP i 8 * A64ICODE:STR,
+      9 s STR:DATA i 8 * s STR:LEN TEXT-CELL A64ICODE:LIT64,  9 A64ICODE:SP i 8 * A64ICODE:STR,
    loop
-   0 2 A64ICODE:MOVZ,  1 A64ICODE:SP 0 A64ICODE:ADDI,  2 u A64ICODE:MOVZ,  SYSCALL:NR-WRITE SYSCALL:SYS,
+   0 2 A64ICODE:MOVZ,  1 A64ICODE:SP 0 A64ICODE:ADDI,  2 s STR:LEN A64ICODE:MOVZ,  SYSCALL:NR-WRITE SYSCALL:SYS,
    A64ICODE:SP A64ICODE:SP frame A64ICODE:ADDI, ;
 
 public
@@ -3274,7 +3272,7 @@ private
 \ window cannot tell a word entry from another in-range address.
 : BSETCHECK ( -- )
    A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL {: bad:label disarm:label kept:label armed:label done:label msg:label :}
-   S\" set-check: invalid checker xt\n" {: ma:^ mu:n :}
+   S\" set-check: invalid checker xt\n" {: text:str :}
    A RT:G-POP                               \ x9 = candidate xt
    9 disarm A64ICODE:CBZ,
       9 DBASE A64ICODE:CMP,  A64ASM:C-CC bad A64ICODE:BCOND,
@@ -3294,9 +3292,9 @@ private
       A XREG-RBASE HOOK-CELL A64ICODE:STR,  A XREG-RBASE COMPILE-PREFLIGHT-CELL A64ICODE:STR,
       done A64ICODE:B,
    bad A64ICODE:LBL,
-      0 2 A64ICODE:MOVZ,  1 msg A64ICODE:ADR,  2 mu A64ICODE:MOVZ,  SYSCALL:NR-WRITE SYSCALL:SYS,
+      0 2 A64ICODE:MOVZ,  1 msg A64ICODE:ADR,  2 text STR:LEN A64ICODE:MOVZ,  SYSCALL:NR-WRITE SYSCALL:SYS,
       0 EXIT-STATUS:REJECTED A64ICODE:MOVZ,  SYSCALL:NR-EXIT-GROUP SYSCALL:SYS,
-   msg A64ICODE:LBL,  ma mu A64ICODE:BYTES,
+   msg A64ICODE:LBL,  text A64ICODE:BYTES,
    done A64ICODE:LBL, ;
 
 \ The same readiness supplies the live tick gate and the verifier's entry
@@ -3354,8 +3352,8 @@ private
 : BSETPREFLIGHT ( -- )
    A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL
    {: bad:label invalid:label empty:label emit:label done:label msg:label invalid-msg:label :}
-   S\" set-preflight: invalid or replaced hook\n" {: ma:^ mu:n :}
-   S\" set-preflight: invalid hook\n" {: ia:^ iu:n :}
+   S\" set-preflight: invalid or replaced hook\n" {: text:str :}
+   S\" set-preflight: invalid hook\n" {: invalid-text:str :}
    A RT:G-POP
    10 XREG-RBASE COMPILE-PREFLIGHT-CELL A64ICODE:LDR,
    10 empty A64ICODE:CBZ,
@@ -3368,14 +3366,14 @@ private
    A XREG-RBASE COMPILE-PREFLIGHT-CELL A64ICODE:STR,
    done A64ICODE:B,
    bad A64ICODE:LBL,
-      1 msg A64ICODE:ADR,  2 mu A64ICODE:MOVZ,  emit A64ICODE:B,
+      1 msg A64ICODE:ADR,  2 text STR:LEN A64ICODE:MOVZ,  emit A64ICODE:B,
    invalid A64ICODE:LBL,
-      1 invalid-msg A64ICODE:ADR,  2 iu A64ICODE:MOVZ,
+      1 invalid-msg A64ICODE:ADR,  2 invalid-text STR:LEN A64ICODE:MOVZ,
    emit A64ICODE:LBL,
       0 2 A64ICODE:MOVZ,  SYSCALL:NR-WRITE SYSCALL:SYS,
       0 EXIT-STATUS:REJECTED A64ICODE:MOVZ,  SYSCALL:NR-EXIT-GROUP SYSCALL:SYS,
-   msg A64ICODE:LBL,  ma mu A64ICODE:BYTES,
-   invalid-msg A64ICODE:LBL,  ia iu A64ICODE:BYTES,
+   msg A64ICODE:LBL,  text A64ICODE:BYTES,
+   invalid-msg A64ICODE:LBL,  invalid-text A64ICODE:BYTES,
    done A64ICODE:LBL, ;
 ;package
 
@@ -3502,9 +3500,9 @@ private
 : POLICY-LR, ( -- )  3 A64ICODE:SP 0 A64ICODE:LDR, ;
 
 \ Note `in` and help, the dictionary read through x26/x27; never returns.
-: POLICY-STOP, ( FAULT-RECORD:record str -- ) {: h:^ hu:n :}
+: POLICY-STOP, ( FAULT-RECORD:record str -- ) {: h:str :}
    4 DBASE 0 A64ICODE:ADDI,  6 NDICT 0 A64ICODE:ADDI,  CRASH:FAULT-IN,
-   h hu EXIT-STATUS:POLICY CRASH:FAULT-STOP, ;
+   h EXIT-STATUS:POLICY CRASH:FAULT-STOP, ;
 
 \ Unsealed it falls through, having written x9 only.
 : POLICY-OPEN, ( -- )
@@ -4913,7 +4911,7 @@ create NAME-PADDING 0 , 0 ,
       ELSE
          dup ENGINE-PRIMS:DNAME A64ICODE:DCQ,
          dup ENGINE-PRIMS:NAME$ A64ICODE:BYTES,
-         16 over ENGINE-PRIMS:NAME-LEN 3 + -4 and - dup 0 > IF NAME-PADDING swap A64ICODE:BYTES, ELSE drop THEN
+         16 over ENGINE-PRIMS:NAME-LEN 3 + -4 and - dup 0 > IF NAME-PADDING swap >str A64ICODE:BYTES, ELSE drop THEN
       THEN
       dup ENGINE-PRIMS:HELPER-WID A64ICODE:DCQ,
       1 + REPEAT drop ;

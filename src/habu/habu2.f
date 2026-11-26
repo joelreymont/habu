@@ -1,4 +1,3 @@
-split-str
 \ habu2.f — engine-builder part 2: the kernel's routines (definition writers,
 \ snapshot relocation, compile-error tails), the primitive sections and kernel
 \ emission. Needs habu1.f (part 1). Emission is split into phase words sharing
@@ -61,7 +60,7 @@ variable LUNCAUGHT   variable LUNCMSG   \ uncaught-top-level-throw reporter + it
 private
 variable LUNCRPT   variable LUNCPOS   variable LUNCLOOP   variable LUNCDONE   \ reporter branch + itoa labels
 : UNCMSG$ ( -- str )   s" hb: uncaught throw code " ;
-: UNCMSG-LEN ( -- n )   UNCMSG$ nip ;
+: UNCMSG-LEN ( -- n )   UNCMSG$ STR:LEN ;
 public
 
 variable LFLOORREC   \ the underdepth throw for a data access below the base
@@ -86,7 +85,7 @@ public
 variable LPLACEEND            \ ": " — what LPLACE writes after <path> or <path>:<line>
 private
 : PLACEEND$ ( -- str )   s" : " ;
-: PLACEEND-LEN ( -- n )   PLACEEND$ nip ;
+: PLACEEND-LEN ( -- n )   PLACEEND$ STR:LEN ;
 
 create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-bp:\n
 here BPH-KW - constant BPH-LEN
@@ -244,11 +243,11 @@ package ENGINE-EMIT
    SYSCALL:NR-SIGRETURN SYSCALL:SYS,                                 \ sigreturn(uctx, infostyle, token)
    tno A64ICODE:LBL,
    CRASH:LCRASHH A64ICODE:LABEL@ A64ICODE:B,
-   LBPH A64ICODE:LABEL@ A64ICODE:LBL,  BPH-KW BPH-LEN A64ICODE:BYTES,
-   BP-CALLER:LBPLH A64ICODE:LABEL@ A64ICODE:LBL, BP-CALLER:BPL-KW BP-CALLER:BPL-LEN A64ICODE:BYTES,
-   LBPSH A64ICODE:LABEL@ A64ICODE:LBL, BPS-KW BPS-LEN A64ICODE:BYTES,
-   LBPWH A64ICODE:LABEL@ A64ICODE:LBL, BPW-KW BPW-LEN A64ICODE:BYTES,
-   LOPENNL A64ICODE:LABEL@ A64ICODE:LBL, NL-KW NL-LEN A64ICODE:BYTES,
+   LBPH A64ICODE:LABEL@ A64ICODE:LBL,  BPH-KW BPH-LEN >str A64ICODE:BYTES,
+   BP-CALLER:LBPLH A64ICODE:LABEL@ A64ICODE:LBL, BP-CALLER:BPL-KW BP-CALLER:BPL-LEN >str A64ICODE:BYTES,
+   LBPSH A64ICODE:LABEL@ A64ICODE:LBL, BPS-KW BPS-LEN >str A64ICODE:BYTES,
+   LBPWH A64ICODE:LABEL@ A64ICODE:LBL, BPW-KW BPW-LEN >str A64ICODE:BYTES,
+   LOPENNL A64ICODE:LABEL@ A64ICODE:LBL, NL-KW NL-LEN >str A64ICODE:BYTES,
    LUNCMSG A64ICODE:LABEL@ A64ICODE:LBL, UNCMSG$ A64ICODE:BYTES,                  \ LUNCAUGHT appends the signed code + newline
    LPLACEEND A64ICODE:LABEL@ A64ICODE:LBL, PLACEEND$ A64ICODE:BYTES, ;
 
@@ -379,7 +378,7 @@ public
    A64ICODE:LBL A64ICODE:LBL {: absent:label ready:label :}
    NCOMP-DISPATCH:DECL-EFFECT-OFF absent DECL-OWNER:TARGET
    ready A64ICODE:B,
-   absent A64ICODE:LBL,  KWDATA:LKWTRUSTDECL KWDATA:TRUSTDECL$ nip ENGINE-EMIT:C-EXIT-LABEL
+   absent A64ICODE:LBL,  KWDATA:LKWTRUSTDECL KWDATA:TRUSTDECL$ STR:LEN ENGINE-EMIT:C-EXIT-LABEL
    ready A64ICODE:LBL, ;
 
 ;package
@@ -391,7 +390,7 @@ package LASTC-TRUST
    A64ICODE:LBL A64ICODE:LBL {: absent:label ready:label :}
    NCOMP-DISPATCH:DECL-RAW-OFF absent DECL-OWNER:TARGET
    ready A64ICODE:B,
-   absent A64ICODE:LBL,  KWDATA:LKWTRUSTRAW KWDATA:TRUSTRAW$ nip ENGINE-EMIT:C-EXIT-LABEL
+   absent A64ICODE:LBL,  KWDATA:LKWTRUSTRAW KWDATA:TRUSTRAW$ STR:LEN ENGINE-EMIT:C-EXIT-LABEL
    ready A64ICODE:LBL, ;
 
 public
@@ -427,17 +426,17 @@ package ENGINE-EMIT
 public
 \ x11 = the operation at OFF in the source owner's record. An owner whose record
 \ ends before OFF (its byte size at [record-8]) or holds 0 there writes the line
-\ MA MU to fd 2 and exits EXIT-STATUS:INTERNAL.
-: C-OWNER-FIELD ( n str -- ) {: off:n ma:^ mu:n :}
+\ text to fd 2 and exits EXIT-STATUS:INTERNAL.
+: C-OWNER-FIELD ( n str -- ) {: off:n text:str :}
    A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL {: absent:label msg:label ready:label :}
    11 XREG-RBASE NCOMP-DISPATCH:DECL-CELL A64ICODE:LDR,  11 absent A64ICODE:CBZ,
    10 11 8 A64ICODE:SUBI,  10 10 0 A64ICODE:LDR,
    10 off CELL + A64ICODE:CMPI,  A64ASM:C-LT absent A64ICODE:BCOND,
    11 11 off A64ICODE:LDR,  11 ready A64ICODE:CBNZ,
    absent A64ICODE:LBL,
-      0 2 A64ICODE:MOVZ,  1 msg A64ICODE:ADR,  2 mu A64ICODE:MOVZ,  SYSCALL:NR-WRITE SYSCALL:SYS,
+      0 2 A64ICODE:MOVZ,  1 msg A64ICODE:ADR,  2 text STR:LEN A64ICODE:MOVZ,  SYSCALL:NR-WRITE SYSCALL:SYS,
       0 EXIT-STATUS:INTERNAL A64ICODE:MOVZ,  SYSCALL:NR-EXIT-GROUP SYSCALL:SYS,
-   msg A64ICODE:LBL,  ma mu A64ICODE:BYTES,
+   msg A64ICODE:LBL,  text A64ICODE:BYTES,
    ready A64ICODE:LBL, ;
 
 \ After ndict++ the checker's rec-wide-publish consumes the RECW latch for this
@@ -546,9 +545,9 @@ private
    11 XREG-RBASE LASTC-CELL A64ICODE:LDR,  11 none A64ICODE:CBZ,
    12 11 40 A64ICODE:LDR,  13 WL:RETIRED invert A64ICODE:MOVN,  12 13 A64ICODE:CMP,  A64ASM:C-NE have A64ICODE:BCOND,
    none A64ICODE:LBL,
-   0 2 A64ICODE:MOVZ,  1 class A64ICODE:ADR,  2 NONE-CLASS$ nip A64ICODE:MOVZ,  SYSCALL:NR-WRITE SYSCALL:SYS,
+   0 2 A64ICODE:MOVZ,  1 class A64ICODE:ADR,  2 NONE-CLASS$ STR:LEN A64ICODE:MOVZ,  SYSCALL:NR-WRITE SYSCALL:SYS,
    ENGINE-EMIT:LPLACE A64ICODE:LABEL@ A64ICODE:BL,
-   0 2 A64ICODE:MOVZ,  1 msg A64ICODE:ADR,  2 NONE$ nip A64ICODE:MOVZ,  SYSCALL:NR-WRITE SYSCALL:SYS,
+   0 2 A64ICODE:MOVZ,  1 msg A64ICODE:ADR,  2 NONE$ STR:LEN A64ICODE:MOVZ,  SYSCALL:NR-WRITE SYSCALL:SYS,
    0 70 A64ICODE:MOVZ,  ENGINE-EMIT:LCOMPILEDIE A64ICODE:LABEL@ A64ICODE:B,
    class A64ICODE:LBL,  NONE-CLASS$ A64ICODE:BYTES,
    msg A64ICODE:LBL,  NONE$ A64ICODE:BYTES, ;
@@ -756,8 +755,8 @@ package DEFWRITE
 
 \ The rejection at the label: the text and the primitive's lr, which BLs in the
 \ body replace and the frame keeps.
-: REJECT-AT ( str label n -- ) {: a:^ u:n at:label rc:n :}
-   at A64ICODE:LBL,  0 CRASH:CALLER-LR,  a u rc CRASH:DIE-LINE, ;
+: REJECT-AT ( str label n -- ) {: text:str at:label rc:n :}
+   at A64ICODE:LBL,  0 CRASH:CALLER-LR,  text rc CRASH:DIE-LINE, ;
 
 \ x<dst> = the address of record x<ix>; dst and ix differ.
 : REC-AT, ( n n -- ) {: dst:n ix:n :}
@@ -1244,13 +1243,13 @@ variable LREPLAYTRAP
 
 \ ( ^u8 n -- ): the span into the cells aoff and uoff while a
 \ definition is pending.
-: PENDING-SPAN ( str n n -- ) {: a:^ u:n aoff:n uoff:n :}
+: PENDING-SPAN ( str n n -- ) {: text:str aoff:n uoff:n :}
    A64ICODE:LBL A64ICODE:LBL {: bad done :}
    12 RT:G-POP  11 RT:G-POP
    9 XREG-RBASE PEND-CELL A64ICODE:LDR,  9 bad A64ICODE:CBZ,
    11 XREG-RBASE aoff A64ICODE:STR,  12 XREG-RBASE uoff A64ICODE:STR,
    done A64ICODE:B,
-   a u bad EXIT-STATUS:SEAL-VIOLATION REJECT-AT
+   text bad EXIT-STATUS:SEAL-VIOLATION REJECT-AT
    done A64ICODE:LBL, ;
 
 \ trust-sig! ( ^u8 n -- )

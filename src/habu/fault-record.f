@@ -1,4 +1,3 @@
-split-str
 \ fault-record.f - the text of the fault records a rejection's machine code
 \ writes. A fault record is the bytes package REJECTION writes for an unplaced
 \ rejection of the same parts, in prose or, when the main DATA's
@@ -58,15 +57,15 @@ LINEAR: ERASE ( FAULT-RECORD:record -- n )
 
 : PROSE+ ( str -- )  PROSE VEC:APPEND ;
 : JSON+ ( str -- )  JSON VEC:APPEND ;
-: BOTH+ ( str -- ) {: a:^ u:n :}  a u PROSE+  a u JSON+ ;
+: BOTH+ ( str -- ) {: s:str :}  s PROSE+  s JSON+ ;
 
 \ The byte at the pointer, as a JSON string holds it.
 : ESC-BYTE ( ^u8 -- ) {: p:^ :}
-   p c@ REJECTION:JSON-ESCAPE$ {: e:^ eu:n :}
-   eu 0= IF p 1 JSON+ ELSE e eu JSON+ THEN ;
+   p c@ REJECTION:JSON-ESCAPE$ {: e:str :}
+   e STR:LEN 0= IF p 1 >str JSON+ ELSE e JSON+ THEN ;
 \ A caller's text, as a JSON string holds it.
-: ESC+ ( str -- ) {: a:^ u:n :}
-   u 0 ?do a i + ESC-BYTE loop ;
+: ESC+ ( str -- ) {: s:str :}
+   s STR:LEN 0 ?do s STR:DATA i + ESC-BYTE loop ;
 
 \ Closes the open part's JSON string, and the notes object after a note.
 : SHUT ( FAULT-RECORD:record -- )
@@ -75,19 +74,19 @@ LINEAR: ERASE ( FAULT-RECORD:record -- n )
 public
 \ A note's key, after the text before it.
 : NOTE+ ( FAULT-RECORD:record str -- FAULT-RECORD:record )
-   {: k:^ ku:n :}
-   S\" \n  = " PROSE+  k ku PROSE+  s" : " PROSE+
+   {: k:str :}
+   S\" \n  = " PROSE+  k PROSE+  s" : " PROSE+
    S\" \"," JSON+
    ERASE PART-MESSAGE = IF S\" \"notes\":{" JSON+ THEN
-   S\" \"" JSON+  k ku ESC+  S\" \":\"" JSON+
+   S\" \"" JSON+  k ESC+  S\" \":\"" JSON+
    PART-NOTE MINT ;
 
 \ The record's start: its code and message.
 : FAULT-OPEN ( str str -- FAULT-RECORD:record )
-   {: code:^ cu:n msg:^ mu:n :}
-   s" error[" PROSE+  code cu PROSE+  s" ]: " PROSE+  msg mu PROSE+
-   S\" {\"severity\":\"error\",\"code\":\"" JSON+  code cu ESC+
-   S\" \",\"message\":\"" JSON+  msg mu ESC+
+   {: code:str msg:str :}
+   s" error[" PROSE+  code PROSE+  s" ]: " PROSE+  msg PROSE+
+   S\" {\"severity\":\"error\",\"code\":\"" JSON+  code ESC+
+   S\" \",\"message\":\"" JSON+  msg ESC+
    PART-MESSAGE MINT ;
 
 \ A note whose value is an address, `0x` and its hex digits.
@@ -104,18 +103,18 @@ public
    swap ERASE drop MINT  s" at" FAULT-ADDRESS ;
 
 \ The record's end, with its help, for a site that exits.
-: FAULT-STOP ( FAULT-RECORD:record str -- ) {: h:^ hu:n :}
-   S\" \n  = help: " PROSE+  h hu PROSE+  S\" \n\n" PROSE+
+: FAULT-STOP ( FAULT-RECORD:record str -- ) {: h:str :}
+   S\" \n  = help: " PROSE+  h PROSE+  S\" \n\n" PROSE+
    SHUT
-   S\" ,\"help\":\"" JSON+  h hu ESC+  S\" \"}\n" JSON+ ;
+   S\" ,\"help\":\"" JSON+  h ESC+  S\" \"}\n" JSON+ ;
 
 \ The record's end, with its help, none for an empty text, for a site that
 \ returns.
-: FAULT-KEEP ( FAULT-RECORD:record str -- ) {: h:^ hu:n :}
-   hu 0 <> IF S\" \n  = help: " PROSE+  h hu PROSE+ THEN
+: FAULT-KEEP ( FAULT-RECORD:record str -- ) {: h:str :}
+   h STR:LEN 0 <> IF S\" \n  = help: " PROSE+  h PROSE+ THEN
    S\" \n\n" PROSE+
    SHUT
-   hu 0 <> IF S\" ,\"help\":\"" JSON+  h hu ESC+  S\" \"" JSON+ THEN
+   h STR:LEN 0 <> IF S\" ,\"help\":\"" JSON+  h ESC+  S\" \"" JSON+ THEN
    S\" }\n" JSON+ ;
 
 \ The four stack-bounds messages and their help.
@@ -133,10 +132,10 @@ public
 
 \ "`<name>` <rest>", held until the record's next PIECE,.
 : GUARD-MSG$ ( str str -- str )
-   {: p:^ pu:n r:^ ru:n :}
+   {: p:str r:str :}
    GUARD 0 VEC:RESIZE
-   s" `" GUARD VEC:APPEND  p pu GUARD VEC:APPEND  s" ` " GUARD VEC:APPEND
-   r ru GUARD VEC:APPEND
+   s" `" GUARD VEC:APPEND  p GUARD VEC:APPEND  s" ` " GUARD VEC:APPEND
+   r GUARD VEC:APPEND
    GUARD VEC:BYTES ;
 
 \ The callback rejections' messages and help: a thunk C entered, and an

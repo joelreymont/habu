@@ -1,4 +1,3 @@
-split-str
 \ kernel-format.f - the native kernel object's framing, shared by the arm64
 \ and x86-64 writers.
 \
@@ -45,10 +44,10 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
    8 OUT-U +! ;
 
 : BYTES+ ( str -- )
-   {: a:^ u:n :}
-   OUT-U @ u + OUT-RESERVE
-   a  0 OUT OUT-U @ +  u BYTE-COPY
-   u OUT-U +! ;
+   {: s:str :}
+   OUT-U @ s STR:LEN + OUT-RESERVE
+   s STR:DATA  0 OUT OUT-U @ +  s STR:LEN BYTE-COPY
+   s STR:LEN OUT-U +! ;
 
 : BYTE+ ( n -- )
    OUT-U @ 1 + OUT-RESERVE
@@ -59,7 +58,9 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
 
 : SPAN+ ( str -- ) BYTES+ PAD+ ;
 
-: NAME+ ( str -- ) dup U64+ SPAN+ ;
+: NAME+ ( str -- )
+   {: s:str :}
+   s STR:LEN U64+  s SPAN+ ;
 
 
 : SECTION ( -- ) OUT-U @ COUNT-AT !  0 COUNT-N !  0 U64+ ;
@@ -68,8 +69,8 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
 
 
 : SYM+ ( str n -- )
-   {: a:^ u:n v:n :}
-   a u NAME+  v U64+  ENTRY ;
+   {: s:str v:n :}
+   s NAME+  v U64+  ENTRY ;
 
 : IMPORTS+ ( n [ n -- str ] -- )
    {: n:n name :}
@@ -88,6 +89,6 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
 
 
 : SUM ( -- )
-   SHA-CTX  0 OUT 40 +  OUT-U @ 40 -  0 OUT 8 +  SHA256-IN ;
+   SHA-CTX  0 OUT 40 +  OUT-U @ 40 - >str  0 OUT 8 +  SHA256-IN ;
 
 ;package

@@ -1,4 +1,3 @@
-split-str
 \ prim-ref.f - reference implementations for the engine primitive table: a
 \ src/habu/prims.f row's `REF` clause names one and test/prim-parity.f runs it
 \ beside the backend's body. A reference never uses the primitive it answers for;

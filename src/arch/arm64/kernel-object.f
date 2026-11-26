@@ -1,4 +1,3 @@
-split-str
 \ kernel-object.f - the tree's arm64 start-up and kernel, written as a kernel
 \ object a build's link adopts.
 \ Only a kernel build compiles this file, so the kernel and the layout it reads
@@ -52,7 +51,7 @@ variable K0                          \ the kernel's first word position
    ENGINE-EMIT:KERNEL ;
 
 
-: CODE+ ( -- ) A64ICODE:ASM-LEN dup U64+  A64ICODE:CODE swap SPAN+ ;
+: CODE+ ( -- ) A64ICODE:ASM-LEN dup U64+  A64ICODE:CODE swap >str SPAN+ ;
 
 : LABELS+ ( -- )
    A64ICODE:NLBL @ dup U64+
@@ -161,7 +160,7 @@ variable K0                          \ the kernel's first word position
    s" ENGINE" engine if 1 else 0 then SYM+
    COMMON-SYMBOLS
    engine if ENGINE-SYMBOLS then
-   engine if ENGINE-MAIN:XT-CELL else APP-ENTRY:XT-CELL then  s" ENTRY-CELL" rot SYM+
+   s" ENTRY-CELL" engine if ENGINE-MAIN:XT-CELL else APP-ENTRY:XT-CELL then SYM+
    ;SECTION ;
 
 
@@ -201,7 +200,7 @@ variable K0                          \ the kernel's first word position
    MACHO:IMPORTS ['] MACHO:IMPORT$ IMPORTS+  ELF:IMPORTS ['] ELF:IMPORT$ IMPORTS+
    CHECK-ROWS+
    SUM
-   0 OUT OUT-U @ sink execute ;
+   0 OUT OUT-U @ >str sink execute ;
 
 : RELEASE ( -- ) OUT-RELEASE A64ICODE:ASM-RELEASE ;
 

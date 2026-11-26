@@ -1,4 +1,3 @@
-split-str
 \ primitive-registry.f - build-side primitive metadata shared by every backend's
 \ engine builder: checks each registered body's name against the specification
 \ table, answers the seed dictionary's name and wid cells, and rejects a kept row
@@ -29,9 +28,9 @@ variable NAME-BYTES
    USED @ 1+ ROW-CELLS * ROWS-RESERVE
    NAME-BYTES @ size + CELL 1- + CELL / NAMES-RESERVE ;
 
-: OPEN-RECORD ( str -- ) {: name:^ size:n :}
+: OPEN-RECORD ( str -- ) {: name:str :}
    s" E-PRIM-TABLE" REJECTION:OPEN
-   s" primitive `" REJECTION:EMIT-STR  name size REJECTION:EMIT-STR
+   s" primitive `" REJECTION:EMIT-STR  name REJECTION:EMIT-STR
    s" `" REJECTION:EMIT-STR ;
 
 : STOP-RECORD ( str -- )
@@ -48,14 +47,15 @@ public
 : COUNT ( -- n ) USED @ ;
 : RESET ( -- ) 0 USED ! 0 NAME-BYTES ! ;
 
-: ADD ( str label label -- n ) {: name:^ size:n first:label last:label :}
+: ADD ( str label label -- n ) {: name:str first:label last:label :}
+   name STR:LEN {: size:n :}
    size RESERVE
    USED @ {: row:n :}
    row ROW-CELLS * ROWS {: dst:^ :}
    first LABEL>N dst ! last LABEL>N dst cell+ !
    size dst 2 cells + ! NAME-BYTES @ dst 3 cells + !
    -1 dst 4 cells + ! WL:PRIMITIVES dst 5 cells + !
-   name 0 NAMES BYTE-VIEW NAME-BYTES @ + size BYTE-COPY
+   name STR:DATA 0 NAMES BYTE-VIEW NAME-BYTES @ + size BYTE-COPY
    NAME-BYTES @ size + NAME-BYTES !
    row 1+ USED !
    row ;
@@ -64,7 +64,7 @@ public
 : LAST-LABEL ( n -- label ) 1 ROW-FIELD @ >LABEL ;
 : NAME-LEN ( n -- n ) 2 ROW-FIELD @ ;
 : NAME$ ( n -- str ) {: row:n :}
-   0 NAMES BYTE-VIEW row 3 ROW-FIELD @ + row NAME-LEN ;
+   0 NAMES BYTE-VIEW row 3 ROW-FIELD @ + row NAME-LEN >str ;
 : NAME-LABEL ( n -- label ) 4 ROW-FIELD @ >LABEL ;
 : NAME-LABEL! ( label n -- ) swap LABEL>N swap 4 ROW-FIELD ! ;
 private
@@ -75,8 +75,8 @@ public
 \ The table is which primitives exist: every body registers under a name
 \ src/habu/prims.f specifies; the row states the effect, the body the machine
 \ code. SPEC-CHECK rejects a body with no row, COMPLETE a row no body answered.
-: SPEC-CHECK ( str -- ) {: name:^ size:n :}
-   name size PRIM-SPEC:FIND 0 < if name size SPEC-MISSING then ;
+: SPEC-CHECK ( str -- ) {: name:str :}
+   name PRIM-SPEC:FIND 0 < if name SPEC-MISSING then ;
 
 \ An engine helper is an engine-resident routine primitives reach by a direct
 \ branch (a shared rejection, a bounds loop). HELPER-REGISTER records it as a
@@ -90,10 +90,10 @@ private
 
 \ Whether a package row (src/habu/prims.f EPPRIM: ... ECLOSE-PRIVATE) states the
 \ primitive's effect.
-: OWNED? ( str -- bool ) {: name:^ size:n :}
+: OWNED? ( str -- bool ) {: name:str :}
    PRIM-SPEC:COUNT 0 ?do
       i PRIM-SPEC:KIND@ PRIM-SPEC:K-PKG-PRIVATE = if
-         i PRIM-SPEC:NAME$ name size STR:= if unloop 0 0= exit then
+         i PRIM-SPEC:NAME$ name STR:= if unloop 0 0= exit then
       then
    loop
    0 0= 0= ;
@@ -121,9 +121,9 @@ public
 private
 
 \ The registered body of the name, or -1.
-: BODY-ROW ( str -- n ) {: name:^ size:n :}
+: BODY-ROW ( str -- n ) {: name:str :}
    USED @ 0 ?do
-      i NAME$ name size STR:= if i unloop exit then
+      i NAME$ name STR:= if i unloop exit then
    loop
    -1 ;
 
@@ -134,7 +134,7 @@ private
 
 : CHECK-ROW ( n -- )
    PRIM-SPEC:NAME$
-   2dup BODY-ROW 0 < if NO-BODY else 2drop then ;
+   dup BODY-ROW 0 < if NO-BODY else drop then ;
 
 : TWO-BODIES ( str -- )
    OPEN-RECORD
