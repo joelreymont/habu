@@ -6,6 +6,7 @@
 require src/arch/arm64/icode.f
 require src/os/linux-flags.f
 require src/arch/arm64/mnem.f
+require src/os/linux/elf.f
 using A64ICODE
 package SYSCALL
 public
@@ -57,7 +58,6 @@ public
 25  constant NR-FCNTL
 103 constant NR-SETITIMER
 private
-113 constant NR-CLOCK-GETTIME
 1   constant CLOCK-MONOTONIC
 public
 163 constant NR-GETRLIMIT
@@ -109,17 +109,37 @@ $100 constant AT-SYMLINK-NOFOLLOW
 \ or more saturates.
 9223372035999999 constant OS-TIMER-MAX-USEC
 
-\ x(n) = CLOCK_MONOTONIC in ns, the clock ITIMER_REAL expires on, by a frame on
-\ sp it gives back; n is not 0, 1, 8 or 16. Clobbers only x(n) and flags.
+\ x16 = the named import's address, read from the GOT each run (an image saves
+\ none), from x16 = the text address RBASE-CELL holds. Clobbers x15, x17.
+: SLOT-AT, ( str -- ) {: name:str :}
+   15 CODE-OFF LIT64,  16 16 15 SUB,
+   17 16 IMAGE-TEXT-SIZE-OFF LDR,
+   16 16 17 ADD,  16 16 name ELF:IMPORT-ROW ELF:SLOT-OFF LDR, ;
+
+private
+\ OS-TIMER-NOW's frame: the timespec, then x0-x18 and x30, the registers a C
+\ call may clobber, slot k holding TIMER-REG k.
+19 constant TIMER-REGS
+TIMER-REGS 1 + 8 * 16 + constant TIMER-FRAME
+: TIMER-REG ( n -- n ) dup TIMER-REGS = if drop 30 then ;
+public
+
+\ x(n) = ns on CLOCK_MONOTONIC, ITIMER_REAL's clock, by libc's clock_gettime via
+\ the main DATA: C under the profiler reuses x20. Clobbers x(n), flags and SIMD.
 : OS-TIMER-NOW ( n -- )
    {: reg :}
-   SP SP 48 SUBI,
-   0 SP 16 STR,  1 SP 24 STR,  8 SP 32 STR,  16 SP 40 STR,
-   0 CLOCK-MONOTONIC MOVZ,  1 SP 0 ADDI,  NR-CLOCK-GETTIME SYS,
-   reg SP 0 LDR,  0 OS-TIMER-HZ  reg reg 0 MUL,
-   1 SP 8 LDR,  reg reg 1 ADD,
-   0 SP 16 LDR,  1 SP 24 LDR,  8 SP 32 LDR,  16 SP 40 LDR,
-   SP SP 48 ADDI, ;
+   SP SP TIMER-FRAME SUBI,
+   TIMER-REGS 1 + 0 ?do
+      i TIMER-REG reg <> if i TIMER-REG SP i 8 * 16 + STR, then
+   loop
+   16 DATA-VA VA>N RBASE-CELL + LIT64,  16 16 0 LDR,  s" clock_gettime" SLOT-AT,
+   0 CLOCK-MONOTONIC MOVZ,  1 SP 0 ADDI,  16 BLR,
+   0 SP 0 LDR,  1 OS-TIMER-HZ  0 0 1 MUL,
+   1 SP 8 LDR,  reg 0 1 ADD,
+   TIMER-REGS 1 + 0 ?do
+      i TIMER-REG reg <> if i TIMER-REG SP i 8 * 16 + LDR, then
+   loop
+   SP SP TIMER-FRAME ADDI, ;
 
 \ tgkill(getpid(), the tid in x(t), the signal in x(s)); s is not x8.
 \ Clobbers x0-x2, x8 and x16.

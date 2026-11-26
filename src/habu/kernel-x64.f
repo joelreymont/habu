@@ -823,16 +823,6 @@ private
    NR-GETTIMEOFDAY SYS,  TIME-CHECK,
    RAX 0 GTOD ASM-SINK ENC-MOV-RM  0 G-PUSH ;
 
-\ ( -- ns ) CLOCK_MONOTONIC, the clock the timers expire on, as seconds * 10^9
-\ plus nanoseconds.
-: MONO-ROW ( -- )
-   RDI CLOCK-MONOTONIC IMM32,  RSI 0 GTOD ASM-SINK ENC-LEA
-   NR-CLOCK-GETTIME SYS,  TIME-CHECK,
-   RAX 0 GTOD ASM-SINK ENC-MOV-RM
-   RAX RAX NS-PER-S >IMM32 ASM-SINK ENC-IMUL-RRI32
-   RAX CELL GTOD ASM-SINK ENC-ADD-RM
-   0 G-PUSH ;
-
 \ RAX receives the named import's address from this run's GOT.
 \ The read-write segment starts the text's size past the image base.
 : LIBC-ENTRY, ( str -- )
@@ -884,6 +874,18 @@ public
    C-CALL, ;
 
 private
+
+\ ( -- ns ) CLOCK_MONOTONIC, the timers' clock, by libc's clock_gettime, which
+\ reads the vDSO, no system call. It answers an int, so eax alone is tested.
+: MONO-ROW ( -- )
+   s" clock_gettime" LIBC-ENTRY,
+   RDI CLOCK-MONOTONIC IMM32,  RSI 0 GTOD ASM-SINK ENC-LEA
+   C-CALL,
+   RAX R64>N >R32 RAX R64>N >R32 ASM-SINK ENC-MOV32-RR  TIME-CHECK,
+   RAX 0 GTOD ASM-SINK ENC-MOV-RM
+   RAX RAX NS-PER-S >IMM32 ASM-SINK ENC-IMUL-RRI32
+   RAX CELL GTOD ASM-SINK ENC-ADD-RM
+   0 G-PUSH ;
 
 \ The realpath frame on the machine stack: the arguments, free, the result and
 \ its length, then the two names dlsym is asked for, NUL-terminated.

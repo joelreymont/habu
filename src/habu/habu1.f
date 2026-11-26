@@ -2351,22 +2351,6 @@ $58 constant CBT-LR                     \ C's x30
 
 package LIBC-OS
 
-\ x16 = the address the loader bound to the named import, from x16 = this
-\ run's __text base. Read on every call: an image saves no libc address.
-\ Clobbers x15, x17.
-: SLOT-AT, ( str -- ) {: name:^ u:n :}
-   15 CODE-OFF LIT64,  16 16 15 SUB,
-   17 16 IMAGE-TEXT-SIZE-OFF LDR,
-   HB-TARGET-LINUX-ARM64? if
-      16 16 17 ADD,  16 16 name u ELF:IMPORT-ROW ELF:SLOT-OFF LDR,
-   else HB-TARGET-MACOS? if
-      15 CODE-OFF LIT64,  17 17 15 ADD,  15 $3FFF LIT64,
-      17 17 15 ADD,  15 $3FFF invert LIT64,  17 17 15 AND,
-      16 16 17 ADD,  16 16 name u MACHO:IMPORT-ROW MACHO:SLOT-OFF LDR,
-   else
-      ENGINE-EMIT:TARGET-UNKNOWN
-   then then ;
-
 : SLOT, ( str -- )   16 XREG-RBASE RBASE-CELL LDR,  SLOT-AT, ;
 
 \ Copy [x1, x2) of the region to the same offsets x12 bytes away, a cell at a

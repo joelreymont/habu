@@ -5,6 +5,7 @@
 require src/core/exit-status.f
 require src/arch/arm64/mnem.f
 require src/arch/arm64/icode.f
+require src/os/macos/macho.f
 using A64ICODE
 package SYSCALL
 public
@@ -102,6 +103,15 @@ $20 constant AT-SYMLINK-NOFOLLOW   \ sys/fcntl.h AT_SYMLINK_NOFOLLOW; only Linux
 : OS-THREAD-HANDLE ( n -- )
    {: reg :}
    16 MACH-THREAD-SELF MOVN,  $80 SVC,  reg 0 0 ADDI, ;
+
+\ x16 = the named import's address, read from the GOT each run (an image saves
+\ none), from x16 = this run's __text base. Clobbers x15, x17.
+: SLOT-AT, ( str -- ) {: name:str :}
+   15 CODE-OFF LIT64,  16 16 15 SUB,
+   17 16 IMAGE-TEXT-SIZE-OFF LDR,
+   15 CODE-OFF LIT64,  17 17 15 ADD,  15 $3FFF LIT64,
+   17 17 15 ADD,  15 $3FFF invert LIT64,  17 17 15 AND,
+   16 16 17 ADD,  16 16 name MACHO:IMPORT-ROW MACHO:SLOT-OFF LDR, ;
 
 private
 : CNTVCT>R ( n -- ) $D53BE040 or EMITW ;   \ mrs xn, CNTVCT_EL0
