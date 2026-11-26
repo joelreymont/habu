@@ -1,6 +1,6 @@
 \ http-response.f - the response a handler builds in its worker's slot: a
-\ status, header lines, a borrowed body span or a filed document, and the error
-\ answer every rejection shares, rendered by the one hook ON-ERROR installs
+\ status, header lines, a borrowed body span, and the error answer every
+\ rejection shares, rendered by the one hook ON-ERROR installs
 \ (src/lib/net/http.f).
 require src/lib/net/http-request.f
 require src/lib/json.f
@@ -8,7 +8,6 @@ require src/lib/vector.f
 require src/lib/string.f
 require src/lib/error.f
 require src/lib/span.f
-require src/lib/aio.f
 require src/lib/net/http-arena.f
 require src/lib/byte-buffer.f
 require src/lib/json/write.f
@@ -23,9 +22,6 @@ $30 constant ZERO-BYTE
 
 MAX-WORKERS TYPED-BUFFER JSON-W JSON:writer SCRATCH-ONLY
 MAX-WORKERS TYPED-BUFFER JSON-BODY [ ^JSON:writer -- ^JSON:writer ] SCRATCH-ONLY
-$10000 constant FILE-CHUNK
-MAX-WORKERS TYPED-BUFFER FILE-OFFSET n SCRATCH-ONLY
-MAX-WORKERS TYPED-BUFFER FILE-TRANSFER AIO:xfer SCRATCH-ONLY
 
 
 : OUT+ ( str n -- ) {: src:str idx:n :}
@@ -190,47 +186,6 @@ MAX-WORKERS TYPED-BUFFER FILE-TRANSFER AIO:xfer SCRATCH-ONLY
    idx CRLF+ ;
 
 
-\ The transfer owns the allocation between READ and AWAIT-XFER. If a worker
-\ ends there, AIO's task cleanup cancels the operation and releases its bytes
-\ at completion; CLOSE-FILE must only free bytes the worker owns again.
-: SUBMIT-FILE-READ ( n -- n ) {: idx:n :}
-   idx FILE-FD @ idx FILE-BUFFER @ idx FILE-ALLOCATION @
-   idx BODY-LEN@ idx FILE-OFFSET @ - FILE-CHUNK min
-   idx FILE-OFFSET @ AIO:READ idx FILE-TRANSFER !
-   idx ;
-
-
-: FILE-READ ( n -- n ) {: idx:n :}
-   0 idx FILE-OWNED !
-   idx [: SUBMIT-FILE-READ ;] catch {: code:n :} drop
-   code 0<> if
-      code E-AIO-ENTER <> if 1 idx FILE-OWNED ! then
-      -1 exit
-   then
-   idx FILE-TRANSFER @ AIO:AWAIT-XFER
-   {: bytes cap:NUM:alloc-byte-len outcome:AIO:outcome :}
-   bytes idx FILE-BUFFER !
-   cap idx FILE-ALLOCATION !
-   1 idx FILE-OWNED !
-   outcome MATCH AIO:outcome
-      ready OF ENDOF
-      timed-out OF -1 ENDOF
-      cancelled OF -1 ENDOF
-      rejected OF drop -1 ENDOF
-   ;MATCH ;
-
-
-: SEND-FILE ( TCP4:connection n -- bool ) {: conn:TCP4:connection idx:n :}
-   0 idx FILE-OFFSET !
-   begin idx FILE-OFFSET @ idx BODY-LEN@ < while
-      idx FILE-READ {: got:n :}
-      got 0 <= if false exit then
-      conn idx FILE-BUFFER @ got >str WRITE-SPAN 0= if false exit then
-      idx FILE-OFFSET @ got + idx FILE-OFFSET !
-   repeat
-   true ;
-
-
 \ An answer sent as its head alone: a bodyless status, or HEAD, which has the
 \ same length as GET.
 : NO-BODY? ( n -- bool ) {: idx:n :}
@@ -238,20 +193,12 @@ MAX-WORKERS TYPED-BUFFER FILE-TRANSFER AIO:xfer SCRATCH-ONLY
    idx SLOT-METHOD$ s" HEAD" STR:= ;
 
 
-\ The head is followed by either a borrowed span or a streamed file. A short
-\ file or a failed read closes the connection rather than presenting a
-\ truncated document as complete.
-: SEND-BODY ( TCP4:connection response -- bool ) {: conn:TCP4:connection subject:response :}
+: SEND ( TCP4:connection response -- bool ) {: conn:TCP4:connection subject:response :}
    subject SLOT-OF-RESPONSE {: idx:n :}
    idx HEAD-BYTES
    conn idx OUT-BUF BUF$ WRITE-SPAN 0= if false exit then
    idx NO-BODY? if true exit then
-   idx FILE-LIVE @ 0<> if conn idx SEND-FILE exit then
    conn idx BODY-PTR@ idx BODY-LEN@ >str WRITE-SPAN ;
-
-
-: SEND ( TCP4:connection response -- bool )
-   [: SEND-BODY ;] [: SELF-SLOT CLOSE-FILE ;] finally ;
 
 
 \ The slot's writer over the slot's JSON vector, empty and ready to be chained.
@@ -304,23 +251,6 @@ public
 : BODY! ( response str -- ) {: subject:response bytes:str :}
    subject SLOT-OF-RESPONSE {: idx:n :}
    bytes idx RESPONSE-BODY! ;
-
-
-\ A filed document is immutable while it is served. The response takes the
-\ descriptor its caller opened and checked, with the byte count to send, and
-\ owns it and one bounded buffer until SEND finishes or the worker exits: what
-\ is sent is read from the file the caller checked, never from a path opened
-\ again. The caller supplies the content type and download name.
-: FILE! ( response fd n -- ) {: subject:response source:fd size:n :}
-   subject SLOT-OF-RESPONSE {: idx:n :}
-   idx SELF-SLOT <> if E-HANDLE throw then
-   idx CLOSE-FILE
-   source idx FILE-FD !
-   1 idx FILE-LIVE !
-   size idx BODY-LEN !
-   FILE-CHUNK MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES
-   idx FILE-ALLOCATION ! idx FILE-BUFFER !
-   1 idx FILE-OWNED ! ;
 
 
 \ A JSON body written by `body` through the worker's own writer and kept in the

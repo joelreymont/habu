@@ -618,7 +618,6 @@ variable EXIT-HOOK-N
 \ then goes on to the task.
 : RUN-EXIT-HOOKS ( -- )
    SELF-SLOT SLOT-FINISH
-   SELF-SLOT CLOSE-FILE
    RUN-EXIT-HOOK-ROWS {: code:n :}
    DROP-SERVING
    code 0 <> if code throw then ;

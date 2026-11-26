@@ -107,11 +107,6 @@ MAX-WORKERS TYPED-BUFFER KEEP-ALIVE n SCRATCH-ONLY
 MAX-WORKERS TYPED-BUFFER STATUS n SCRATCH-ONLY
 MAX-WORKERS TYPED-BUFFER BODY-PTR ^u8 SCRATCH-ONLY \ the response body, owned elsewhere
 MAX-WORKERS TYPED-BUFFER BODY-LEN n SCRATCH-ONLY
-MAX-WORKERS TYPED-BUFFER FILE-FD fd SCRATCH-ONLY
-MAX-WORKERS TYPED-BUFFER FILE-LIVE n SCRATCH-ONLY
-MAX-WORKERS TYPED-BUFFER FILE-BUFFER ^u8 SCRATCH-ONLY
-MAX-WORKERS TYPED-BUFFER FILE-ALLOCATION NUM:alloc-byte-len SCRATCH-ONLY
-MAX-WORKERS TYPED-BUFFER FILE-OWNED n SCRATCH-ONLY
 MAX-WORKERS TYPED-BUFFER SEG-U n SCRATCH-ONLY \ bytes of decoded segment text
 MAX-WORKERS TYPED-BUFFER ID-U n SCRATCH-ONLY \ bytes of the current request id
 MAX-WORKERS TYPED-BUFFER SEQ n SCRATCH-ONLY \ requests this worker has answered
@@ -234,17 +229,6 @@ private
    loop ;
 
 
-: CLOSE-FILE ( n -- ) {: idx:n :}
-   idx BOUNDED FILE-OWNED @ 0<> if
-      0 idx FILE-OWNED !
-      idx FILE-BUFFER @ idx FILE-ALLOCATION @ MEM:RELEASE-BYTES
-   then
-   idx FILE-LIVE @ 0<> if
-      0 idx FILE-LIVE !
-      idx FILE-FD @ FD>N close
-   then ;
-
-
 : BODY-CLOSE ( n -- )
    BODY-HDR BUF:DISPOSE ;
 
@@ -252,7 +236,6 @@ private
 : ARENA-CLOSE ( -- )
    MAX-WORKERS 0 ?do
       i SLOT-LIVE @ 0 <> if
-         i CLOSE-FILE
          i BODY-CLOSE
          i HDR-BUF BUF:DISPOSE
          i DROP-JSON
@@ -324,7 +307,6 @@ private
 
 : RESPONSE-BODY! ( str n -- ) {: bytes:str idx:n :}
    bytes STR:LEN 0 < if E-CAPACITY throw then
-   idx CLOSE-FILE
    bytes STR:DATA idx BOUNDED BODY-PTR !
    bytes STR:LEN idx BODY-LEN ! ;
 
