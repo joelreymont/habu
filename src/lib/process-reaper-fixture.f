@@ -1,10 +1,10 @@
-\ process-reaper-fixture.f - the pool src/lib/process-reaper-test.f kills.
-\ With no argument it starts a reaper, spawns two REAPED children, writes each
-\ child's pid on stdout and waits. The hb child (`child`) spawns a sleeper that
-\ leads its own group and writes its pid; the sh child writes its group, the
-\ reaper's pid. Every line is one write, so lines from four processes never mix.
-\ With `stopped` the sh child stops itself before it execs its sleeper. What
-\ nothing kills ends within 30 s.
+\ process-reaper-fixture.f - the pool src/lib/process-reaper-test.f builds
+\ stripped and kills. With no argument it starts a reaper, spawns two REAPED
+\ children, writes each child's pid on stdout and waits. Its own program as
+\ `child` spawns a sleeper that leads its own group and writes its pid; the sh
+\ child writes its group, the reaper's pid. Every line is one write, so lines
+\ from four processes never mix. With `stopped` the sh child stops itself
+\ before it execs its sleeper. What nothing kills ends within 30 s.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -24,13 +24,10 @@ private
 : SLEEPER ( -- PROCESS:request )
    s" /bin/sleep" PROCESS:NEW s" 30" PROCESS:ARG ;
 
-\ This file again as `child`, in the reaper's group.
-: HB-CHILD ( PROCESS:reaper -- pid )
+\ This program again as `child`, in the reaper's group.
+: SELF-CHILD ( PROCESS:reaper -- pid )
    {: rp :}
    PROCESS:OWN-PATH PROCESS:NEW
-   s" --load" PROCESS:ARG
-   s" src/lib/process-reaper-fixture.f" PROCESS:ARG
-   s" --" PROCESS:ARG
    s" child" PROCESS:ARG
    rp PROCESS:REAPED PROCESS:SPAWN ;
 
@@ -53,7 +50,7 @@ private
 : PARENT ( str -- )
    {: script:str :}
    PROCESS:REAPER-START {: rp :}
-   rp HB-CHILD {: a:pid :}
+   rp SELF-CHILD {: a:pid :}
    rp script SH-CHILD PID>N LINE
    a PID>N LINE
    a PROCESS:WAIT drop ;
@@ -67,11 +64,11 @@ private
 
 public
 
-: MAIN ( -- )
+: RUN ( -- )
    SCRIPT-ARGC 0= if SH-RUNS PARENT exit then
    0 SCRIPT-ARGV$ s" stopped" STR:= if SH-STOPS PARENT exit then
    CHILD ;
 
 ;package
 
-PROCESS-REAPER-FIXTURE:MAIN
+: MAIN ( -- ) PROCESS-REAPER-FIXTURE:RUN ;

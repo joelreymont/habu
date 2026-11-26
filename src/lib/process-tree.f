@@ -14,8 +14,9 @@ split-str
 \ reaper joins its row's group and is the pool's to end. Out of reach: a
 \ process whose parent is outside the tree and whose group names no member,
 \ such as a daemon that called setsid.
-\ A PEER WALK (KILL-PEERS) has no named pid: every process in the caller's
-\ group but the caller's children is a member, and the tree grows from them.
+\ A PEER WALK (KILL-PEERS) has no named pid: every process in the group the
+\ caller leads but the caller's children is a member, and the tree grows from
+\ them.
 \ FREEZE, THEN LIST. A process killed while its children run leaves them to
 \ init, where no link names them again, and a process listed while it runs may
 \ spawn one more the moment after, so a process is stopped before its children
@@ -472,8 +473,10 @@ ENUM load DERIVE eq loaded gone rejected ;ENUM
 
 : WALK-PEERS ( -- )
    getpid SELF !
+   OWN-GROUP {: g:n :}
+   g SELF @ <> if E-PROC-OUTPUT throw then
    0 MEMBER-N !
-   OWN-GROUP GROUP !
+   g GROUP !
    [: SETTLE ;] [: END-MEMBERS ;] finally ;
 
 : PEERS ( -- )
@@ -751,8 +754,8 @@ public
    WALK-GET
    pid [: WALK ;] [: WALK-RELEASE ;] finally ;
 
-\ SIGKILL every process in the caller's group but the caller and its children,
-\ each with its tree. The caller is never stopped; a group of one is no error.
+\ SIGKILL every process in the group the caller leads but the caller and its
+\ children, each with its tree; a caller leading no group throws E-PROC-OUTPUT.
 : KILL-PEERS ( -- )
    WALK-GET
    [: PEERS ;] [: WALK-RELEASE ;] finally ;

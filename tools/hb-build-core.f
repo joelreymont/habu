@@ -344,7 +344,10 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
    s" src/lib/fork-child.f" REQUIRE-FILE
    s" src/lib/codegen.f" REQUIRE-FILE
    s" src/lib/ffi-callback.f" REQUIRE-FILE
-   s" src/lib/genio-core.f" REQUIRE-FILE ;
+   s" src/lib/genio-core.f" REQUIRE-FILE
+   s" src/lib/process-reaper.f" REQUIRE-FILE
+   \ It and process-argv.f, which it requires, reopen process.f's PROC-RAW.
+   s" src/lib/process-env.f" REQUIRE-FILE ;
 
 
 \ hb carries the build command's files, so `hb --load tools/hb-build.f`

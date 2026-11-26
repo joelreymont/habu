@@ -1,17 +1,18 @@
-\ process-reaper.f - a pool's reaper: an hb running src/lib/process-reaper-main.f,
-\ which leads a process group of its own and holds the read end of a pipe whose
-\ write end only the pool keeps. A child spawned REAPED is in that group from
-\ its first instruction. When the write end closes, by REAPER-STOP or by the
-\ pool's death, SIGKILL included, the reaper reads end of file and kills every
-\ other process in its group, each with its tree.
+\ process-reaper.f - a pool's reaper: the pool's own program, started with
+\ MARK$ as argv[0], which leads a process group of its own and holds the read
+\ end of a pipe whose write end only the pool keeps. A child spawned REAPED is
+\ in that group from its first instruction. When the write end closes, by
+\ REAPER-STOP or by the pool's death, SIGKILL included, the reaper reads end of
+\ file and kills every other process in its group, each with its tree.
 \ A child that leaves the group, by setsid or setpgid, is out of reach.
 
+require src/core/exit-status.f
 require src/lib/error.f
-require src/lib/span.f
+require src/lib/vector.f
 require src/lib/fd.f
-require src/lib/fs.f
 require src/lib/spawn.f
 require src/lib/process.f
+require src/lib/process-tree.f
 
 package PROCESS
 public
@@ -25,14 +26,31 @@ STRUCTURE reaper OPAQUE
 private
 
 1 constant HUP-BIT                       \ SIGHUP's bit, signal 1 on both hosts
+3 constant WATCH-FD
+64 constant CHUNK
+CHUNK SCRATCH-BUFFER: SINK
 
-: MAIN$ ( -- str ) s" src/lib/process-reaper-main.f" ;
+\ A reaper's argv[0], which a program never reads as an argument.
+: MARK$ ( -- str ) s" habu-reaper" ;
 
-\ The program under the tree above the engine's bin directory.
-: MAIN-PATH ( -- str )
-   OWN-PATH SOURCE-ROOT:DIRNAME SOURCE-ROOT:DIRNAME
-   MAIN$ PATHZ-BUF PATH-CAP SPAN:MAKE FS:JOIN-PATH-INTO
-   PATHZ-BUF swap >str ;
+: DRAIN ( -- )
+   begin WATCH-FD SINK CHUNK SPAN:MAKE read 0 > while repeat ;
+
+: REAP ( -- )
+   DRAIN
+   PROC-TREE:KILL-PEERS ;
+
+: ADD-MARK ( ^n -- ^n )
+   {: h:^ :}
+   MARK$ h CHUNK-ZCOPY h ARGS @ VEC:PUSH !
+   h ;
+
+\ MARK$ as the request's argv[0], in place of its path; call it before any ARG.
+: MARKED ( PROCESS:request -- PROCESS:request )
+   ERASE {: h:^ :}
+   h [: ADD-MARK ;] catch {: rc :} drop
+   rc h SETTLE
+   h MINT ;
 
 \ The pool's death orphans the reaper's group, which the kernel then sends
 \ SIGHUP if a member is stopped; the child starts with SIGHUP blocked.
@@ -41,33 +59,37 @@ private
    h BLOCKED-CELL @ HUP-BIT or h BLOCKED-CELL !
    h MINT ;
 
-\ The engine on the program, the pipe's read end its fd 3, fds 0 and 1 closed.
-: REAPER-REQUEST ( str fd -- PROCESS:request )
-   {: main:str r:fd :}
-   OWN-PATH NEW BLOCK-HUP
-   main ARG
-   3 >FD r FD
+\ This program as a reaper, the pipe's read end its fd 3, fds 0 and 1 closed.
+: REAPER-REQUEST ( fd -- PROCESS:request )
+   {: r:fd :}
+   OWN-PATH NEW MARKED BLOCK-HUP
+   WATCH-FD >FD r FD
    0 >FD CLOSED
    1 >FD CLOSED ;
 
 \ The top cell, a placeholder, carries the pid out, so catch keeps the depth.
-: REAPER-SPAWN ( str fd n -- str fd n )
-   drop {: main:str r:fd :}
-   main r
-   main r REAPER-REQUEST SPAWN PID>N ;
+: REAPER-SPAWN ( fd n -- fd n )
+   drop {: r:fd :}
+   r
+   r REAPER-REQUEST SPAWN PID>N ;
 
 public
 
-\ Spawns a reaper on a fresh pipe and keeps its write end. A program missing
-\ from the engine's tree throws E-PROC-PATH before any spawn.
+\ An entry calls this first: with MARK$ as argv[0] it runs the reaper and exits,
+\ 0 once its group is killed; with any other argv[0] it returns.
+: REAPER-ENTRY ( -- )
+   ARGC 1 < if exit then
+   0 ARGV$ MARK$ STR:= 0= if exit then
+   [: REAP ;] ERROR:TOP-LEVEL
+   NULL$ EXIT-STATUS:SUCCESS die ;
+
+\ Spawns this program as a reaper on a fresh pipe and keeps the write end.
 : REAPER-START ( -- PROCESS:reaper )
-   MAIN-PATH {: main:str :}
-   main FS:FILE? 0= if E-PROC-PATH throw then
    FD:PIPE {: r:fd w:fd :}
-   main r 0 [: REAPER-SPAWN ;] catch {: rc :}
+   r 0 [: REAPER-SPAWN ;] catch {: rc :}
    r FD>N close
-   rc 0<> if drop drop drop w FD>N close rc throw then
-   >PID {: pid:pid :} drop drop
+   rc 0<> if drop drop w FD>N close rc throw then
+   >PID {: pid:pid :} drop
    w pid REAPER-MAKE ;
 
 \ The child joins the reaper's group before it execs, so the reaper's kill at

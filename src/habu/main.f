@@ -16,6 +16,7 @@ require src/core/rejection.f
 require src/os/env-base.f
 require src/habu/interpreter.f
 require src/lib/line-editor.f
+require src/lib/process-reaper.f
 
 package COMMAND-LINE
 
@@ -199,6 +200,7 @@ CAST: APP-ACTION ( n -- [ -- ] )
 \ An application's MAIN takes the arguments, then stdin is the source. Off
 \ one, an argument names what runs and stdin is its data; else stdin is source.
 : ROUTED ( -- )
+   PROCESS:REAPER-ENTRY
    APP? if
       [: APP-RUN ;] ERROR:TOP-LEVEL
       LINE-EDITOR:TTY? if REPL else [: STDIN RUN-TEXT ;] ERROR:TOP-LEVEL then

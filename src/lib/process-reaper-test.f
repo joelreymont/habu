@@ -1,13 +1,17 @@
 \ process-reaper-test.f - a reaper kills what its pool spawned REAPED, a
 \ grandchild leading its own group included, when the pool dies by SIGKILL or
-\ stops it; REAPER-STOP names a reaper that did not exit 0. A test reads the
-\ reaper's pid as the group a REAPED child reports.
+\ stops it; REAPER-STOP names a reaper that did not exit 0; a program started
+\ with the reaper's mark in a group it does not lead kills nothing. A test reads
+\ the reaper's pid as the group a REAPED child reports. The pool that dies is
+\ the fixture built stripped outside any tree, so its reaper is that program's.
 
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/fd.f
 require src/lib/task.f
+require src/lib/engine-candidate.f
 require src/lib/test/assert.f
+require src/lib/test/runner.f
 require src/lib/process.f
 require src/lib/process-reaper.f
 require src/lib/spawn.f
@@ -21,6 +25,8 @@ $1000 constant CAP
 $0A constant LF-BYTE
 
 CAP BUFFER: OUT
+PATH-CAP BUFFER: IMAGE-BUF
+variable IMAGE-U
 variable OUT-LEN
 REPORTS TYPED-BUFFER PIDS n
 variable PID-N
@@ -89,11 +95,29 @@ variable ACC
    then
    rc ;
 
+: IMAGE$ ( -- str ) IMAGE-BUF IMAGE-U @ >str ;
+
+\ A stripped program starts at its own entry, with no engine or tree to run
+\ its reaper from, so the fixture is built as one, once for every pool.
+: BUILD ( -- )
+   s" process-reaper" GT-START
+   s" pool" IMAGE-BUF GT-PATH IMAGE-U !
+   ENGINE-CANDIDATE:PATH$ PROCESS:NEW
+   s" --load" PROCESS:ARG
+   s" tools/hb-build.f" PROCESS:ARG
+   s" --" PROCESS:ARG
+   s" src/lib/process-reaper-fixture.f" PROCESS:ARG
+   s" -o" PROCESS:ARG
+   IMAGE$ PROCESS:ARG
+   PROCESS:SPAWN RC
+   s" hb-build links the fixture stripped" T-LABEL
+   0 T= ;
+
+\ The stripped pool, run in the temporary directory.
 : FIXTURE ( fd -- PROCESS:request )
    {: w:fd :}
-   PROCESS:OWN-PATH PROCESS:NEW
-   s" --load" PROCESS:ARG
-   s" src/lib/process-reaper-fixture.f" PROCESS:ARG
+   IMAGE$ PROCESS:NEW
+   GT-ROOT PROCESS:CWD
    1 >FD w PROCESS:FD ;
 
 \ A pool's SIGKILL closes the write end only it held.
@@ -153,17 +177,42 @@ variable ACC
 : TEST-POOL-DEATH-STOPPED ( -- )
    FD:PIPE-PAIR {: r:fd w:fd :}
    r w
-   w FIXTURE s" --" PROCESS:ARG s" stopped" PROCESS:ARG PROCESS:SPAWN
+   w FIXTURE s" stopped" PROCESS:ARG PROCESS:SPAWN
    s" with a member stopped, every process the pool reported is gone within 5 s"
    POOL-DEATH ;
 
-public
+\ bash, which leads its own group, runs the fixture as a reaper in a subshell:
+\ a member of bash's group, not its leader, with fd 3 closed.
+: FAKE-REAPER ( -- str )
+   s\" (exec -a habu-reaper \"$0\" 3<&- 2>/dev/null); printf %s $?" ;
 
-: PROCESS-REAPER-TEST-MAIN ( -- )
+\ 5: a reaper that leads no group kills nothing and exits with its error.
+: TEST-NO-LEADER ( -- )
+   FD:PIPE-PAIR {: r:fd w:fd :}
+   s" /bin/bash" PROCESS:NEW
+   s" -c" PROCESS:ARG
+   FAKE-REAPER PROCESS:ARG
+   IMAGE$ PROCESS:ARG
+   1 >FD w PROCESS:FD
+   PROCESS:SPAWN {: c:pid :}
+   w FD>N close
+   r 1 READ-LINES
+   s" a reaper leading no group exits 85 and leaves bash alive" T-LABEL
+   OUT OUT-LEN @ >str s" 85" T$=
+   c RC 0 T= ;
+
+: CASES ( -- )
+   BUILD
    TEST-POOL-DEATH
    TEST-STOP
    TEST-STOP-KILLED
    TEST-POOL-DEATH-STOPPED
+   TEST-NO-LEADER ;
+
+public
+
+: PROCESS-REAPER-TEST-MAIN ( -- )
+   [: CASES ;] [: GT-CLEANUP ;] finally
    T-REPORT
    s" process-reaper-test: ok" type cr ;
 
