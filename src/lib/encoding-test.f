@@ -1,7 +1,8 @@
 \ encoding-test.f - the Encoding Standard's labels, BOM sniff and decoders
 \ through src/lib/encoding.f: the rules the index files do not hold. Expected
-\ bytes are written from the Standard, not computed; a four-byte gb18030
-\ sequence names its pointer, (((b1-$81)*10+b2-$30)*126+b3-$81)*10+b4-$30.
+\ bytes are written from the Standard and the pinned indexes, not computed; a
+\ four-byte gb18030 sequence names its pointer,
+\ (((b1-$81)*10+b2-$30)*126+b3-$81)*10+b4-$30.
 \ Run: bin/hb --load src/lib/encoding-test.f
 
 require src/lib/adt/option.f
@@ -29,6 +30,8 @@ TYPED-VARIABLE ENC-OUT ^VEC:vector<u8>
 : GB18030 ( -- ENCODING:encoding ) ENCODING-ENCODING:GB18030 ;
 : BIG5 ( -- ENCODING:encoding ) ENCODING-ENCODING:BIG5 ;
 : EUC-KR ( -- ENCODING:encoding ) ENCODING-ENCODING:EUC-KR ;
+: EUC-JP ( -- ENCODING:encoding ) ENCODING-ENCODING:EUC-JP ;
+: SHIFT-JIS ( -- ENCODING:encoding ) ENCODING-ENCODING:SHIFT-JIS ;
 : UTF-8 ( -- ENCODING:encoding ) ENCODING-ENCODING:UTF-8 ;
 : UTF-16BE ( -- ENCODING:encoding ) ENCODING-ENCODING:UTF-16BE ;
 : UTF-16LE ( -- ENCODING:encoding ) ENCODING-ENCODING:UTF-16LE ;
@@ -75,6 +78,46 @@ TYPED-VARIABLE ENC-OUT ^VEC:vector<u8>
    s\" \x88\xA3" BIG5 s\" \xC3\xAA\xCC\x84" DECODES     \ U+00EA U+0304
    s\" \x88\xA5" BIG5 s\" \xC3\xAA\xCC\x8C" DECODES ;   \ U+00EA U+030C
 
+: EUC-JP-CASES ( -- )
+   s" " EUC-JP s" " DECODES
+   s" Ab~" EUC-JP s" Ab~" DECODES
+   s\" a\x8E\xB1" EUC-JP s\" a\xEF\xBD\xB1" DECODES    \ katakana U+FF71
+   s\" \x8F\xA2\xAF" EUC-JP s\" \xCB\x98" DECODES      \ jis0212 108, U+02D8
+   s\" \xC6\xFC" EUC-JP s\" \xE6\x97\xA5" DECODES      \ jis0208 3569, U+65E5
+   s\" \xA1\xA1x" EUC-JP s\" \xE3\x80\x80x" DECODES    \ jis0208 0, U+3000
+   s\" a\xA9\xA1" EUC-JP s" a" CUT                     \ jis0208 752 is empty
+   s\" a\x8F\xA1\xA1" EUC-JP s" a" CUT                 \ jis0212 0 is empty
+   s\" a\xC6\x41" EUC-JP s" a" CUT                     \ an ASCII byte after a lead
+   s\" a\xC6\xA0" EUC-JP s" a" CUT                     \ a trail outside $A1-$FE
+   s\" a\xC6\xFF" EUC-JP s" a" CUT
+   s\" a\x8E\xE0" EUC-JP s" a" CUT                     \ $8E then no katakana
+   s\" a\x8E\xA0" EUC-JP s" a" CUT
+   s\" a\x8F\x41\xA1" EUC-JP s" a" CUT                 \ $8F then an ASCII byte
+   s\" a\x8F\xA2\xA0" EUC-JP s" a" CUT                 \ $8F, a lead, a bad trail
+   s\" a\x8F\xA2\xFF" EUC-JP s" a" CUT
+   s\" a\x80" EUC-JP s" a" CUT                         \ a byte that leads nothing
+   s\" a\xFF" EUC-JP s" a" CUT
+   s\" a\xC6" EUC-JP s" a" CUT                         \ cut off after a lead
+   s\" a\x8E" EUC-JP s" a" CUT
+   s\" a\x8F\xA2" EUC-JP s" a" CUT ;
+
+: SHIFT-JIS-CASES ( -- )
+   s" " SHIFT-JIS s" " DECODES
+   s\" Ab\x80" SHIFT-JIS s\" Ab\xC2\x80" DECODES       \ $80 is U+0080
+   s\" a\xB1" SHIFT-JIS s\" a\xEF\xBD\xB1" DECODES     \ katakana U+FF71
+   s\" \xF0\x40" SHIFT-JIS s\" \xEE\x80\x80" DECODES   \ pointer 8836, U+E000
+   s\" \xF9\xFC" SHIFT-JIS s\" \xEE\x9D\x97" DECODES   \ pointer 10715, U+E757
+   s\" \x93\xFA" SHIFT-JIS s\" \xE6\x97\xA5" DECODES   \ jis0208 3569, U+65E5
+   s\" \x81\x40x" SHIFT-JIS s\" \xE3\x80\x80x" DECODES \ jis0208 0, U+3000
+   s\" a\x85\x40" SHIFT-JIS s" a" CUT                  \ jis0208 752 is empty
+   s\" a\x93\x7F" SHIFT-JIS s" a" CUT                  \ a trail outside both ranges
+   s\" a\x93\x3F" SHIFT-JIS s" a" CUT
+   s\" a\x93\xFD" SHIFT-JIS s" a" CUT
+   s\" a\xFC\xFF" SHIFT-JIS s" a" CUT
+   s\" a\xA0" SHIFT-JIS s" a" CUT                      \ a byte that leads nothing
+   s\" a\xFD" SHIFT-JIS s" a" CUT
+   s\" a\x93" SHIFT-JIS s" a" CUT ;                    \ cut off after a lead
+
 \ iso-8859-8-i reads iso-8859-8's index; windows-874 has no $DB.
 : SINGLE-BYTE ( -- )
    s\" a\x80" W-874 s\" a\xE2\x82\xAC" DECODES
@@ -103,8 +146,8 @@ TYPED-VARIABLE ENC-OUT ^VEC:vector<u8>
    s\" \xFF\xFE" UTF-16BE s\" \xEF\xBF\xBE" DECODES     \ U+FFFE
    s\" \xEF\xBB\xBF" W-1252 s\" \xC3\xAF\xC2\xBB\xC2\xBF" DECODES ;
 
-\ A sequence the input's end cuts off, and a lead before an ASCII byte that
-\ makes no pointer.
+\ A sequence the input's end cuts off, a lead before an ASCII byte that
+\ makes no pointer, and a lead or a trail outside its range.
 : CUTS ( -- )
    s\" a\x81" GB18030 s" a" CUT
    s\" a\x81\x30" GB18030 s" a" CUT
@@ -113,7 +156,20 @@ TYPED-VARIABLE ENC-OUT ^VEC:vector<u8>
    s\" a\xB0" EUC-KR s" a" CUT
    s\" a\x81 b" GB18030 s" a" CUT
    s\" a\x88 b" BIG5 s" a" CUT
-   s\" a\xB0 b" EUC-KR s" a" CUT ;
+   s\" a\xB0 b" EUC-KR s" a" CUT
+   s\" a\xFF" GB18030 s" a" CUT
+   s\" a\x81\x7F" GB18030 s" a" CUT
+   s\" a\x81\xFF" GB18030 s" a" CUT
+   s\" a\x80" BIG5 s" a" CUT
+   s\" a\xFF" BIG5 s" a" CUT
+   s\" a\x88\x3F" BIG5 s" a" CUT
+   s\" a\x88\x7F" BIG5 s" a" CUT
+   s\" a\x88\xA0" BIG5 s" a" CUT
+   s\" a\x88\xFF" BIG5 s" a" CUT
+   s\" a\x80" EUC-KR s" a" CUT
+   s\" a\xFF" EUC-KR s" a" CUT
+   s\" a\xB0\x40" EUC-KR s" a" CUT
+   s\" a\xB0\xFF" EUC-KR s" a" CUT ;
 
 : SOME= ( option<ENCODING:encoding> ENCODING:encoding -- )
    {: want :}
@@ -151,6 +207,8 @@ TYPED-VARIABLE ENC-OUT ^VEC:vector<u8>
    GB18030 GB18030-RULES
    GBK GB18030-RULES
    BIG5-PAIRS
+   EUC-JP-CASES
+   SHIFT-JIS-CASES
    SINGLE-BYTE
    OTHERS
    UTF16-ERRORS

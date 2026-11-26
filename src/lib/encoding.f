@@ -1,18 +1,19 @@
 \ encoding.f - package ENCODING: the WHATWG Encoding Standard's labels, BOM
 \ sniff and decoders, in fatal mode, writing UTF-8. DECODE appends to a
 \ vector without clearing it; the first decoder error throws E-DECODE
-\ (UTF16:E-UTF16 for UTF-16) and leaves what was appended before it. Each
-\ decoder but ISO-2022-JP's reads one whole sequence at a cursor and appends
-\ it or throws, so a sequence the input's end cuts off is an error. The
-\ indexes (src/lib/encoding/data.f) hold no surrogate, 0 or scalar past
-\ U+10FFFF, so the output is valid UTF-8.
+\ (UTF16:E-UTF16 for UTF-16) and leaves what was appended before it. The
+\ input may not overlap the vector's storage, which an append may move. Each
+\ legacy multi-byte decoder but ISO-2022-JP's reads one whole sequence at a
+\ cursor and appends it or throws; UTF-8 is checked whole before it is
+\ appended. A sequence the input's end cuts off is an error. The indexes
+\ (src/lib/encoding/data.f) hold no surrogate, 0 or scalar past U+10FFFF, so
+\ the output is valid UTF-8.
 \ STORAGE CLASS. PROCESS-WIDE read-only tables; CALLER-OWNED output.
 
 require src/lib/adt/option.f
 require src/lib/encoding/data.f
 require src/lib/encoding/fault.f
 require src/lib/encoding/iso-2022-jp.f
-require src/lib/encoding/japanese.f
 require src/lib/utf16.f
 require src/lib/utf8-scalar.f
 require src/lib/vector.f
@@ -104,10 +105,10 @@ private
    {: s:str v:^ :}
    s STR:LEN 0<> if E-DECODE throw then ;
 
-\ The ranges are in pointer order and the first starts at pointer 0: the
-\ last range at or below a pointer, by halving.
 : RANGE-POINTER ( n -- n ) 2 * INDEX-GB18030-RANGES @ ;
 
+\ The ranges are in pointer order and the first starts at pointer 0: the
+\ last range at or below a pointer, by halving.
 : RANGE-AT ( n -- n )
    {: p:n :}
    0 GB18030-RANGE-COUNT
@@ -187,6 +188,77 @@ private
    b $81 $FE IN? 0= if E-DECODE throw then
    b at 1+ s TRAIL@ EUC-KR-POINTER INDEX-EUC-KR @ v MAPPED
    at 2 + ;
+
+\ The halfwidth katakana of a byte $A1-$DF.
+: JIS-KANA ( n -- n ) $FF61 $A1 - + ;
+
+\ The EUC-JP pointer of a lead and a trail, both $A1-$FE.
+: EUC-JP-POINTER ( n n -- n )
+   {: lead:n b:n :}
+   lead $A1 $FE IN? b $A1 $FE IN? and 0= if E-DECODE throw then
+   lead $A1 - 94 * b + $A1 - ;
+
+: EUC-JP-KANA ( n str ^VEC:vector<u8> -- n )
+   {: at:n s:str v:^ :}
+   at 1+ s TRAIL@ {: b:n :}
+   b $A1 $DF IN? 0= if E-DECODE throw then
+   b JIS-KANA v UTF8:APPEND-SCALAR  at 2 + ;
+
+\ $8F then a pair of index jis0212.
+: EUC-JP-JIS0212 ( n str ^VEC:vector<u8> -- n )
+   {: at:n s:str v:^ :}
+   at 1+ s TRAIL@  at 2 + s TRAIL@ EUC-JP-POINTER
+   INDEX-JIS0212 @ v MAPPED  at 3 + ;
+
+: EUC-JP-JIS0208 ( n str ^VEC:vector<u8> -- n )
+   {: at:n s:str v:^ :}
+   at s BYTE@  at 1+ s TRAIL@ EUC-JP-POINTER
+   INDEX-JIS0208 @ v MAPPED  at 2 + ;
+
+: EUC-JP-STEP ( n str ^VEC:vector<u8> -- n )
+   {: at:n s:str v:^ :}
+   at s BYTE@ {: b:n :}
+   b ASCII? if b v UTF8:APPEND-SCALAR  at 1+ exit then
+   b $8E = if at s v EUC-JP-KANA exit then
+   b $8F = if at s v EUC-JP-JIS0212 exit then
+   b $A1 $FE IN? if at s v EUC-JP-JIS0208 exit then
+   E-DECODE throw ;
+
+: DECODE-EUC-JP ( str ^VEC:vector<u8> -- ) ['] EUC-JP-STEP EACH ;
+
+: SHIFT-JIS-TRAIL? ( n -- bool )
+   {: b:n :}
+   b $40 $7E IN? b $80 $FC IN? or ;
+
+: SHIFT-JIS-POINTER ( n n -- n )
+   {: lead:n b:n :}
+   b SHIFT-JIS-TRAIL? 0= if E-DECODE throw then
+   lead $A0 < if $81 else $C1 then {: lead-off:n :}
+   b $7F < if $40 else $41 then {: off:n :}
+   lead lead-off - 188 * b + off - ;
+
+\ Pointers 8836-10715 are Windows' user-defined characters from U+E000.
+: SHIFT-JIS-SCALAR ( n -- n )
+   {: p:n :}
+   p 8836 10715 IN? if p 8836 - $E000 + exit then
+   p INDEX-JIS0208 @ ;
+
+: SHIFT-JIS-PAIR ( n str ^VEC:vector<u8> -- n )
+   {: at:n s:str v:^ :}
+   at s BYTE@  at 1+ s TRAIL@ SHIFT-JIS-POINTER
+   SHIFT-JIS-SCALAR v MAPPED  at 2 + ;
+
+: SHIFT-JIS-STEP ( n str ^VEC:vector<u8> -- n )
+   {: at:n s:str v:^ :}
+   at s BYTE@ {: b:n :}
+   b $80 <= if b v UTF8:APPEND-SCALAR  at 1+ exit then
+   b $A1 $DF IN? if b JIS-KANA v UTF8:APPEND-SCALAR  at 1+ exit then
+   b $81 $9F IN? b $E0 $FC IN? or
+   if at s v SHIFT-JIS-PAIR exit then
+   E-DECODE throw ;
+
+: DECODE-SHIFT-JIS ( str ^VEC:vector<u8> -- )
+   ['] SHIFT-JIS-STEP EACH ;
 
 \ ASCII whitespace: TAB, LF, FF, CR and SPACE.
 : WHITE? ( n -- bool )

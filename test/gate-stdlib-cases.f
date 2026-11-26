@@ -384,6 +384,7 @@ TEST:;SUITE
 
 TEST:SUITE encoding-decode
    src/lib/encoding-test.f
+   src/lib/encoding/iso-2022-jp-test.f
 TEST:;SUITE
 
 TEST:SUITE be-integers
