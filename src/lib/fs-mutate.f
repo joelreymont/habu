@@ -680,21 +680,20 @@ FUNCTION: FCNTL-CALL fcntl ( n n n -- i32 ) 2 VARIADIC ;FUNCTION
    fd ATOMIC-SYNC drop
    fd src mode ;
 
-\ Runs after the publish, hence E-FS-SYNC. Linux won't fsync a search-only dir
-\ (EBADF), so it is reopened to read; one the caller cannot list stays unsynced.
+\ Runs after the publish, hence E-FS-SYNC. Darwin syncs the search-only dir.
+\ Linux opened it O_PATH, which fsync rejects (EBADF), so it syncs the dir
+\ reopened to read; one the caller cannot list stays unsynced.
 : ATOMIC-SYNC-DIR ( n -- n ) {: dir :}
-   dir [: ATOMIC-SYNC ;] catch {: first:n :}
-   drop
-   first 0= if dir exit then
-   ERRNO EBADF <> if E-FS-SYNC throw then
-   dir S\" .\z" STR:DATA OPEN-DIR-FLAGS OPEN-AT-CALL {: rd:n :}
-   rd 0 < if
+   HB-TARGET-LINUX? if
+      dir S\" .\z" STR:DATA OPEN-DIR-FLAGS OPEN-AT-CALL
+   else dir then {: fd:n :}
+   fd 0 < if
       FFI:ERRNO EACCES = if dir exit then
       E-FS-SYNC ERRNO-FAIL
    then
-   rd [: ATOMIC-SYNC ;] catch {: code:n :}
+   fd [: ATOMIC-SYNC ;] catch {: code:n :}
    drop
-   rd CLOSE-FD drop
+   HB-TARGET-LINUX? if fd CLOSE-FD drop then
    code 0<> if E-FS-SYNC throw then
    dir ;
 
@@ -860,7 +859,8 @@ private
 \ files. Each group goes FILL (each free name's sibling created, written and
 \ hinted), SYNC (each sibling's data ordered before its rename, then closed
 \ once) and PUBLISH (each sibling renamed to its name, or unlinked if the
-\ name was taken since); after the last group, DIR-SYNC once. A throw in
+\ name was taken since); after the last group, DIR-SYNC once if a group
+\ renamed a name into the directory. A throw in
 \ FILL, SYNC or PUBLISH goes to ABANDON, which closes the group's open
 \ descriptors, unlinks its unpublished siblings and rethrows. Linux fsyncs
 \ each file; Darwin barriers each, and DIR-SYNC's F_FULLFSYNC flushes the
@@ -895,7 +895,8 @@ FUNCTION: SYNC-RANGE-CALL sync_file_range ( n n n n -- i32 ) ;FUNCTION
 SIBLING-LEN-MAX 1+ constant SIB-ROOM
 2 cells SIB-ROOM + NAME-MAX 1+ + CELL 1- + CELL / cells constant SLOT-ROOM
 
-\ The scope's bytes: the report prefix `<dir>/` in PREFIX-ROOM, then slots.
+\ The scope's bytes: the report prefix `<dir>/` in PREFIX-ROOM, then a cell
+\ counting the names PUBLISH renamed, then slots.
 : PREFIX-ROOM ( n -- n ) CELL + CELL / cells ;
 
 : GROUP-SLOT ( ^u8 n -- ^n ) SLOT-ROOM * + CELL-VIEW ;
@@ -936,20 +937,22 @@ SIBLING-LEN-MAX 1+ constant SIB-ROOM
    -1 slot !
    fd ATOMIC-CLOSE drop ;
 
-: SLOT-PUBLISH ( n ^n -- ) {: dir slot:^ :}
+: SLOT-PUBLISH ( n ^n ^n -- ) {: dir pub:^ slot:^ :}
    slot SLOT-SIB-LEN @ 0= if exit then
-   dir slot SLOT-SIB slot SLOT-NAME RENAME-NOREPLACE 0= if
+   dir slot SLOT-SIB slot SLOT-NAME RENAME-NOREPLACE if
+      1 pub +!
+   else
       dir slot SLOT-SIB 0 UNLINK-AT-CALL 0<> if E-FS-IO ERRNO-FAIL then
    then
    0 slot SLOT-SIB-LEN ! ;
 
 \ Stack-preserving under `catch`.
-: CREATE-GROUP ( R n ^u8 n n [ R n -- R str str ] -- R n ^u8 n n [ R n -- R str str ] )
-   {: dir slots:^ first size body :}
+: CREATE-GROUP ( R n ^n ^u8 n n [ R n -- R str str ] -- R n ^n ^u8 n n [ R n -- R str str ] )
+   {: dir pub:^ slots:^ first size body :}
    dir slots first size body CREATE-FILL
    size 0 ?do slots i GROUP-SLOT SLOT-SYNC loop
-   size 0 ?do dir slots i GROUP-SLOT SLOT-PUBLISH loop
-   dir slots first size body ;
+   size 0 ?do dir pub slots i GROUP-SLOT SLOT-PUBLISH loop
+   dir pub slots first size body ;
 
 : SLOT-ABANDON ( n str ^n -- ) {: dir pre:str slot:^ :}
    slot @ {: fd :}
@@ -968,21 +971,24 @@ SIBLING-LEN-MAX 1+ constant SIB-ROOM
    MEM:ALLOCATION>SPAN {: dir path:str count body buf :}
    path s" /" buf SUFFIX-PATH {: preu :}
    buf SPAN:$ STR:DATA {: pre:^ :}
-   pre path STR:LEN PREFIX-ROOM + {: slots:^ :}
+   pre path STR:LEN PREFIX-ROOM + {: at:^ :}
+   at CELL-VIEW {: pub:^ :}
+   0 pub !
+   at CELL + {: slots:^ :}
    count 0 ?do
       i  count i - ATOMIC-GROUP min {: first size :}
       size 0 ?do slots i GROUP-SLOT SLOT-EMPTY loop
-      dir slots first size body [: CREATE-GROUP ;] catch {: code:n :}
-      2drop 2drop drop
+      dir pub slots first size body [: CREATE-GROUP ;] catch {: code:n :}
+      2drop 2drop 2drop
       code 0<> if dir pre preu >str slots size code CREATE-ABANDON then
    ATOMIC-GROUP +loop
-   dir ATOMIC-SYNC-DIR drop ;
+   pub @ 0 > if dir ATOMIC-SYNC-DIR drop then ;
 
 \ Stack-preserving under `catch`.
 : CREATE-RUN ( R n str n [ R n -- R str str ] -- R n str n [ R n -- R str str ] )
    {: dir path:str count body :}
    dir path count body
-   path STR:LEN PREFIX-ROOM  count ATOMIC-GROUP min SLOT-ROOM * +
+   path STR:LEN PREFIX-ROOM CELL +  count ATOMIC-GROUP min SLOT-ROOM * +
    MEM:BYTES-ALLOC-LEN [: CREATE-SCOPE ;] MEM:WITH-BYTES
    dir path count body ;
 
@@ -992,7 +998,7 @@ public
 \ body's answers need last only until its next call. Each name is one
 \ component: an empty one is E-FS-PATH, one over NAME_MAX bytes
 \ E-FS-CAPACITY. Count 0 does nothing; a negative count is E-FS-CAPACITY.
-\ On return every name is on disk as ATOMIC-SYNC-DIR says. A throw unlinks
+\ On return every name it published is on disk as ATOMIC-SYNC-DIR says. A throw unlinks
 \ its group's unpublished siblings, reporting on fd 2 one it cannot, and
 \ leaves earlier groups' names whole: one in FILL or SYNC publishes none of
 \ its group's names, one in PUBLISH keeps those it renamed; E-FS-SYNC leaves
