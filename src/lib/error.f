@@ -141,6 +141,8 @@ require src/os/env-base.f
 -6879 constant E-CMP-LAST
 
 
+\ Encoding Standard table generator: -7900..-7909, minted in
+\ tools/encoding/generate.f, which owns package ENCODING-TOOL.
 \ Content-key folds: -6920..-6929, minted in src/lib/content-key.f, which owns
 \ package CONTENT-KEY.
 
