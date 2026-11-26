@@ -1909,8 +1909,9 @@ TASK-MIN-STACK constant MIN-STACK
 \
 \    begin  MY-STATE @ DONE = if exit then  TASK:WAIT  again
 \
-\ A loop that must also answer TASK:HALT calls TASK:PAUSE in that loop and gives
-\ its resources back in a finally around the wait.
+\ A loop that must also answer TASK:HALT calls `0 TASK:HALT-UNWIND` in that loop,
+\ which serves the halt without yielding, and gives its resources back in a
+\ finally around the wait.
 : WAIT ( -- )
    TASK-STOP ;
 

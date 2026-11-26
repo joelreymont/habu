@@ -1138,9 +1138,11 @@ INSTALL-HOST
    idx REC-STATE@ STATE-SUBMITTED = if idx TRY-CANCEL then
    AIO-LOCK TASK:RELEASE ;
 
+\ Serves a pending TASK:HALT where the wait woke, without yielding: a woken
+\ task reads its result at once.
 : PARK ( n -- )
    AIO-PARKED !
-   TASK:PAUSE
+   0 TASK:HALT-UNWIND
    -1 AIO-PARKED ! ;
 
 \ The wait: a hint returns the task to its own state, which is the record's.
@@ -1155,7 +1157,7 @@ INSTALL-HOST
    AIO-PARKED @ dup 0 < if drop exit then
    GIVE-BACK ;
 
-\ A halt that ends the task at PAUSE unwinds through this finally, which cancels
+\ A halt that ends the task at PARK unwinds through this finally, which cancels
 \ the wait's records before an outer cleanup can close their descriptors.
 : WAIT-DONE ( n -- ) {: idx:n :}
    -1 AIO-PARKED !
