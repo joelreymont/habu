@@ -182,7 +182,7 @@ create ERR CAP allot   variable ERR-U
       SUBJECT:REJECTED? TTRUE
    s" a callable copy met at an exit's join, not a call's input, keeps the mismatch text" T-LABEL
    s" : W ( S -- S [ S -- S ] ) [: ;] ; : XE ( R bool -- R [ R -- R ] ) IF W EXIT THEN W W nip ;" 70
-   s" error[E-MISMATCH]: `nip` takes [ [ -- ] -- [ -- ] ]; the stack holds [ -- ]"
+   s" error[E-MISMATCH]: `;` takes [ [ -- ] -- [ -- ] ]; the stack holds [ -- ]"
       SUBJECT:REJECTED? TTRUE
    s" a callable argument that leaves a callable on its own row keeps the mismatch text" T-LABEL
    s" : W ( S -- S [ S -- S ] ) [: ;] ; : CS-T ( [ A -- A ] -- ) drop ;  : CS-K103 ( -- ) [: W ;] CS-T ;" 70
