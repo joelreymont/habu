@@ -367,7 +367,7 @@ private
    repeat drop ;
 
 : COPY-READ-ONE ( SPAN:span<u8> n n -- n ) {: buf in out :}
-   in buf SPAN:$ dup STR:DATA swap STR:LEN read {: rd :}
+   in buf read {: rd :}
    rd 0 < if in out E-FS-IO COPY-THROW then
    rd COPY-CAP > if in out E-FS-IO COPY-THROW then
    rd ;

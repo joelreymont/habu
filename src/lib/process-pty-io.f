@@ -78,8 +78,7 @@ SCRATCH-VARIABLE IO-GO-R                         \ child-side release gate
    ev FD:POLLIN and 0 <> ;
 
 : IO-READ-SPAN ( fd SPAN:span<u8> -- n ) {: m:fd s :}
-   s SPAN:$ {: room:str :}
-   m FD>N room STR:DATA room STR:LEN read ;
+   m FD>N s read ;
 
 \ What the master had to give once the loop answered: the bytes appended, or -1
 \ for a hang-up or an end of file. POLLNVAL is a broken descriptor, not an exit.
@@ -137,7 +136,7 @@ SCRATCH-VARIABLE IO-GO-R                         \ child-side release gate
    IO-TTY @ if in else IO-SOUT-W @ >FD IO-LIFT then {: out:fd :}
    in out IO-WIRE
    go IO-CLOSE-HIGH
-   go FD>N IO-GOBYTE 1 read 1 <> if s" " EXIT-STATUS:EXEC die then
+   go FD>N IO-GOBYTE 1 SPAN:MAKE read 1 <> if s" " EXIT-STATUS:EXEC die then
    go FD>N close
    IO-PATH-BUF IO-PATH-LEN @ >str PROC-ARGV-PREPARE 0 IO-ENVP execve drop
    s" " EXIT-STATUS:EXEC die ;

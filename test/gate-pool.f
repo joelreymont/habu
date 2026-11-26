@@ -1318,7 +1318,7 @@ variable GT-POOL-CPU-NS
 
 : GT-POOL-READ-STREAM ( idx n -- ) {: idx:idx stream:n :}
    idx stream GT-POOL-STREAM-FD-PTR {: fdp:^ :}
-   fdp @ FD>N GT-POOL-CHUNK GT-POOL-CHUNK-CAP read GT-POOL-RD !
+   fdp @ FD>N GT-POOL-CHUNK GT-POOL-CHUNK-CAP SPAN:MAKE read GT-POOL-RD !
    GT-POOL-RD @ 0 < if E-PROC-OUTPUT GT-POOL-THROW then
    GT-POOL-RD @ GT-POOL-CHUNK-CAP > if E-PROC-OUTPUT GT-POOL-THROW then
    GT-POOL-RD @ 0= if fdp GT-POOL-CLOSE-FD exit then

@@ -174,7 +174,7 @@ variable STAT-PATH-U
    s" /stat" STAT-PATH+
    STAT-PATH STAT-PATH-U BUF-LEN@ >str FS:>PATHZ open-rd {: fd:n :}
    fd 0 < if 0 exit then
-   fd STAT STAT-CAP read {: got:n :}
+   fd STAT STAT-CAP SPAN:MAKE read {: got:n :}
    fd close
    got 0 <= if 0 exit then
    -1 got 0 ?do STAT i + c@ CLOSE-PAREN = if drop i then loop {: close:n :}
@@ -214,7 +214,7 @@ variable STAT-PATH-U
    begin REPORT-U @ REPORT-BYTES < while
       FIFO-RD @ >FD ROOT-WATCH @ >FD TEST-FIFO:REPORT-OR-END
       0 >IDX PROCESS:PFD-REVENTS 0= if false exit then
-      FIFO-RD @ REPORTS REPORT-U @ + REPORT-BYTES REPORT-U @ - read {: got:n :}
+      FIFO-RD @ REPORTS REPORT-U @ + REPORT-BYTES REPORT-U @ - SPAN:MAKE read {: got:n :}
       got 0 <= if false exit then
       REPORT-U @ got + REPORT-U !
    repeat

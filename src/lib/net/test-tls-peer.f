@@ -100,7 +100,7 @@ private
 \ One read of the server's output, once there is some.
 : READ-OUT ( -- )
    SERVER-OUT @ >FD FD:POLLIN PROCESS:PFD!  1 -1 >MS PROCESS:POLL drop
-   SERVER-OUT @ OUT OUT-U @ + OUT-ROOM OUT-U @ - read {: k:n :}
+   SERVER-OUT @ OUT OUT-U @ + OUT-ROOM OUT-U @ - SPAN:MAKE read {: k:n :}
    k 0 <= if E-PROC-OUTPUT throw then
    k OUT-U +! ;
 

@@ -380,9 +380,9 @@ variable STAGED-FILES
    S\" variable GO-R variable GO-W variable REL-R variable REL-W\ncreate BYTE 8 allot\n" TEXT+
    S\" : PIPE-RC ( n -- ) 0<> if s\q pipe\q 2 die then ;\n" TEXT+
    S\" : PIPES ( -- ) pipe PIPE-RC GO-W ! GO-R ! pipe PIPE-RC REL-W ! REL-R ! ;\n" TEXT+
-   S\" : ACT ( -- ) GO-W @ BYTE 1 >str write drop REL-R @ BYTE 1 read drop\n" TEXT+
+   S\" : ACT ( -- ) GO-W @ BYTE 1 >str write drop REL-R @ BYTE 1 SPAN:MAKE read drop\n" TEXT+
    S\"    s\q action: done\q type cr ;\n" TEXT+
-   S\" : WORK ( -- ) GO-R @ BYTE 1 read drop PROC-FORK:CHECKED {: pid:pid :}\n" TEXT+
+   S\" : WORK ( -- ) GO-R @ BYTE 1 SPAN:MAKE read drop PROC-FORK:CHECKED {: pid:pid :}\n" TEXT+
    S\"    pid PID>N 0= if s\q \q 9 die then\n" TEXT+
    S\"    pid PROCESS:WAIT PROCESS:STATUS>RC RC>N s\q reaped \q type . cr\n" TEXT+
    S\"    REL-W @ BYTE 1 >str write drop 0 TASK:RETURN ;\n" TEXT+

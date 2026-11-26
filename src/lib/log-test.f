@@ -543,7 +543,7 @@ TASK:MIN-STACK TASK:TASK RELEASER
 
 
 : DRAIN-ONE ( -- bool )
-   PIPE-R @ CHUNK CHUNK-U read {: got:n :}
+   PIPE-R @ CHUNK CHUNK-U SPAN:MAKE read {: got:n :}
    got 0 < if E-FS-IO throw then
    CHUNK got >str PIPE-B @ VEC:APPEND
    got 0 > ;
@@ -609,7 +609,7 @@ TASK:MIN-STACK TASK:TASK RELEASER
 
 
 : TAKE-ONE ( -- bool )
-   PIPE-R @ CHUNK CHUNK-U read {: got:n :}
+   PIPE-R @ CHUNK CHUNK-U SPAN:MAKE read {: got:n :}
    got 0 > if CHUNK got >str PIPE-B @ VEC:APPEND then
    got 0 > ;
 

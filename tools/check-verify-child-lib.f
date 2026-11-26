@@ -85,7 +85,7 @@ variable JSON?   true JSON? !           \ records are JSON, false after `--prose
    0 IN-U !
    begin
       IN-U @ CHUNK + IN-RESERVE
-      0 IN-U @ IN CHUNK read RD !
+      0 IN-U @ IN CHUNK SPAN:MAKE read RD !
       RD @ 0 < if
          s" check-verify: cannot read the open documents and the subject" EXIT-STATUS:IOERR die
       then

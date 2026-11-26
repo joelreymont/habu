@@ -222,7 +222,7 @@ false STOPPED !
 : STATUS-READY? ( -- bool )
    PIDFILE$ FS:>PATHZ open-rd {: fd:n :}
    fd 0 < if false exit then
-   fd OUT CAPTURE-CAP read {: got:n :}
+   fd OUT CAPTURE-CAP SPAN:MAKE read {: got:n :}
    fd close
    got 0 <= if false exit then
    STATUS-LINE got LINE-AT {: at:n :}

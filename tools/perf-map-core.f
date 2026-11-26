@@ -165,7 +165,7 @@ private
 
 \ ---- streaming stdin ----------------------------------------------------------
 : REFILL ( -- bool )
-   0 IN-BUF IN-CAP read {: got:n :}
+   0 IN-BUF IN-CAP SPAN:MAKE read {: got:n :}
    got 0 < if s" perf-map: cannot read stdin" EXIT-STATUS:IOERR die then
    got IN-U !  0 IN-I !
    got 0 > ;

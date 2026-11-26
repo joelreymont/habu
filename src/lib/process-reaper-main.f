@@ -12,7 +12,7 @@ private
 CHUNK BUFFER: SINK
 
 : DRAIN ( -- )
-   begin WATCH-FD SINK CHUNK read 0 > while repeat ;
+   begin WATCH-FD SINK CHUNK SPAN:MAKE read 0 > while repeat ;
 
 public
 

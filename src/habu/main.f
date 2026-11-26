@@ -132,7 +132,7 @@ $10000 constant READ-SIZE
 \ One read past USED; whether the file has ended.
 : STEP ( n -- bool ) {: fd:n :}
    USED @ READ-SIZE + TEXT-RESERVE
-   fd USED @ TEXT READ-SIZE read {: got:n :}
+   fd USED @ TEXT READ-SIZE >span read {: got:n :}
    got 0 < if FS:ERRNO CANNOT-READ then
    USED @ got + USED !
    got 0 = ;

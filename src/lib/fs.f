@@ -572,7 +572,7 @@ private
 : READ-FILL ( ^u8 n -- n ) {: dst:^ cap :}
    0 IO-LEN !
    begin IO-LEN @ cap < while
-      IO-FD @ dst IO-LEN @ + cap IO-LEN @ - read IO-RD !
+      IO-FD @ dst IO-LEN @ + cap IO-LEN @ - SPAN:MAKE read IO-RD !
       IO-RD @ 0 < if IO-FAIL then
       IO-RD @ cap IO-LEN @ - > if IO-FAIL then
       IO-RD @ 0= if IO-LEN @ exit then
@@ -581,7 +581,7 @@ private
    IO-LEN @ ;
 
 : READ-MORE? ( -- bool )
-   IO-FD @ READ-PROBE READ-PROBE-CAP read IO-RD !
+   IO-FD @ READ-PROBE READ-PROBE-CAP SPAN:MAKE read IO-RD !
    IO-RD @ 0 < if IO-FAIL then
    IO-RD @ 0 > ;
 

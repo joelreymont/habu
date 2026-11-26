@@ -236,7 +236,7 @@ create GT-CAP-PATH PATH-CAP allot     \ a file's path while GT-CAP-FILE opens it
 : GT-CAP-READ-AT ( n n [ n -- ^u8 ] -- n )
    {: got:n fd:n sink :}
    got GT-CAP-CHUNK + sink execute {: at:^ :}
-   fd at got + GT-CAP-CHUNK read {: rd:n :}
+   fd at got + GT-CAP-CHUNK SPAN:MAKE read {: rd:n :}
    rd 0 < if E-FS-IO throw then
    rd ;
 

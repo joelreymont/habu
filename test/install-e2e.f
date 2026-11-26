@@ -113,7 +113,7 @@ variable TREES-N
    S\" : SAY ( str -- )\n   {: s:str :}\n" READER+
    S\"    1 s write drop  10 CH c!  1 CH 1 >str write drop ;\n" READER+
    S\" : AWAIT ( -- )\n" READER+
-   S\"    begin 0 CH 1 read 1 = while CH c@ 10 = if exit then repeat ;\n" READER+
+   S\"    begin 0 CH 1 SPAN:MAKE read 1 = while CH c@ 10 = if exit then repeat ;\n" READER+
    S\" : VERDICT ( bool -- ) if s\q done\q else s\q mixed\q then SAY ;\n" READER+
    S\" ;package\ns\q loaded\q INSTALL-E2E-READER:SAY\n" READER+
    S\" INSTALL-E2E-READER:AWAIT\nrequire src/install-race-y.f\n" READER+
@@ -201,7 +201,7 @@ variable TREES-N
    ;MATCH ;
 
 : READ-SOME ( fd -- n ) {: r:fd :}
-   r FD>N OUT OUT-U @ + IO-CAP OUT-U @ - read ;
+   r FD>N OUT OUT-U @ + IO-CAP OUT-U @ - SPAN:MAKE read ;
 
 : MORE ( fd -- bool )
    READ-SOME dup 0 > if OUT-U +! true exit then

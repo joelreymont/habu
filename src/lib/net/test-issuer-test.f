@@ -964,7 +964,7 @@ TASKS!
 \ The child's stdout read as far as it has written; true once a line ended or
 \ the pipe closed.
 : LINE? ( -- bool )
-   CHILD-OUT @ LINE LINE-U @ + $100 LINE-U @ - read {: k:n :}
+   CHILD-OUT @ LINE LINE-U @ + $100 LINE-U @ - SPAN:MAKE read {: k:n :}
    k 0= if true exit then
    k 0 > if k LINE-U +! then
    LINE-U @ 0 > if LINE LINE-U @ + 1- c@ 10 = exit then

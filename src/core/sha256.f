@@ -237,7 +237,7 @@ SHA-FILE-PATH-OFF PATH-CAP + CELL + constant SHA256-FILE-CTX-BYTES
    fctx SHA-FILE-IO {: io :}
    fctx SHA256-BEGIN
    begin
-      fd io SHA-IO-CAP read
+      fd io SHA-IO-CAP SPAN:MAKE read
       dup 0 > while
       fctx io rot SHA256-FEED
    repeat

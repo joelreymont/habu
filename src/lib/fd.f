@@ -236,10 +236,10 @@ private
 
 : MORE ( n fd SPAN:span<u8> -- n )
    {: got:n f:fd dst :}
-   dst got SPAN:SKIP SPAN:$ {: room:str :}
-   f FD>N room STR:DATA room STR:LEN read {: k:n :}
+   dst got SPAN:SKIP {: room :}
+   f FD>N room read {: k:n :}
    k 0 < if E-FS-IO throw then
-   k room STR:LEN > if E-FS-IO throw then
+   k room SPAN:LEN > if E-FS-IO throw then
    k ;
 
 \ The bytes one write moved, 0 when it moved none; a count past the asked one is

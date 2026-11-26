@@ -1151,7 +1151,7 @@ public
    FMT-COLLIDE FMT-UNIQUE-BUF wantu >str STR:STARTS-WITH? TTRUE
    FMT-COLLIDE FS:STAT-MODE FMT-MODE-PERM and FMT-MODE-0600 T=
    file FD>N s" mkstemp" write 7 T=
-   file FD>N FMT-READ-BUF 64 read 0 T=
+   file FD>N FMT-READ-BUF 64 SPAN:MAKE read 0 T=
    file FD>N FS:CLOSE-FD 0 T=
    FMT-COLLIDE FMT-READ-BUF 64 FS:READ-ALL 7 T=
    FMT-READ-BUF 7 >str s" mkstemp" T$=

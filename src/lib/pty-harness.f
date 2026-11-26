@@ -131,12 +131,12 @@ private
 
 \ Write room after the bytes, compacted first so the span is never empty; the
 \ writer hands back what it wrote with TOOK.
-: ROOM$ ( -- str )
+: ROOM ( -- SPAN:span<u8> )
    KEEP-TAIL!
-   RBUF RN @ +  BUF-CAP RN @ - >str ;
+   RBUF RN @ +  BUF-CAP RN @ - SPAN:MAKE ;
 
 
-\ The count is what the writer wrote into ROOM$: never negative, never past the
+\ The count is what the writer wrote into ROOM: never negative, never past the
 \ room, so the cursor never moves back or past the buffer.
 : TOOK ( n -- ) {: got:n :}
    RN @ {: old:n :}
@@ -146,18 +146,16 @@ private
 
 
 : READ-CHUNK ( fd -- n ) {: f:fd :}
-   ROOM$ {: room:str :}
-   f FD>N room STR:DATA room STR:LEN read {: got:n :}
+   f FD>N ROOM read {: got:n :}
    got 0 > if got TOOK then
    got ;
 
 public
 
-\ Bytes a reader this module does not own read, appended after ROOM$'s
-\ compaction, which leaves room for more than TAIL-KEEP bytes; more than the
-\ room holds is E-PTY-CAPACITY.
+\ Bytes a reader this module does not own read, appended after ROOM's
+\ compaction, which leaves room for more than TAIL-KEEP bytes.
 : APPEND ( str -- ) {: s:str :}
-   ROOM$ {: room:str :}
+   ROOM SPAN:$ {: room:str :}
    s STR:LEN room STR:LEN > if E-PTY-CAPACITY throw then
    s STR:DATA room STR:DATA s STR:LEN BYTE-COPY
    s STR:LEN TOOK ;

@@ -71,7 +71,7 @@ variable HOLD                        \ the FIFO's write end
    PROC-ENV-INHERIT-MISSING
    s" /bin/sh" -1 >FD w -1 >FD HOLD @ >FD TEST-FIFO:SPAWN PID>N HELPER !
    w FD>N close
-   begin r FD>N SINK 64 read dup 0 > while drop repeat
+   begin r FD>N SINK 64 SPAN:MAKE read dup 0 > while drop repeat
    r FD>N close
    0< if
       s" gate-signal-row: the helper's pipe rejected a read" EXIT-STATUS:IOERR die

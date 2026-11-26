@@ -93,7 +93,7 @@ PROCESS:NO-FD FIFO-RD !
          TEST-ENDED? if false exit then
          GT-POOL-STEP
       else
-         FIFO-RD @ buf count @ + 1 read 1 <> if false exit then
+         FIFO-RD @ buf count @ + 1 SPAN:MAKE read 1 <> if false exit then
          buf count @ + c@ NEWLINE = if true exit then
          count @ 1+ count !
       then

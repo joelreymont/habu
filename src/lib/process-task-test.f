@@ -579,7 +579,7 @@ create PTT-CANCEL-BYTE 99 c,
    PTT-CANCEL-PID @ PROCESS:NO-PID T=
    \ The borrowed fd is still open and its byte was never consumed.
    PTT-CANCEL-W @ close
-   PTT-CANCEL-R @ PTT-CANCEL-BYTE 1 read 1 T=
+   PTT-CANCEL-R @ PTT-CANCEL-BYTE 1 SPAN:MAKE read 1 T=
    PTT-CANCEL-R @ close ;
 
 create PTT-CANCEL-MARK PATH-CAP allot
@@ -639,7 +639,7 @@ variable PTT-CANCEL-MARK-U
    [: PTT-CANCEL-PRE-RELENT ;] CMD:WITH-COMMAND
    \ POLLHUP cancels too, without a byte to read or a writer left alive.
    PTT-CANCEL-W @ close
-   PTT-CANCEL-R @ PTT-CANCEL-BYTE 1 read 1 T=
+   PTT-CANCEL-R @ PTT-CANCEL-BYTE 1 SPAN:MAKE read 1 T=
    [: PTT-CANCEL-R @ [: PTT-CANCEL-PRE-LENT ;] CMD:WITH-COMMAND ;]
    E-PROC-CANCELLED TTHROWSQ
    PTT-CANCEL-R @ close

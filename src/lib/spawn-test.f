@@ -85,7 +85,7 @@ variable SCRIPT-LEN
    0 OUT-LEN !
    begin
       OUT-LEN @ READ-CHUNK + OUT-RESERVE
-      r FD>N OUT-LEN @ OUT READ-CHUNK read dup 0 > while
+      r FD>N OUT-LEN @ OUT READ-CHUNK SPAN:MAKE read dup 0 > while
       OUT-LEN +!
    repeat drop
    r FD>N close ;

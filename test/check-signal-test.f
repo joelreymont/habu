@@ -149,7 +149,7 @@ PROCESS:NO-FD FEED-WR !
    begin REPORT-U @ REPORT-BYTES < while
       FIFO-RD @ >FD CHECK-WATCH @ >FD TEST-FIFO:REPORT-OR-END
       0 >IDX PROCESS:PFD-REVENTS 0= if false exit then
-      FIFO-RD @ REPORT REPORT-U @ + REPORT-BYTES REPORT-U @ - read {: got:n :}
+      FIFO-RD @ REPORT REPORT-U @ + REPORT-BYTES REPORT-U @ - SPAN:MAKE read {: got:n :}
       got 0 <= if false exit then
       REPORT-U @ got + REPORT-U !
    repeat

@@ -34,7 +34,7 @@ variable ACC
    {: r:fd want:n :}
    0 OUT-LEN !
    begin LINES want < OUT-LEN @ CAP < and while
-      r FD>N OUT OUT-LEN @ + CAP OUT-LEN @ - read
+      r FD>N OUT OUT-LEN @ + CAP OUT-LEN @ - SPAN:MAKE read
       dup 0 <= if drop r FD>N close exit then
       OUT-LEN +!
    repeat

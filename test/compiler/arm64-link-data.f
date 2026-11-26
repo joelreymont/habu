@@ -140,7 +140,7 @@ $0A constant LF-BYTE
 : HELD-WRITE ( -- )
    HELD-SRC evaluate-closed
    s" : LD-TFILL ( -- ) LD-TN 0 ?do 1 LD-TAB i + c! loop ;  LD-TFILL" evaluate-closed
-   s" : LD-HELD ( -- ) 0 LD-TN 0 ?do LD-TAB i + c@ + loop LD-U cr  0 here 1 read drop ;" evaluate-closed
+   s" : LD-HELD ( -- ) 0 LD-TN 0 ?do LD-TAB i + c@ + loop LD-U cr  0 here 1 SPAN:MAKE read drop ;" evaluate-closed
    s" LD-HELD" STORE-ENTRY  s" held" PROG$ LINKER:WRITE ;
 
 [then]
@@ -278,7 +278,7 @@ variable START                       \ the start of the mapping being read
    {: r:fd :}
    0 LINE-N !
    begin LINE-DONE? 0= while
-      r FD>N LINE LINE-N @ + LINE-CAP LINE-N @ - read
+      r FD>N LINE LINE-N @ + LINE-CAP LINE-N @ - SPAN:MAKE read
       dup 0 <= if drop exit then
       LINE-N +!
    repeat ;
@@ -293,7 +293,7 @@ variable START                       \ the start of the mapping being read
    0 SMAPS-N !
    begin
       SMAPS-N @ SMAPS-CHUNK + SMAPS-RESERVE
-      fd SMAPS-N @ SMAPS SMAPS-CHUNK read dup 0 > while
+      fd SMAPS-N @ SMAPS SMAPS-CHUNK SPAN:MAKE read dup 0 > while
       SMAPS-N +!
    repeat drop
    fd 0 >= if fd close then ;

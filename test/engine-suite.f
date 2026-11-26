@@ -1630,7 +1630,7 @@ variable ES-FA  variable ES-FB
 : ES-SFSCRIPT ( str -- ) ES-SF-SCRIPT ES-SFZ! ;
 : ES-SFSPAWN ( n -- n ) SPAWN-ABI:NFDS ES-REQ!  ES-SFREQ spawn-fds ;
 : ES-FREE-FD ( n -- n ) begin dup ES-F-GETFD 0 fcntl 0 < 0= while 1+ repeat ;
-: ES-SFREAD ( n -- n ) ES-SFBUF 16 read ;
+: ES-SFREAD ( n -- n ) ES-SFBUF 16 SPAN:MAKE read ;
 : ES-SFLINE? ( str n -- bool ) {: s:str got:n :}
    got s STR:LEN 1+ =  ES-SFBUF s STR:LEN >str s T-STR= and  ES-SFBUF s STR:LEN + c@ 10 = and ;
 ES-SFSETUP

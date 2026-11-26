@@ -702,7 +702,7 @@ public
    lenp @ 0 < if E-PROC-OUTPUT THROW-CAPTURE then
    lenp @ cap LEN>N > if E-PROC-OUTPUT THROW-CAPTURE then
    cap LEN>N lenp @ - 0 <= if E-PROC-OUTPUT THROW-CAPTURE then
-   fdp @ buf lenp @ + cap LEN>N lenp @ - read RD !
+   fdp @ buf lenp @ + cap LEN>N lenp @ - SPAN:MAKE read RD !
    RD @ 0 < if E-PROC-OUTPUT THROW-CAPTURE then
    RD @ cap LEN>N lenp @ - > if E-PROC-OUTPUT THROW-CAPTURE then
    RD @ 0= if
@@ -715,7 +715,7 @@ private
 \ code is the stream's overflow code, E-PROC-STDOUT-CAPACITY or
 \ E-PROC-STDERR-CAPACITY, thrown on a byte past the span.
 : PROBE-FULL-STREAM ( ^n n -- ) {: fdp:^ code:n :}
-   fdp @ PROBE 1 read RD !
+   fdp @ PROBE 1 SPAN:MAKE read RD !
    RD @ 0 < if E-PROC-OUTPUT THROW-CAPTURE then
    RD @ 1 > if E-PROC-OUTPUT THROW-CAPTURE then
    RD @ 0= if
@@ -768,7 +768,7 @@ $10000 constant GROW-CHUNK
 
 : READ-INTO-ROOM ( ^n ^u8 ^n -- )
    {: fdp:^ buf:^ lenp:^ :}
-   fdp @ buf lenp @ + GROW-CHUNK read RD !
+   fdp @ buf lenp @ + GROW-CHUNK SPAN:MAKE read RD !
    RD @ 0 < if E-PROC-OUTPUT THROW-CAPTURE then
    RD @ GROW-CHUNK > if E-PROC-OUTPUT THROW-CAPTURE then
    RD @ 0= if

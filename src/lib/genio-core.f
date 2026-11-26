@@ -209,7 +209,7 @@ private
    STDOUT-FD SCRATCH 1 >str write drop ;
 
 : TERMINAL-READ ( ^u8 n -- n ) {: bytes:^ cap:n :}
-   STDIN-FD bytes cap read dup 0 < if drop E-IO throw then ;
+   STDIN-FD bytes cap SPAN:MAKE read dup 0 < if drop E-IO throw then ;
 
 : TERMINAL-KEY ( -- n )
    LINE-EDITOR:KEY ;

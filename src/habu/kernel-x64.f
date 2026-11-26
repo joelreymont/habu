@@ -5280,7 +5280,7 @@ JMP-BYTES 1+ constant PATCH-SLOT       \ the jump and the return
    X64ASM:RAX X64CODE:ASM-SINK X64ASM:ENC-CALL-REG
    done X64CODE:LBL, ;
 
-\ does-patch ( n ^u8 n -- ) clause entry, created signature: the twin of
+\ does-patch ( n str -- ) clause entry, created signature: the twin of
 \ habu2.f DOESPATCH:PRIM and LDOESPATCH over the record LASTC-CELL names. Its
 \ absent or retired record throws named code 70 before any patch. Its routine
 \ must end in the slot, E9 at slot and C3 at slot+5, else the row exits 83

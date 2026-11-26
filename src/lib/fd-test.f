@@ -275,7 +275,7 @@ variable FILLED                   \ FILLER's descriptors still open
    PROC-FORK:CHECKED {: pid:pid :}
    pid PID>N 0= if r FD>N close [: WRITER ;] IN-CHILD then
    w FD>N close
-   r FD>N DST @ SPAN:$ dup STR:DATA swap STR:LEN read {: got:n :}
+   r FD>N DST @ read {: got:n :}
    got 0 > TTRUE
    got PAYLOAD < TTRUE
    r DST @ got SPAN:SKIP FD:READ-EXACT OUTCOME FULL-MARK T=

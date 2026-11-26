@@ -62,7 +62,7 @@ variable PAT-I
    0 PAT-UNREAD PAT-UNREAD-CAP >str ;
 
 : PAT-READ ( -- n )
-   PAT-OUT-R @ PAT-BUF 64 read ;
+   PAT-OUT-R @ PAT-BUF 64 SPAN:MAKE read ;
 
 : PAT-CAPTURE>N ( result<pcap:captured,pcap:failed> -- n n n )   \ outn errn code (0 on clean exit)
    MATCH result

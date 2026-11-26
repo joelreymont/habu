@@ -287,7 +287,7 @@ ENUM load DERIVE eq loaded gone rejected ;ENUM
    {: pathz:^ buf:^ cap:n used:^ :}
    pathz open-rd {: fd:n :}
    fd 0 < if FAILURE exit then
-   fd buf cap read {: got:n :}
+   fd buf cap SPAN:MAKE read {: got:n :}
    got 0 < if FAILURE fd close exit then
    fd close
    got 0= if LOAD-REJECTED exit then

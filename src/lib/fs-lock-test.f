@@ -96,7 +96,7 @@ variable HELD-FD
    PROC-FORK:CHECKED {: holder:pid :}
    holder PID>N 0= if w CHILD-HOLDS then
    w FD>N close
-   r FD>N SIGNAL 1 read 1 T=
+   r FD>N SIGNAL 1 SPAN:MAKE read 1 T=
    r FD>N close
    ROOT$ FS-LOCK:OPEN-DIR {: fd:fd :}
    fd FS-LOCK:WAIT

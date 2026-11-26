@@ -34,7 +34,7 @@ variable BAD-GATE
 
 : WAITER-CHILD ( -- )
    WAIT-W @ >FD CLOSE-BAD 0 <> if 1 CHILD-DIE then
-   WAIT-R @ WAIT-BYTE 1 read 0= if 0 CHILD-DIE then
+   WAIT-R @ WAIT-BYTE 1 SPAN:MAKE read 0= if 0 CHILD-DIE then
    1 CHILD-DIE ;
 
 : SPAWN-WAITER ( -- pid )

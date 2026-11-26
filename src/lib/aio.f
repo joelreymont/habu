@@ -1464,7 +1464,7 @@ public
 \ scan the caller makes next sees each change made before a WAKE. It stands
 \ before READ, so its `read` is the engine's.
 : WOKE ( ^waker -- ) {: w:^ :}
-   w WAKER-READ-END @ FD>N SINK 1 read drop
+   w WAKER-READ-END @ FD>N SINK 1 SPAN:MAKE read drop
    0 w WAKER-OWED atomic! fence ;
 
 \ ---- the completion operations -----------------------------------------------

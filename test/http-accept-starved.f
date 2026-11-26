@@ -127,7 +127,7 @@ variable READ-ERRNO
 
 \ What the pipe holds so far, read without waiting.
 : TAKE-LINE ( -- )
-   PIPE-R @ LINE-BUF LINE-U @ + LINE-CAP LINE-U @ - read {: got:n :}
+   PIPE-R @ LINE-BUF LINE-U @ + LINE-CAP LINE-U @ - SPAN:MAKE read {: got:n :}
    got 0 > if got LINE-U +! then ;
 
 

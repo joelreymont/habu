@@ -2965,6 +2965,6 @@ NAME`, `MEM:ALLOC-SPAN` — or narrow one with `SPAN:SKIP` / `SPAN:TAKE` /
 address and a number and rejects a negative one; it belongs to library source,
 and so does bare `BYTE-COPY`. The primitives `>span` and `span>` cross between
 a span and `^a n` unchecked, as `>str` and `str>` do for `str`; code that
-loads before `src/lib/span.f` uses them. `readlink`, `realpath` and
+loads before `src/lib/span.f` uses them. `read`, `readlink`, `realpath` and
 `getdirentries64` write into a `SPAN:span<u8>`. The reach is counted in bytes
 whatever the element type.

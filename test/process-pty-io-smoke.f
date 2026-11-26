@@ -143,7 +143,7 @@ TASK:MIN-STACK TASK:TASK HALTEE
    FD:PIPE-PAIR ALIVE-W ! ALIVE-R !
    FORK-DEAD {: cpid:pid :}
    ALIVE-W @ >FD CLOSE-OK
-   ALIVE-R @ >FD FD>N WAIT-BYTE 1 read 0 T=       \ block until the child has exited (EOF)
+   ALIVE-R @ >FD FD>N WAIT-BYTE 1 SPAN:MAKE read 0 T=       \ block until the child has exited (EOF)
    ALIVE-R @ >FD CLOSE-OK
    cpid PID>N proc-watch-open {: wfd:n :}
    HB-TARGET-LINUX? if

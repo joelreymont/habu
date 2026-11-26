@@ -425,7 +425,7 @@ variable GOT-N
    saved FD:STDOUT FD>N dup2 drop  saved close  w close
    0 GOT-N !
    begin
-      r  TEXT-BYTES k TEXT-CAP * + GOT-N @ +  TEXT-CAP GOT-N @ -  read  dup 0 >
+      r  TEXT-BYTES k TEXT-CAP * + GOT-N @ +  TEXT-CAP GOT-N @ -  SPAN:MAKE read  dup 0 >
    while
       GOT-N +!
    repeat drop

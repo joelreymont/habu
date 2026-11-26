@@ -40,7 +40,7 @@ variable VALID
    0 SOURCE-U !
    begin
       SOURCE-U @ READ-STEP + SOURCE-B-RESERVE
-      fd SOURCE-U @ SOURCE-B READ-STEP read {: got:n :}
+      fd SOURCE-U @ SOURCE-B READ-STEP >span read {: got:n :}
       got 0 < if false exit then
       got 0= if true exit then
       got SOURCE-U +!

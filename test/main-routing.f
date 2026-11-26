@@ -98,7 +98,7 @@ public
    T-RESET
    s" habu-main-routing" GT-START
    FILE$ S\" s\" FILE\" type cr\n" FS:WRITE-ALL
-   READ$ S\" create MAIN-ROUTE-READ-BYTE 1 allot\n0 MAIN-ROUTE-READ-BYTE 1 read drop\nMAIN-ROUTE-READ-BYTE 1 >str type cr\n" FS:WRITE-ALL
+   READ$ S\" create MAIN-ROUTE-READ-BYTE 1 allot\n0 MAIN-ROUTE-READ-BYTE 1 SPAN:MAKE read drop\nMAIN-ROUTE-READ-BYTE 1 >str type cr\n" FS:WRITE-ALL
    STACK$ S\" 7\n" FS:WRITE-ALL
    ODD$ S\" s\" ODD\" type cr\n" FS:WRITE-ALL
    PLAIN LOAD-ROUTE ODD-LOAD NO-ARGS STACK-SCOPE LONG-STDIN

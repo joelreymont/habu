@@ -173,7 +173,7 @@ NO-PID KEY-PID !
 \ True once a line has come; false at the end of the output.
 : LINE? ( n -- bool )
    {: rd:n :}
-   begin rd BYTE 1 read 1 = while
+   begin rd BYTE 1 SPAN:MAKE read 1 = while
       BYTE c@ NEWLINE = if true exit then
    repeat
    false ;

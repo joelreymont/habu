@@ -306,7 +306,7 @@ REGISTER-RESET
 
 : SIGNO@ ( -- n )
    SIGNO-BUF CELL ZERO-BYTES
-   READ-FD FD>N SIGNO-BUF SIGNO-BYTES read {: got:n :}
+   READ-FD FD>N SIGNO-BUF SIGNO-BYTES SPAN:MAKE read {: got:n :}
    got 0 < if SIGNO-REJECTED exit then
    got SIGNO-BYTES <> if E-SIGNAL-READ throw then
    SIGNO-BUF cell-view @ ;

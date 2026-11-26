@@ -181,7 +181,7 @@ PROCESS:NO-FD CROWD-WR !
 : CROWD-READ ( -- )
    begin
       LISTING-U @ READ-CHUNK + LISTING-RESERVE
-      CROWD-RD @ LISTING-U @ LISTING READ-CHUNK read {: got:n :}
+      CROWD-RD @ LISTING-U @ LISTING READ-CHUNK SPAN:MAKE read {: got:n :}
       got 0 < if E-PROC-OUTPUT throw then
       got 0 >
    while
@@ -286,7 +286,7 @@ PROCESS:NO-FD PING-WR !
 \ TRUE once the pinger's line arrives; end of file is a pinger that could not
 \ signal the member.
 : PINGING? ( -- bool )
-   PING-RD @ PING-BYTE 1 read {: got:n :}
+   PING-RD @ PING-BYTE 1 SPAN:MAKE read {: got:n :}
    PING-RD PROCESS:CLOSE-CELL
    got 1 = ;
 

@@ -93,8 +93,7 @@ SCRATCH-VARIABLE WRITTEN
 
 
 : READ-READY ( master SPAN:span<u8> -- n ) {: m:master s :}
-   s SPAN:$ {: room:str :}
-   m MASTER>N room STR:DATA room STR:LEN read ;
+   m MASTER>N s read ;
 
 
 : APPEND-READY ( master ^VEC:vector<u8> n -- n )

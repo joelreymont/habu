@@ -50,7 +50,7 @@ PATH-CAP FFI:CSTR-ROOM constant SNAPSHOT-ROOM   \ a temp path and its terminator
    node copy SNAPSHOT-WORK 2drop ;
 
 : SOURCE-STEP ( ^n ^u8 n -- n ) {: node:^ buf:^ cap:n :}
-   node SOURCE-FD @ buf cap read {: got:n :}
+   node SOURCE-FD @ buf cap SPAN:MAKE read {: got:n :}
    got 0 < got cap > or if E-FS-IO throw then
    got 0 > if node SNAP-FD @ >FD buf got >str FD:WRITE-FULL then
    got ;
@@ -187,7 +187,7 @@ PATH-CAP FFI:CSTR-ROOM constant SNAPSHOT-ROOM   \ a temp path and its terminator
    1 node INPUT-DONE ! ;
 
 : INPUT-BYTES ( ^n ^u8 n -- n ) {: node:^ dst:^ cap:n :}
-   node INPUT-KIND @ 1 = if node INPUT-FD @ dst cap read exit then
+   node INPUT-KIND @ 1 = if node INPUT-FD @ dst cap SPAN:MAKE read exit then
    node INPUT-KIND @ 2 = if
       node INPUT-LEN @ node INPUT-OFF @ -
       node INPUT-COMPRESSED @ node INPUT-OFF @ - min cap min {: len:n :}

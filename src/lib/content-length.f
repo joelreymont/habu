@@ -87,7 +87,7 @@ private
    0 r POS!
    held r END!
    r CAP@ held - {: room:n :}
-   r FD@ FD>N  r BUF@ held +  room read {: k:n :}
+   r FD@ FD>N  r BUF@ held +  room SPAN:MAKE read {: k:n :}
    k 0 < k room > or if r E-FS-IO REJECT then
    held k + r END!
    k 0 > ;

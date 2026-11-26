@@ -37,7 +37,7 @@ $7FFFFFFFFFFFFFFF constant SOURCE-NO-CAP    \ more than any read holds
 : SOURCE-READ-STEP ( n [ n -- ^u8 ] n n n -- n n bool )
    {: fd:n room held:n want:n cap:n :}
    want room execute {: dst:^ :}
-   fd dst held + want held - read {: got:n :}
+   fd dst held + want held - SPAN:MAKE read {: got:n :}
    got 0 < if E-FS-IO throw then
    got want held - > if E-FS-IO throw then
    held got + {: now:n :}
@@ -71,7 +71,7 @@ private
    v STDIN-ROOM
    v VEC:COUNT {: old:n :}
    v VEC:BYTES STR:DATA old + {: at:^ :}
-   0 at v VEC:CAP old - read {: got:n :}
+   0 at v VEC:CAP old - SPAN:MAKE read {: got:n :}
    got 0 < if E-FS-IO throw then
    v old got + VEC:ENSURE
    got 0= ;

@@ -83,7 +83,7 @@ public
 \ Reads descriptor 0 whatever the task's output device. A read answering 0
 \ (hangup) or -1 (any failure, EINTR included) leaves no byte in KB: end of input.
 : KEY ( -- n )
-   0 KB 1 read 1 < IF KEY-EOF exit THEN
+   0 KB 1 SPAN:MAKE read 1 < IF KEY-EOF exit THEN
    KB c@ ;
 
 private

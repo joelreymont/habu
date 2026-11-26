@@ -909,7 +909,7 @@ TASK:MIN-STACK TASK:TASK FAN7
 : REUSE-CLOSE ( -- )
    XC @ TCP4:CLOSE STATUS-OK
    1 REUSE-CLOSED atomic!
-   P-R @ POKE-BYTE 1 read drop ;
+   P-R @ POKE-BYTE 1 SPAN:MAKE read drop ;
 
 : REUSE-WORK ( -- )
    [: XC @ TCP4:CONNECTION-FD XFER-ALLOC XFER-N 0 AIO:READ
@@ -945,7 +945,7 @@ TASK:MIN-STACK TASK:TASK FAN7
    got 0 > TTRUE
    XFER-ALLOC {: rbuf rcap:NUM:alloc-byte-len :}
    got 0 > if
-      num rbuf XFER-N read REUSE-N T=
+      num rbuf XFER-N SPAN:MAKE read REUSE-N T=
       rbuf REUSE-N >str 0 PAT-CHECK TTRUE
    then
    rbuf rcap MEM:RELEASE-BYTES
@@ -961,7 +961,7 @@ TASK:MIN-STACK TASK:TASK FAN7
 : LISTEN-CLOSE ( -- )
    XL @ TCP4:CLOSE-LISTENER STATUS-OK
    1 REUSE-CLOSED atomic!
-   P-R @ POKE-BYTE 1 read drop ;
+   P-R @ POKE-BYTE 1 SPAN:MAKE read drop ;
 
 : LISTEN-WORK ( -- )
    [: XL @ TCP4:LISTENER-FD AIO:READABLE -1 >MS AIO:POLL 0 LISTEN-GROUP AIO:GROUP+

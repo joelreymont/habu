@@ -401,7 +401,7 @@ create PIPE-BUF PIPE-CAP allot
 : DRAIN$ ( ^n ^n -- str )
    {: r:^ w:^ :}
    w @ >FD s" |parent" FD:WRITE-FULL
-   r @ PIPE-BUF PIPE-CAP read
+   r @ PIPE-BUF PIPE-CAP SPAN:MAKE read
    dup 0 < if E-FS-IO throw then
    PIPE-BUF swap >str ;
 

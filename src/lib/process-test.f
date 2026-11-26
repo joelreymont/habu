@@ -163,7 +163,7 @@ create PT-DRAIN-BUF PT-CHUNK allot
    PT-CAPTURE>N ;
 
 : PT-READ ( n -- n )
-   PT-BUF 32 read ;
+   PT-BUF 32 SPAN:MAKE read ;
 
 : TEST-SPAWN-FAIL ( -- )
    s" /no/such/habu-process-test" -1 >FD -1 >FD -1 >FD PROCESS:SPAWN-IO drop ;
@@ -320,7 +320,7 @@ create PT-DRAIN-BUF PT-CHUNK allot
 \ a 16 KiB page here), and a slot frees only when its whole page is consumed.
 : PT-DRAIN-FD ( n n -- n ) {: rfd:n chunks:n :}
    0 begin dup chunks < while
-      rfd PT-DRAIN-BUF PT-CHUNK read PT-CHUNK <> if exit then
+      rfd PT-DRAIN-BUF PT-CHUNK SPAN:MAKE read PT-CHUNK <> if exit then
       1+
    repeat ;
 
@@ -838,7 +838,7 @@ create PT-LIMITS 16 allot                \ struct rlimit: soft, then hard
    pathz argv PROC-SPAWN-ARGV-CAPTURE
    PROCESS:OUT-R @ >FD -1 >MS PROCESS:POLL-IN COUNT>N
    {: ready:n :}
-   ready 1 = if PROCESS:OUT-R @ PT-BUF PT-READY-U read else -1 then
+   ready 1 = if PROCESS:OUT-R @ PT-BUF PT-READY-U SPAN:MAKE read else -1 then
    PT-READY-U T= ;
 
 : PT-TERM-KILL ( -- )

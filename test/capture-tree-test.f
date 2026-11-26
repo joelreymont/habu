@@ -67,7 +67,7 @@ PROCESS:NO-FD FIFO-RD !
    begin REPORT-U @ REPORT-BYTES < while
       0 READY-WITHIN {: ready:n :}
       ready 0 <= if false exit then
-      FIFO-RD @ REPORT REPORT-U @ + REPORT-BYTES REPORT-U @ - read {: got:n :}
+      FIFO-RD @ REPORT REPORT-U @ + REPORT-BYTES REPORT-U @ - SPAN:MAKE read {: got:n :}
       got 0 <= if false exit then
       REPORT-U @ got + REPORT-U !
    repeat

@@ -2337,7 +2337,7 @@ private
 \ A read stops once it holds more than SIZE bytes, the stamp's size.
 : INCLUDE-READ-DONE? ( str n -- bool ) {: s:str size:n :}
    INCLUDE-U @ ROOM = if INCLUDE-U @ 1+ INCLUDE-U @ GROW then
-   INCLUDE-FD @ SOURCE INCLUDE-U @ + ROOM INCLUDE-U @ - read INCLUDE-RD !
+   INCLUDE-FD @ SOURCE INCLUDE-U @ + ROOM INCLUDE-U @ - >span read INCLUDE-RD !
    INCLUDE-RD @ 0 < if s INCLUDE-ERRNO INCLUDE-UNREADABLE then
    INCLUDE-RD @ 0 = if INCLUDE-TRUE exit then
    INCLUDE-U @ INCLUDE-RD @ + INCLUDE-U !
