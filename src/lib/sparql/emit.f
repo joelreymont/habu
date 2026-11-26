@@ -63,8 +63,8 @@
 \ table would stop PostgreSQL flattening the union; connected items with
 \ several such keys join in one CTE, which those keys read.
 \ Two always bindings of a variable meet as equal, a native one the
-\ anchor: native `=` within a shape and between a part and its root,
-\ `col = in(term)` against a term, JSONB `=` between terms. A maybe
+\ anchor: native `=` within a shape and between a part and a shape it is
+\ within, `col = in(term)` against a term, JSONB `=` between terms. A maybe
 \ binding meets also where either is NULL, and the variable is then the
 \ first bound of the two. A variable's slot on a column that may hold
 \ NULL is tested `IS NOT NULL` where its relation's WHERE is written,
@@ -570,7 +570,7 @@ defer EXISTS-SQL ( ^plan n -- )
    plan NEW-SQL {: v:^ :}
    v plan shape SHAPE@ SHAPE-OUT @ b BINDING-SQL @ +CALL v VEC:BYTES ;
 
-\ The shape's parent, or the shape itself when it is within none.
+\ The shape's root: itself when it is within none.
 : ROOT ( ^plan n -- n ) SHAPE@ SHAPE-ROOT @ ;
 
 \ Whether x and y are shapes of one root.
@@ -607,9 +607,19 @@ defer EXISTS-SQL ( ^plan n -- )
    {: plan k:n b:^ :}
    plan k plan plan b BINDING-TERM @ TERM-PLACE TERM@ HOLDS? ;
 
+\ Whether shape x is within shape y, directly or through parts.
+: WITHIN? ( ^plan n n -- bool )
+   {: plan x:n y:n :}
+   plan x SHAPE@ SHAPE-PARENT @
+   begin dup 0< 0= while
+      dup y = if drop true exit then
+      plan swap SHAPE@ SHAPE-PARENT @
+   repeat drop false ;
+
 \ Whether two bindings of one variable can hold one term: two terms that
-\ are one, a shape and a term it holds, a shape and itself or its root;
-\ parts of one root hold disjoint terms.
+\ are one, a shape and a term it holds, a shape and itself or a shape it
+\ is within; other shapes, parts of one parent among them, hold disjoint
+\ terms.
 : COMPATIBLE? ( ^plan ^binding ^binding -- bool )
    {: plan a:^ b:^ :}
    a BINDING-SHAPE @ {: x:n :} b BINDING-SHAPE @ {: y:n :}
@@ -620,8 +630,7 @@ defer EXISTS-SQL ( ^plan n -- )
    x KNOWN = if plan y a HOLDS-KNOWN? exit then
    y KNOWN = if plan x b HOLDS-KNOWN? exit then
    x y = if true exit then
-   plan x y ONE-ROOT? 0= if false exit then
-   plan x ROOT {: r:n :} x r = y r = or ;
+   plan x y WITHIN? plan y x WITHIN? or ;
 
 \ A binding's rank as an anchor: native, then KNOWN, then GENERIC.
 : RANK ( ^binding -- n )

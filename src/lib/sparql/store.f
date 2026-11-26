@@ -8,14 +8,15 @@
 \ language-tagged one's rdf:langString), absent for any term, and t,
 \ optional, a string, the SQL type of its native values, as a key set's
 \ `type` names its array's; or `{"within": name}`, a part of shape name,
-\ which is within none, taking its `in`, `out`, `holds` and `type`. A
-\ shape of type numeric holding xsd:integer and xsd:decimal holds the
-\ integer term for a whole value and the decimal one otherwise, so its
-\ values are finite, and their text is at most 16,383 bytes; one of type
-\ text holding xsd:string holds the plain literal of its text.
-\ Different shapes hold disjoint terms unless one is within the other;
-\ parts of one parent are disjoint. Optionally `keys`, an object naming
-\ each key set `{"type": t, "values": {i: a}}`, t a SQL array type and a,
+\ taking its `in`, `out`, `holds` and `type`; a chain of `within` ends at
+\ a shape that has none, its root. A shape of type numeric holding
+\ xsd:integer and xsd:decimal holds the integer term for a whole value and
+\ the decimal one otherwise, so its values are finite, and their text is
+\ at most 16,383 bytes; one of type text holding xsd:string holds the
+\ plain literal of its text. Different shapes hold disjoint terms unless
+\ one is within the other, directly or through parts; parts of one parent
+\ are disjoint. Optionally `keys`, an object naming each key set
+\ `{"type": t, "values": {i: a}}`, t a SQL array type and a,
 \ a string, the SQL array literal of IRI i's keys. `sources`, an array of
 \ triple sources `{"from", "graph", "s", "p", "o"}`: `from` a SQL FROM item
 \ the statement aliases, `graph` null for the default graph or a uri term,
@@ -60,7 +61,8 @@ ENUM holds
    VARIANT literals FIELD datatypes ^VEC:vector<datatype> ;VARIANT
 ;ENUM
 
-\ root is the shape's own index, or for a part its parent's.
+\ root is the shape's own index, or for a part its parent's root; parent
+\ indexes the shape it is within, -1 for a root.
 STRUCTURE shape DERIVE addr
    FIELD name str
    FIELD in str
@@ -68,6 +70,7 @@ STRUCTURE shape DERIVE addr
    FIELD holds holds
    FIELD type str
    FIELD root n
+   FIELD parent n
 ;STRUCTURE
 
 \ The SQL array literal of a key set member's keys.
@@ -298,12 +301,14 @@ STRUCTURE term-members DERIVE addr
      some OF arena STRING$ ENDOF
    ;MATCH ;
 
-\ A part's root stays -1 until RESOLVE-PART reads its parent.
+\ A part's parent stays -1 until LINK-PART reads its `within`, its root
+\ until RESOLVE-PART follows its parents.
 : ADD-SHAPE ( JSON:value JSON:value ^store ^ARENA:arena -- )
    {: name v store:^ arena :}
    store STORE-SHAPES @ {: shapes:^ :}
    shapes VEC:PUSH {: row:^ :}
    name arena DECODED$ row SHAPE-NAME !
+   -1 row SHAPE-PARENT !
    v s" within" HAS? if -1 row SHAPE-ROOT ! exit then
    shapes VEC:COUNT 1- row SHAPE-ROOT !
    v s" in" arena STRING-MEMBER$ row SHAPE-IN !
@@ -530,24 +535,42 @@ STRUCTURE term-members DERIVE addr
    v s" the name of a shape in `shapes`"
    s" declare the shape in `shapes` or name a declared one" JSON:REJECT ;
 
-\ A part takes its parent's in, out, holds, type and index as its root.
+\ The shape row of description shape name.
+: SHAPE-ROW ( JSON:value ^store -- ^shape ) {: name store:^ :}
+   store STORE-SHAPES @ name store SHAPE-INDEX VEC:AT ;
+
+: LINK-PART ( JSON:value JSON:value ^store -- )
+   {: name v store:^ :}
+   v s" within" HAS? 0= if exit then
+   v s" within" JSON:GET store SHAPE-INDEX
+   name store SHAPE-ROW SHAPE-PARENT ! ;
+
+\ The root shape k's parents reach, rejected at w, k's `within`, when
+\ they cycle: a chain of more parents than shapes repeats one.
+: PART-ROOT ( JSON:value ^VEC:vector<shape> n -- n )
+   {: w shapes:^ k:n :}
+   k shapes VEC:COUNT 0 ?do
+      shapes over VEC:AT SHAPE-PARENT @
+      dup 0< if drop unloop exit then nip
+   loop drop
+   w s" the name of a shape whose chain of `within` ends"
+   s" break the cycle of `within` the name leads into" JSON:REJECT ;
+
+\ A part takes its root's in, out, holds, type and index: every shape on
+\ its chain of parents shares them.
 : RESOLVE-PART ( JSON:value JSON:value ^store -- )
    {: name v store:^ :}
    v s" within" HAS? 0= if exit then
-   v s" within" JSON:GET {: w :}
    store STORE-SHAPES @ {: shapes:^ :}
-   w store SHAPE-INDEX {: k:n :}
-   shapes k VEC:AT {: parent:^ :}
-   parent SHAPE-ROOT @ k <> if
-      w s" the name of a shape within none"
-      s" name a shape that has no `within`" JSON:REJECT
-   then
-   shapes name store SHAPE-INDEX VEC:AT {: row:^ :}
-   parent SHAPE-IN @ row SHAPE-IN !
-   parent SHAPE-OUT @ row SHAPE-OUT !
-   parent SHAPE-HOLDS @ row SHAPE-HOLDS !
-   parent SHAPE-TYPE @ row SHAPE-TYPE !
-   k row SHAPE-ROOT ! ;
+   name store SHAPE-INDEX {: k:n :}
+   v s" within" JSON:GET shapes k PART-ROOT {: r:n :}
+   shapes r VEC:AT {: root:^ :}
+   shapes k VEC:AT {: row:^ :}
+   root SHAPE-IN @ row SHAPE-IN !
+   root SHAPE-OUT @ row SHAPE-OUT !
+   root SHAPE-HOLDS @ row SHAPE-HOLDS !
+   root SHAPE-TYPE @ row SHAPE-TYPE !
+   r row SHAPE-ROOT ! ;
 
 \ A slot's `col` or `term` beside `cols`, rejected at its value.
 : BESIDE-COLS ( option<JSON:value> -- )
@@ -832,6 +855,7 @@ STRUCTURE term-members DERIVE addr
    al 0 [type] source VEC:NEW store STORE-SOURCES !
    v s" shapes" JSON:GET {: shapes :}
    shapes [: store arena ADD-SHAPE ;] JSON:EACH-MEMBER
+   shapes [: store LINK-PART ;] JSON:EACH-MEMBER
    shapes [: store RESOLVE-PART ;] JSON:EACH-MEMBER
    v store arena READ-KEYS
    0 v s" sources" JSON:GET [: store arena ADD-SOURCE ;] JSON:EACH drop

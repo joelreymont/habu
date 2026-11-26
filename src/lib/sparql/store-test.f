@@ -69,10 +69,25 @@ package SPARQL
    s\" \"p\": {\"within\": \"no\"}"
    s\" 1:41: expected the name of a shape in `shapes`, found `\"no\"`; declare the shape in `shapes` or name a declared one"
    arena SHAPES-REJECT
-   s" a part's parent is within none" T-LABEL
+   s" a chain of within ends" T-LABEL
    s\" \"p\": {\"within\": \"q\"}, \"q\": {\"within\": \"p\"}"
-   s\" 1:41: expected the name of a shape within none, found `\"q\"`; name a shape that has no `within`"
+   s\" 1:41: expected the name of a shape whose chain of `within` ends, found `\"q\"`; break the cycle of `within` the name leads into"
+   arena SHAPES-REJECT
+   s\" \"p\": {\"within\": \"p\"}"
+   s\" 1:41: expected the name of a shape whose chain of `within` ends, found `\"p\"`; break the cycle of `within` the name leads into"
    arena SHAPES-REJECT ;
+
+\ Parts named before their parents.
+: TEST-NESTED ( ^ARENA:arena -- ) {: arena :}
+   s" a part may be within a part" T-LABEL
+   s\" {\"bytes\": 1, \"shapes\": {\"a\": {\"within\": \"b\"}, \"b\": {\"within\": \"c\"}, \"c\": {\"in\": \"i\", \"out\": \"o\", \"type\": \"t\"}}, \"sources\": []}"
+   arena READ-STORE STORE-SHAPES @ {: shapes:^ :}
+   shapes 0 VEC:AT {: a:^ :}
+   a SHAPE-PARENT @ 1 T=  a SHAPE-ROOT @ 2 T=
+   a SHAPE-IN @ s" i" T$=  a SHAPE-OUT @ s" o" T$=
+   a SHAPE-TYPE @ s" t" T$=
+   shapes 1 VEC:AT SHAPE-ROOT @ 2 T=
+   shapes 2 VEC:AT SHAPE-PARENT @ -1 T= ;
 
 : TEST-SLOT-REJECTS ( ^ARENA:arena -- ) {: arena :}
    s" a source's from is a string" T-LABEL
@@ -246,6 +261,7 @@ package SPARQL
    [: TEST-STORE-REJECTS ;] ARENA:WITH
    [: TEST-HOLDS-REJECTS ;] ARENA:WITH
    [: TEST-WITHIN-REJECTS ;] ARENA:WITH
+   [: TEST-NESTED ;] ARENA:WITH
    [: TEST-SLOT-REJECTS ;] ARENA:WITH
    [: TEST-COLS-REJECTS ;] ARENA:WITH
    [: TEST-NOTNULL ;] ARENA:WITH

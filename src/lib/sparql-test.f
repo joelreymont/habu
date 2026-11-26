@@ -44,6 +44,13 @@ private
    s" select jsonb_set(s,'{sources}',jsonb_path_query_array(s,'$.sources[3]'))::text from sparql_test.store($1::bigint) s"
    s" 1048576" a DESCRIBED ;
 
+\ The store's description with two parts within `thing`: `machine`, which
+\ edge's subjects hold, and `tool`, which its objects hold.
+: NESTED-STORE ( ^ARENA:arena -- ^VEC:vector<u8> )
+   {: a:^ :}
+   s" select jsonb_set(jsonb_set(jsonb_set(jsonb_set(s,'{shapes,machine}',jsonb_build_object('within','thing')),'{shapes,tool}',jsonb_build_object('within','thing')),'{sources,2,s,shape}',to_jsonb('machine'::text)),'{sources,2,o,shape}',to_jsonb('tool'::text))::text from sparql_test.store($1::bigint) s"
+   s" 1048576" a DESCRIBED ;
+
 : PREFIXES ( -- str )
    s" PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#> PREFIX t: <urn:test:> " ;
 
@@ -158,6 +165,21 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
 \ The query answers no rows and its statement never names gone.
 : DEAD ( str str -- )
    s" {'head':{'vars':['l']},'results':{'bindings':[]}}" WITHOUT ;
+
+: NESTED-IN ( str str ^ARENA:arena -- ^VEC:vector<u8> )
+   {: q:str w:str a:^ :}
+   q a NESTED-STORE a ANSWER-ON {: sql:^ doc:^ :}
+   doc $ w a UNQUOTE $ a false SAME? TTRUE sql ;
+
+\ On NESTED-STORE the query answers the expected document.
+: NESTED ( str str -- ) [: NESTED-IN drop ;] ARENA:WITH ;
+
+\ On NESTED-STORE the query answers no ?l and its statement never names
+\ sparql_test.node.
+: NESTED-DEAD ( str -- )
+   s" {'head':{'vars':['l']},'results':{'bindings':[]}}"
+   [: NESTED-IN $ s" sparql_test.node" STR:CONTAINS? TFALSE ;]
+   ARENA:WITH ;
 
 : KEYED-IN ( str str ^ARENA:arena -- )
    {: q:str w:str a:^ :}
@@ -422,6 +444,20 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    s" SELECT ?s ?l WHERE { ?s t:20 t:1 . ?s rdfs:label ?l }"
    s" {'head':{'vars':['s','l']},'results':{'bindings':[{'s':{'type':'uri','value':'urn:test:3'},'l':{'type':'literal','value':'Spindle'}}]}}"
    EXPECT ;
+
+\ A part within a part meets the shapes it is within, as a part meets its
+\ root, and never another part of them.
+: NESTED-PARTS ( -- )
+   s" SELECT ?l WHERE { ?s a ?l . ?l t:20 ?o }" NESTED-DEAD
+   s" SELECT ?s ?l WHERE { ?s t:20 t:1 . ?s rdfs:label ?l }"
+   s" {'head':{'vars':['s','l']},'results':{'bindings':[{'s':{'type':'uri','value':'urn:test:3'},'l':{'type':'literal','value':'Spindle'}}]}}"
+   NESTED
+   s" SELECT ?s ?w WHERE { ?s t:20 t:1 . ?s t:30 ?w }"
+   s" {'head':{'vars':['s','w']},'results':{'bindings':[{'s':{'type':'uri','value':'urn:test:3'},'w':{'type':'literal','value':'12','datatype':'http://www.w3.org/2001/XMLSchema#integer'}}]}}"
+   NESTED
+   s" SELECT ?x WHERE { ?x t:20 ?y . ?y t:21 ?z }"
+   s" {'head':{'vars':['x']},'results':{'bindings':[]}}"
+   NESTED ;
 
 \ t:1's triples as bindings of ?p and ?o.
 : LATHE ( -- str )
@@ -1287,7 +1323,8 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
 : SESSION ( -- )
    s" src/lib/sparql/runtime.sql" RUN-SQL
    s" test/sparql/host.sql" RUN-SQL
-   SPELLINGS SLOTS SHAPES ALL-SOURCES KEY-SETS TYPED-COLUMNS DRIVEN JOINS
+   SPELLINGS SLOTS SHAPES NESTED-PARTS ALL-SOURCES KEY-SETS
+   TYPED-COLUMNS DRIVEN JOINS
    NULL-TESTS SUBJECT-ROWS FILTERS FILTER-EQUALITIES GRAPHS NAMED-GRAPHS OPTIONALS
    UNIONS MINUSES FILTER-EXISTS
    SUBSTITUTIONS MANY CONSTANTS WIDE FORMS
