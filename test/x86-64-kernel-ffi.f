@@ -143,15 +143,12 @@ $F constant JUNK                        \ the ABI rows' argbuf[6..9): no place
    s" ffi-call" ROW
    s" getpid" ROW  SUB,  0 WANT ;
 
-\ ffi-call passes eight cells whatever nargs is, ffi-call-n max(nargs, 8).
-: STUB-CALLS, ( label label -- ) {: s8:label s9:label :}
+\ ffi-call and ffi-call-n pass eight cells whatever nargs is.
+: STUB-CALLS, ( label -- ) {: s8:label :}
    8 STUB-ANSWER {: want8:n :}
-   PLACES STUB-ANSWER {: want9:n :}
    ARGS AT, 8 N, s8 PUSH-XT, s" ffi-call" ROW  want8 WANT
    ARGS AT, 8 N, s8 PUSH-XT, s" ffi-call" SHIFTED-ROW  want8 WANT
-   ARGS AT, 3 N, s8 PUSH-XT, s" ffi-call-n" ROW  want8 WANT
-   ARGS AT, PLACES N, s9 PUSH-XT, s" ffi-call-n" ROW  want9 WANT
-   ARGS AT, PLACES N, s9 PUSH-XT, s" ffi-call-n" SHIFTED-ROW  want9 WANT ;
+   ARGS AT, 3 N, s8 PUSH-XT, s" ffi-call-n" ROW  want8 WANT ;
 
 \ Cells 1..k, 1 the deepest, and the stub: ffi-call-k's operands.
 : K-ARGS, ( label n -- ) {: s:label k:n :}
@@ -173,9 +170,9 @@ $F constant JUNK                        \ the ABI rows' argbuf[6..9): no place
    s8 8 K-ARGS, s" ffi-call-8" SHIFTED-ROW  w8 WANT ;
 
 : CALLS-CASE ( -- )
-   STUB8 STUB9 {: s8:label s9:label :}
+   STUB8 {: s8:label :}
    GETPID,
-   s8 s9 STUB-CALLS, ;
+   s8 STUB-CALLS, ;
 
 : K-CASE ( -- )
    STUB6 STUB7 STUB8 {: s6:label s7:label s8:label :}

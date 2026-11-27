@@ -3984,9 +3984,8 @@ public
    DICT-COUNT,  SEAL-ROWS,  WORDLIST-ROWS,  SCOPE-ROWS, ;
 
 \ ffi-call and ffi-call-n: integer SysV calls through SYSV-CALL,. argbuf holds
-\ at least eight cells, the contract ARM64's unconditional load of x0..x7 sets;
-\ SysV takes six in registers, so the other two, and every cell past eight that
-\ ffi-call-n passes, go on the stack.
+\ eight cells, the contract ARM64's unconditional load of x0..x7 sets; SysV
+\ takes six in registers, so the other two go on the stack.
 \
 \ ffi-call-abi(-r) and ffi-call-struct, the rows src/lib/ffi-abi.f
 \ plans a call for: the integer arguments in argbuf, the doubles in fpbuf and
@@ -4092,15 +4091,6 @@ private
    R8 DATA-REG CB-OWNER MEM-OFF ASM-SINK ENC-MOV-MR
    kept X64CODE:LBL, ;
 
-\ r10 = max(nargs, BUF-CELLS) - REG-CELLS, the stack cells, from nargs in r10;
-\ signed.
-: STACK-CELLS, ( -- )
-   X64CODE:LBL {: wide:label :}
-   R10 BUF-CELLS >IMM8 ASM-SINK ENC-CMP-RI8  C-GE wide JCC,
-   R10 BUF-CELLS IMM32,
-   wide X64CODE:LBL,
-   R10 REG-CELLS >IMM8 ASM-SINK ENC-SUB-RI8 ;
-
 \ Load rdi rsi rdx rcx r8 r9 from the six cells a register points at, rcx
 \ last, so the register may be rcx.
 : REG-ARGS, ( r64 -- ) {: base:r64 :}
@@ -4122,12 +4112,6 @@ private
 : FFI-CALL-BODY ( -- )
    R11 POP,  DROP,  RAX POP,
    R10 BUF-CELLS REG-CELLS - IMM32,
-   BUF-CALL, ;
-
-\ ffi-call-n ( argbuf nargs fn -- ret ): max(nargs, 8) cells.
-: FFI-CALL-N-BODY ( -- )
-   R11 POP,  R10 POP,  RAX POP,
-   STACK-CELLS,
    BUF-CALL, ;
 
 \ The SysV register of integer argument n, 0 to 5.
@@ -4196,7 +4180,7 @@ public
    s" dlopen-entry" [: s" dlopen" LIBC-ENTRY, RAX PUSH, ;] PRIM
    s" dlsym-entry" [: s" dlsym" LIBC-ENTRY, RAX PUSH, ;] PRIM
    s" ffi-call" [: FFI-CALL-BODY ;] PRIM
-   s" ffi-call-n" [: FFI-CALL-N-BODY ;] PRIM
+   s" ffi-call-n" [: FFI-CALL-BODY ;] PRIM
    s" ffi-call-0" [: 0 FFI-CALL-K-BODY ;] PRIM
    s" ffi-call-1" [: 1 FFI-CALL-K-BODY ;] PRIM
    s" ffi-call-2" [: 2 FFI-CALL-K-BODY ;] PRIM
