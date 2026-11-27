@@ -21,7 +21,6 @@ $2D constant DASH-BYTE
 $30 constant ZERO-BYTE
 
 MAX-WORKERS TYPED-BUFFER JSON-W JSON:writer SCRATCH-ONLY
-MAX-WORKERS TYPED-BUFFER JSON-BODY [ ^JSON:writer -- ^JSON:writer ] SCRATCH-ONLY
 
 
 : OUT+ ( str n -- ) {: src:str idx:n :}
@@ -218,15 +217,6 @@ MAX-WORKERS TYPED-BUFFER JSON-BODY [ ^JSON:writer -- ^JSON:writer ] SCRATCH-ONLY
    idx JSON-W JSON:CLOSE ;
 
 
-\ The body's chain, from the slot's writer to the bytes it wrote, which become
-\ the response body in the slot's own vector. x86-64 rejects a quotation that
-\ reads a local, so the body travels through the slot.
-: WRITE-JSON ( -- )
-   SELF-SLOT {: idx:n :}
-   idx JSON-W idx JSON-BODY @ execute
-   JSON:WRITTEN$ idx RESPONSE-BODY! ;
-
-
 public
 
 : STATUS! ( response n -- ) {: subject:response status:n :}
@@ -261,9 +251,10 @@ public
    {: subject:response body :}
    subject SLOT-OF-RESPONSE {: idx:n :}
    idx SELF-SLOT <> if E-HANDLE throw then
-   body idx JSON-BODY !
    idx OPEN-JSON
-   [: WRITE-JSON ;] [: SELF-SLOT CLOSE-JSON ;] finally
+   [: idx JSON-W body execute
+      JSON:WRITTEN$ idx RESPONSE-BODY! ;]
+   [: idx CLOSE-JSON ;] finally
    subject s" Content-Type" s" application/json" HEADER! ;
 
 

@@ -14,30 +14,16 @@ require src/lib/test/eval.f
 require src/habu/verify-source.f
 
 package CVPS
-private
-
-TYPED-VARIABLE SRC-A ^u8
-variable SRC-U
-
-\ x86-64 rejects a quotation that reads a local, so the source span travels
-\ through these two cells to the caught body.
-: ACT ( -- )
-   SRC-A @ SRC-U @ >str VERIFY:SOURCE-BUF-IN-SCOPE ;
-
 public
 
 \ Replay one source span in the caller's live package context; 0 means the
 \ verifier accepted both the package context and the source.
 : REPLAY ( str -- n ) {: s:str :}
-   s STR:DATA SRC-A !
-   s STR:LEN SRC-U !
-   [: ACT ;] catch ;
+   [: s VERIFY:SOURCE-BUF-IN-SCOPE ;] catch ;
 
 \ Replay in a neutral scope, which starts at top level with no imports.
 : REPLAY-NEUTRAL ( str -- n ) {: s:str :}
-   s STR:DATA SRC-A !
-   s STR:LEN SRC-U !
-   [: [: ACT ;] CHECK:SCOPED ;] catch ;
+   [: [: s VERIFY:SOURCE-BUF-IN-SCOPE ;] CHECK:SCOPED ;] catch ;
 
 \ Diagnostics are collected in prose, not printed, so the rejecting case reports
 \ its own text instead of leaving a rejection on the gate's stderr.

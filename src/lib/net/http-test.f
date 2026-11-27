@@ -205,39 +205,22 @@ TYPED-VARIABLE RES ^VEC:vector<u8>
    answer 503 s" unavailable" s" the database is unavailable" HTTP:ERROR! ;
 
 
-\ HTTP:JSON! keeps its body quotation in the slot, so the body reads what the
-\ pattern bound from these cells.
-PTR-VARIABLE ITEM-ID-A
-variable ITEM-ID-N
-PTR-VARIABLE ITEM-QUERY-A
-variable ITEM-QUERY-N
-PTR-VARIABLE ITEM-HOST-A
-variable ITEM-HOST-N
-
-
-: ITEM-BODY ( ^JSON:writer -- ^JSON:writer )
-   JSON:WRITE-OBJECT-START
-   s" id" ITEM-ID-A @ ITEM-ID-N @ >str JSON:WRITE-FIELD-S
-   JSON:WRITE-COMMA
-   s" query" ITEM-QUERY-A @ ITEM-QUERY-N @ >str JSON:WRITE-FIELD-S
-   JSON:WRITE-COMMA
-   s" host" ITEM-HOST-A @ ITEM-HOST-N @ >str JSON:WRITE-FIELD-S
-   JSON:WRITE-OBJECT-END ;
-
-
 : ITEM ( HTTP:request HTTP:response -- ) {: asked:HTTP:request answer:HTTP:response :}
    asked s" id" HTTP:SEGMENT-OF$ {: id:str found:bool :}
    found 0= if answer 500 s" no_segment" s" the route bound no id" HTTP:ERROR! exit then
-   id STR:DATA ITEM-ID-A !
-   id STR:LEN ITEM-ID-N !
    asked HTTP:QUERY$ {: query:str :}
-   query STR:DATA ITEM-QUERY-A !
-   query STR:LEN ITEM-QUERY-N !
-   asked s" host" HTTP:HEADER-OF$ {: host:str seen:bool :}
-   host STR:DATA ITEM-HOST-A !
-   seen if host STR:LEN else 0 then ITEM-HOST-N !
+   asked s" host" HTTP:HEADER-OF$ {: got:str seen:bool :}
+   got STR:DATA seen if got STR:LEN else 0 then >str {: host:str :}
    answer 200 HTTP:STATUS!
-   answer [: ITEM-BODY ;] HTTP:JSON! ;
+   answer [:
+      JSON:WRITE-OBJECT-START
+      s" id" id JSON:WRITE-FIELD-S
+      JSON:WRITE-COMMA
+      s" query" query JSON:WRITE-FIELD-S
+      JSON:WRITE-COMMA
+      s" host" host JSON:WRITE-FIELD-S
+      JSON:WRITE-OBJECT-END
+   ;] HTTP:JSON! ;
 
 
 \ Made by the first request PARAMS answers; the case deletes it once answered.

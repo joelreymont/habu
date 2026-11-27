@@ -679,14 +679,8 @@ public
 \ evaluate-closed arrives as a catchable throw of the same code.
 70 constant UNDEFINED
 
-\ The source travels through the quotation and back out, because x86-64
-\ rejects a quotation that reads a local.
-: EVAL-KEEP ( str -- str )
-   dup evaluate-closed ;
-
-: OUTCOME ( str -- n )
-   [: EVAL-KEEP ;] catch {: rc:n :}
-   drop rc ;
+: OUTCOME ( str -- n ) {: src:str :}
+   [: src evaluate-closed ;] catch ;
 
 \ OUTCOME with the records it prints captured, however quiet the caller is.
 : CAPTURED ( str -- n ) {: src:str :}

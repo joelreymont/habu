@@ -339,23 +339,11 @@ FUNCTION: CDD-FN getpid ( -- i32 ) ;FUNCTION
 
 \ Section 11: a row lives as long as its scope. A popped scope hands its symbol
 \ ids out again, so a row outliving it would make that id's next word a definer.
-TYPED-VARIABLE CDD-SRC-A ^u8
-variable CDD-SRC-U
-
-\ x86-64 rejects a quotation that reads a local, so the span travels to the
-\ caught read through these two cells.
-: CDD-READ ( -- )
-   CDD-SRC-A @ CDD-SRC-U @ >str VERIFY:SOURCE-BUF-IN-SCOPE ;
-
-: CDD-SPAN! ( str -- )
-   {: s:str :}
-   s STR:DATA CDD-SRC-A !
-   s STR:LEN CDD-SRC-U ! ;
 
 \ A neutral scope that pops, as tools/check.f reads a source.
 : CDD-SCOPED ( str -- n )
-   CDD-SPAN!
-   [: [: CDD-READ ;] CHECK:SCOPED ;] catch ;
+   {: s:str :}
+   [: [: s VERIFY:SOURCE-BUF-IN-SCOPE ;] CHECK:SCOPED ;] catch ;
 
 : CDD-REPLAY$ ( -- str )
    s\" : CDD-SG ( n -- ) CDD-GEN:MAKE ;\ngenerates: CDD-SG ( -- ^n )\n5 CDD-SG CDD-SGM\n: CDD-SGU ( -- ^n ) CDD-SGM ;\n" ;

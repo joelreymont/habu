@@ -17,14 +17,6 @@ require test/pcap-result.f
 package CDR
 private
 
-TYPED-VARIABLE SRC-A ^u8
-variable SRC-U
-
-\ x86-64 rejects a quotation that reads a local, so the source span travels
-\ through these two cells to the caught body.
-: ACT ( -- )
-   SRC-A @ SRC-U @ >str VERIFY:SOURCE-BUF-IN-SCOPE ;
-
 create OUT $1000 allot
 create ERR $1000 allot
 
@@ -44,10 +36,8 @@ public
 \ collected; 0 when it certified, else the throw code.
 : VERIFY-QUIET ( str -- n )
    {: s:str :}
-   s STR:DATA SRC-A !
-   s STR:LEN SRC-U !
    REJECTION:CAPTURE
-   [: ACT ;] catch {: rc:n :}
+   [: s VERIFY:SOURCE-BUF-IN-SCOPE ;] catch {: rc:n :}
    REJECTION:BUFFER-OFF
    rc ;
 
