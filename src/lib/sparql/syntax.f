@@ -93,11 +93,11 @@ STRUCTURE iri DERIVE addr
    FIELD flags n
 ;STRUCTURE
 
-\ Node indexes by key, open addressed with linear probing: entry i is a
-\ node index, 0 for none, then its key's hash, which regrowth reuses. The
-\ entries double past half load; the old ones stay in the arena.
+\ Node indexes by key, open addressed with linear probing: slot i is a
+\ four-byte node index, 0 for none. The slots double past half load,
+\ each node hashed again; the old ones stay in the arena.
 STRUCTURE interns DERIVE addr
-   FIELD slots ^n
+   FIELD slots ^u8
    FIELD mask n
    FIELD count n
    FIELD k0 n
@@ -319,60 +319,61 @@ STRUCTURE syntax DERIVE addr
    state SYNTAX-TERMS @ state index NODE NODE-VALUE !
    1 state SYNTAX-TERMS +! index ;
 
-\ Entry n of the entries at the address; its hash is the next cell.
-: ENTRY ( ^n n -- ^n )
-   2 * cells + ;
+\ Slot n of the slots at the address.
+: ENTRY ( ^u8 n -- ^u8 )
+   4 * + ;
 
 \ The node index under the hash that the quotation finds equal, 0 for none.
 : INTERNED ( ^interns n [ n -- bool ] -- n )
    {: table:^ hash:n same :}
-   table INTERNS-SLOTS @ {: slots:^ :}
+   table INTERNS-SLOTS @ {: slots :}
    slots NULL-PTR = if 0 exit then
    table INTERNS-MASK @ {: mask:n :}
    hash mask and begin
-      slots over ENTRY @ dup 0<> if
+      slots over ENTRY LE:U32@ dup 0<> if
          {: at:n index:n :}
-         slots at ENTRY cell+ @ hash = if
-            index same execute if index exit then
-         then at 1+ mask and true
+         index same execute if index exit then
+         at 1+ mask and true
       else drop false then
    while repeat drop 0 ;
 
 : PLACE ( ^interns n n -- )
    {: table:^ hash:n index:n :}
-   table INTERNS-SLOTS @ {: slots:^ :}
+   table INTERNS-SLOTS @ {: slots :}
    table INTERNS-MASK @ {: mask:n :}
    hash mask and begin
-      slots over ENTRY @ 0<>
+      slots over ENTRY LE:U32@ 0<>
    while 1+ mask and repeat
-   slots swap ENTRY {: entry:^ :}
-   index entry ! hash entry cell+ ! ;
+   index slots rot ENTRY LE:U32! ;
 
-\ n entries in place of the table's, holding its nodes.
-: RESIZE ( ^interns n -- )
-   {: table:^ size:n :}
-   table INTERNS-SLOTS @ {: old:^ :}
+\ n slots in place of the table's, holding its nodes under the hashes
+\ the quotation answers.
+: RESIZE ( ^interns n [ n -- n ] -- )
+   {: table:^ size:n hasher :}
+   table INTERNS-SLOTS @ {: old :}
    table INTERNS-MASK @ 1+ {: before:n :}
-   table INTERNS-ARENA @ size 2 * cells ARENA:ALLOC drop CELL-VIEW
+   table INTERNS-ARENA @ size 4 * ARENA:ALLOC drop
       table INTERNS-SLOTS !
    size 1- table INTERNS-MASK !
    old NULL-PTR = if exit then
    before 0 ?do
-      old i ENTRY {: entry:^ :}
-      entry @ 0<> if table entry cell+ @ entry @ PLACE then
+      old i ENTRY LE:U32@ {: index:n :}
+      index 0<> if table index hasher execute index PLACE then
    loop ;
 
-\ Adds node index n under the hash; 16 entries first, doubled when one
-\ more node would fill past half.
-: +INTERN ( ^interns n n -- )
-   {: table:^ hash:n index:n :}
+\ Adds node index n under the hash the quotation answers for it; 16
+\ slots first, doubled when one more node would fill past half.
+: +INTERN ( ^interns n [ n -- n ] -- )
+   {: table:^ index:n hasher :}
    table INTERNS-SLOTS @ NULL-PTR = if
-      table 16 RESIZE
+      table 16 hasher RESIZE
    else
       table INTERNS-MASK @ 1+ {: size:n :}
-      table INTERNS-COUNT @ 1+ 2 * size > if table size 2 * RESIZE then
+      table INTERNS-COUNT @ 1+ 2 * size > if
+         table size 2 * hasher RESIZE
+      then
    then
-   table hash index PLACE
+   table index hasher execute index PLACE
    1 table INTERNS-COUNT +! ;
 
 \ The SipHash state, keyed for the table and reset.

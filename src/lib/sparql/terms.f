@@ -115,6 +115,14 @@ private
    size 0 ?do sip tag i + c@ STR:ASCII-LOWER SIPHASH:ABSORB-BYTE loop
    sip SIPHASH:FINISH ;
 
+\ The hash of term node n's key.
+: NODE-HASH ( ^syntax n -- n )
+   {: state index:n :}
+   state index NODE {: node :}
+   node NODE-B @ {: tag:n :}
+   state node NODE-KIND @ node NODE-TEXT @ node NODE-A @
+   tag 0= if s" " else state tag TEXT$ then TERM-HASH ;
+
 : SAME-TERM? ( n ^syntax n str n str -- bool )
    {: index state kind:n text:str datatype:n language:str :}
    state index NODE {: node :}
@@ -145,7 +153,7 @@ private
    language str> nip 0<> if
       state language LANGUAGE-NODE state term NODE NODE-B !
    then
-   table hash term +INTERN term ;
+   table term [: state swap NODE-HASH ;] +INTERN term ;
 
 : IRI-NODE ( ^syntax str -- n )
    {: state text:str :}
