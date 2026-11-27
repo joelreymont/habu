@@ -54,19 +54,27 @@ defer ORDER-CONDITION ( ^syntax [ ^syntax -- bool ] -- n )
    state kind left right BINARY-NODE {: node:n :}
    state node text TEXT! node ;
 
-: LISTS? ( str str -- bool )
+\ The name in the space-separated list that the text spells in any case;
+\ empty if none.
+: LISTED ( str str -- str )
    {: list:str text:str :}
    list str> {: names size:n :}
    0 begin dup size < while
       {: start:n :}
       names start + size start - >str 32 CHAR-OFF {: width:n :}
-      text names start + width >str STR:=CI if true exit then
+      names start + width >str {: name:str :}
+      text name STR:=CI if name exit then
       start width + 1+
-   repeat drop false ;
+   repeat drop s" " ;
 
-: BUILTIN? ( str -- bool )
+: LISTS? ( str str -- bool ) LISTED str> nip 0<> ;
+
+\ The builtin text names, upper case as the list spells it; empty if none.
+: BUILTIN-NAME ( str -- str )
    s" STR LANG LANGMATCHES DATATYPE BOUND IRI URI RAND ABS CEIL FLOOR ROUND CONCAT SUBSTR STRLEN REPLACE UCASE LCASE ENCODE_FOR_URI CONTAINS STRSTARTS STRENDS STRBEFORE STRAFTER YEAR MONTH DAY HOURS MINUTES SECONDS TIMEZONE TZ NOW UUID STRUUID MD5 SHA256 SHA384 SHA512 COALESCE IF STRLANG STRDT SAMETERM ISIRI ISURI ISBLANK ISLITERAL ISNUMERIC REGEX COUNT SUM MIN MAX AVG SAMPLE GROUP_CONCAT"
-   swap LISTS? ;
+   swap LISTED ;
+
+: BUILTIN? ( str -- bool ) BUILTIN-NAME str> nip 0<> ;
 
 : CALL-IS? ( ^syntax n str -- bool )
    {: state node:n text:str :}
@@ -525,12 +533,8 @@ defer ORDER-CONDITION ( ^syntax [ ^syntax -- bool ] -- n )
 
 : READ-CALL ( ^syntax str [ ^syntax -- bool ] -- n )
    {: state text:str follows :}
-   text BUILTIN? if
-      state text COPY$ {: name:str :}
-      name str> {: bytes length:n :}
-      length 0 ?do bytes i + dup c@ STR:ASCII-UPPER swap c! loop
-      name
-   else text then {: called:str :}
+   text BUILTIN-NAME {: name:str :}
+   name str> nip 0<> if name else text then {: called:str :}
    state N-CALL called TEXT-NODE {: call:n :}
    state PREVIOUS-AT state call rot NODE-TOKEN!
    state s" (" EXPECT$ state call follows CALL-ARGUMENTS
