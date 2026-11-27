@@ -1198,19 +1198,32 @@ defer EXISTS-SQL ( ^plan n -- )
       then
    loop cols ;
 
-\ Adds source k as the triple's choice when it fits.
-: TRIPLE-CHOICE ( ^plan ^item n -- )
+\ Whether source k holds the triple's graph and every constant part.
+: TRIPLE-FITS? ( ^plan ^item n -- bool )
    {: plan it:^ k:n :}
    plan k SOURCE@ {: src:^ :}
-   plan src GRAPH-FITS? 0= if exit then
+   plan src GRAPH-FITS? 0= if false exit then
    plan TREE {: state :}
    it ITEM-NODE @ {: triple:n :}
    3 0 do
       state triple i PART {: node:n :}
       state node VARIABLE? 0= if
-         plan node src i SLOT@ FITS? 0= if unloop exit then
+         plan node src i SLOT@ FITS? 0= if false unloop exit then
       then
-   loop
+   loop true ;
+
+\ The number of the list's records that fit the triple.
+: FITTING ( ^plan ^item ^VEC:vector<n> -- n )
+   {: plan it:^ list:^ :}
+   0 list VEC:COUNT 0 ?do
+      plan it list i VEC:AT @ TRIPLE-FITS? if 1+ then
+   loop ;
+
+\ Adds source k as the triple's choice when it fits.
+: TRIPLE-CHOICE ( ^plan ^item n -- )
+   {: plan it:^ k:n :}
+   plan it k TRIPLE-FITS? 0= if exit then
+   it ITEM-NODE @ {: triple:n :}
    it ITEM-COLUMNS @ NULL-PTR = if
       plan triple TRIPLE-COLUMNS it ITEM-COLUMNS !
    then
@@ -1229,7 +1242,7 @@ defer EXISTS-SQL ( ^plan n -- )
 
 : TRY-EACH ( ^plan ^item ^VEC:vector<n> -- )
    {: plan it:^ list:^ :}
-   it ITEM-CHOICES @ list VEC:COUNT VEC:RESERVE
+   it ITEM-CHOICES @ plan it list FITTING VEC:RESERVE
    list VEC:COUNT 0 ?do plan it list i VEC:AT @ TRIPLE-CHOICE loop ;
 
 \ Whether the merge of a and b takes a's k-th record before b's m-th.
@@ -1243,7 +1256,8 @@ defer EXISTS-SQL ( ^plan n -- )
 : TRY-MERGED ( ^plan ^item ^VEC:vector<n> ^VEC:vector<n> -- )
    {: plan it:^ a:^ b:^ :}
    a VEC:COUNT b VEC:COUNT + {: n:n :}
-   it ITEM-CHOICES @ n VEC:RESERVE
+   plan it a FITTING plan it b FITTING + {: fit:n :}
+   it ITEM-CHOICES @ fit VEC:RESERVE
    0 n 0 ?do
       {: k:n :}
       a k b i k - FIRST? if
@@ -1273,7 +1287,8 @@ defer EXISTS-SQL ( ^plan n -- )
    state triple NODE-B@ {: p:n :}
    state p NODE-K N-IRI = if plan it p TRY-IRI exit then
    plan PLAN-STORE @ STORE-SOURCES @ VEC:COUNT {: n:n :}
-   it ITEM-CHOICES @ n VEC:RESERVE
+   0 n 0 ?do plan it i TRIPLE-FITS? if 1+ then loop {: fit:n :}
+   it ITEM-CHOICES @ fit VEC:RESERVE
    n 0 ?do plan it i TRIPLE-CHOICE loop ;
 
 \ A joined derived table with its columns, the item's one choice.
