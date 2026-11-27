@@ -2918,6 +2918,7 @@ STRUCTURE pruning DERIVE addr
    state node NODE-A@ state node NODE-B@ {: a:n b:n :}
    kind N-LIST = if a 0 b exit then
    kind N-BINARY = kind N-UNION = or if b 0 a exit then
+   kind N-CALL = if state node NODE-C@ 0 a exit then
    kind N-SELECT = if a state node NODE-D@ b exit then
    kind N-GRAPH = if 0 0 b exit then
    kind N-TRIPLE = kind N-VALUES = or if 0 0 0 exit then
@@ -3973,6 +3974,36 @@ STRUCTURE walk DERIVE addr
    plan NEW-SQL {: v:^ :}
    v plan k SHAPE@ SHAPE-OUT @ e +CALL v SQL$ ;
 
+\ The keys of list n's ORDER BY conditions over r, `,`-joined, each
+\ `sparql.order(term)` and DESC where written.
+: CONDITION-KEYS ( ^plan ^relation n -- str )
+   {: plan r:^ list:n :}
+   plan TREE {: state :}
+   plan NEW-SQL {: v:^ :}
+   list begin dup 0<> while
+      {: each:n :} state each NODE-A@ {: m:n :}
+      state m NODE-K N-ORDER = if
+         v s" ," +SEP v s" sparql.order(" +SQL
+         v plan r state m NODE-A@ EXPRESSION-SQL +SQL v s" )" +SQL
+         state m NODE NODE-FLAGS @ F-DESC and 0<> if
+            v s"  DESC" +SQL
+         then
+      then state each NODE-B@
+   repeat drop v SQL$ ;
+
+\ array_agg of the call's operand terms over r, in its ORDER BY's order
+\ where it has one.
+: TERMS-SQL ( ^plan ^relation n -- str )
+   {: plan r:^ call:n :}
+   plan TREE {: state :}
+   plan NEW-SQL {: v:^ :}
+   v s" array_agg(" +SQL
+   v plan r state state call NODE-A@ NODE-A@ EXPRESSION-SQL +SQL
+   state call NODE-C@ {: conditions:n :}
+   conditions 0<> if
+      v s"  ORDER BY " +SQL v plan r conditions CONDITION-KEYS +SQL
+   then v s" )" +SQL v SQL$ ;
+
 \ The aggregate call over the relation: COUNT is count, a NATIVE-SHAPE
 \ one native; any other goes through sparql.aggregate over array_agg of
 \ its operand's terms.
@@ -3991,9 +4022,8 @@ STRUCTURE walk DERIVE addr
       v plan r call COUNTED +SQL v s" ),'integer')" +SQL v SQL$ exit
    then
    v s" sparql.aggregate(" +SQL v plan state call TEXT$ TEXT-ARG +SQL
-   v s" ,array_agg(" +SQL
-   v plan r state state call NODE-A@ NODE-A@ EXPRESSION-SQL +SQL
-   unique if v s" ),true," +SQL else v s" ),false," +SQL then
+   v s" ," +SQL v plan r call TERMS-SQL +SQL
+   unique if v s" ,true," +SQL else v s" ,false," +SQL then
    v plan state call NODE-B@ SEPARATOR-SQL +SQL v s" )" +SQL v SQL$ ;
 
 \ Whether every group of r's solutions binds the aggregate call.
@@ -4371,22 +4401,10 @@ STRUCTURE walk DERIVE addr
       state list NODE-B@
    repeat drop ;
 
-\ ORDER BY's keys over the scope, `,`-joined, each `sparql.order(term)`
-\ and DESC where written; empty without ORDER BY.
+\ ORDER BY's keys over the scope; empty without ORDER BY.
 : ORDER-KEYS ( ^plan n ^relation -- str )
    {: plan query:n r:^ :}
-   plan TREE {: state :}
-   plan NEW-SQL {: v:^ :}
-   state query NODE-D@ begin dup 0<> while
-      {: list:n :} state list NODE-A@ {: m:n :}
-      state m NODE-K N-ORDER = if
-         v s" ," +SEP v s" sparql.order(" +SQL
-         v plan r state m NODE-A@ EXPRESSION-SQL +SQL v s" )" +SQL
-         state m NODE NODE-FLAGS @ F-DESC and 0<> if
-            v s"  DESC" +SQL
-         then
-      then state list NODE-B@
-   repeat drop v SQL$ ;
+   plan r plan TREE query NODE-D@ CONDITION-KEYS ;
 
 \ SELECT's projected variable nodes.
 : NAMES ( ^plan n -- ^VEC:vector<n> )

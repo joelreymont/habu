@@ -121,7 +121,7 @@ defer QUERY-SCOPE ( ^syntax n -- ^var-set )
    state state triple NODE-C@ bgp BLANK-LABEL ;
 
 \ Runs the action on each leaf of expression n, left to right; its answer is
-\ walked next unless 0.
+\ walked next unless 0, then a call's ORDER BY conditions.
 : WALK ( R ^syntax n [ R ^syntax n -- R n ] -- R )
    {: state expression:n action :}
    state expression N-BINARY N-ALIAS SPINE {: spine:n leaf:n :}
@@ -133,7 +133,12 @@ defer QUERY-SCOPE ( ^syntax n -- ^var-set )
       repeat drop
    else
       state leaf action execute {: operand:n :}
-      operand 0<> if state operand action recurse then
+      operand 0<> if
+         state operand action recurse
+         state leaf NODE-K N-CALL = if
+            state state leaf NODE-C@ action recurse
+         then
+      then
    then
    spine begin dup 0<> while
       {: list:n :} state list NODE-A@ {: node:n :}
@@ -154,7 +159,9 @@ defer QUERY-SCOPE ( ^syntax n -- ^var-set )
    kind N-CALL = if
       state leaf EXISTS-CALL? if 0 exit then
    then
-   kind N-CALL = kind N-UNARY = or if state leaf NODE-A@ else 0 then ;
+   kind N-CALL = kind N-UNARY = or kind N-ORDER = or if
+      state leaf NODE-A@
+   else 0 then ;
 
 : EXISTS-SCOPE ( ^syntax n -- )
    {: state leaf:n :}
@@ -175,7 +182,8 @@ defer QUERY-SCOPE ( ^syntax n -- ^var-set )
 : OUTPUT-LEAF ( ^syntax n -- n )
    {: state leaf:n :}
    state leaf AGGREGATE-CALL? if
-      state state leaf NODE-A@ [: PLAIN-LEAF ;] WALK 0 exit
+      state state leaf NODE-A@ [: PLAIN-LEAF ;] WALK
+      state state leaf NODE-C@ [: PLAIN-LEAF ;] WALK 0 exit
    then
    state leaf PLAIN-LEAF ;
 

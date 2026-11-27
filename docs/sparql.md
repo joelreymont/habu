@@ -23,3 +23,8 @@ into schema `sparql`; the statement calls its term functions.
 A query is a SELECT or an ASK. CONSTRUCT, DESCRIBE, updates, FROM and FROM
 NAMED, SERVICE, BNODE() and SHA1 are rejected, each rejection naming the
 rewrite.
+
+GROUP_CONCAT takes `; ORDER BY` conditions after its SEPARATOR, as in
+`GROUP_CONCAT(?label; SEPARATOR=" / "; ORDER BY DESC(?depth))`, and joins its
+values in their order, DISTINCT keeping each value's first place; standard
+SPARQL leaves the order undefined.

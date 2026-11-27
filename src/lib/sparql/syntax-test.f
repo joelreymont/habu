@@ -424,11 +424,15 @@ DOTTED-AUTHORITY
       REJECTS
    \ A * given to an IRI.
    s\" SELECT * WHERE { ?s ?p ?o FILTER(<urn:f>(*)) }"
-   s\" 1:34: expected arguments without * or SEPARATOR, found `<urn:f>`; remove the * or SEPARATOR\n1 | SELECT * WHERE { ?s ?p ?o FILTER(<urn:f>(*)) }\n                                     ^"
+   s\" 1:34: expected arguments without *, SEPARATOR or ORDER BY, found `<urn:f>`; remove the *, SEPARATOR or ORDER BY\n1 | SELECT * WHERE { ?s ?p ?o FILTER(<urn:f>(*)) }\n                                     ^"
+      REJECTS
+   \ An ORDER BY after COUNT's *.
+   s" SELECT (COUNT(* ORDER BY ?s) AS ?c) WHERE { ?s ?p ?o }"
+   s\" 1:9: expected GROUP_CONCAT, the only function that takes ORDER BY, found `COUNT`; remove the ORDER BY\n1 | SELECT (COUNT(* ORDER BY ?s) AS ?c) WHERE { ?s ?p ?o }\n            ^"
       REJECTS
    \ A SEPARATOR given to an IRI.
    s\" SELECT * WHERE { ?s ?p ?o FILTER(<urn:f>(?o; SEPARATOR=\",\")) }"
-   s\" 1:34: expected arguments without * or SEPARATOR, found `<urn:f>`; remove the * or SEPARATOR\n1 | SELECT * WHERE { ?s ?p ?o FILTER(<urn:f>(?o; SEPARATOR=\",\")) }\n                                     ^"
+   s\" 1:34: expected arguments without *, SEPARATOR or ORDER BY, found `<urn:f>`; remove the *, SEPARATOR or ORDER BY\n1 | SELECT * WHERE { ?s ?p ?o FILTER(<urn:f>(?o; SEPARATOR=\",\")) }\n                                     ^"
       REJECTS
    \ A * outside COUNT.
    s\" SELECT * WHERE { ?s ?p ?o FILTER(STR(*)) }"
@@ -441,6 +445,78 @@ DOTTED-AUTHORITY
    \ SEPARATOR outside GROUP_CONCAT.
    s\" SELECT * WHERE { ?s ?p ?o FILTER(STR(?o; SEPARATOR=\",\")) }"
    s\" 1:34: expected GROUP_CONCAT, the only function that takes SEPARATOR, found `STR`; remove the SEPARATOR\n1 | SELECT * WHERE { ?s ?p ?o FILTER(STR(?o; SEPARATOR=\",\")) }\n                                     ^"
+      REJECTS
+   \ ORDER BY outside GROUP_CONCAT.
+   s\" SELECT * WHERE { ?s ?p ?o FILTER(STR(?o; ORDER BY ?s)) }"
+   s\" 1:34: expected GROUP_CONCAT, the only function that takes ORDER BY, found `STR`; remove the ORDER BY\n1 | SELECT * WHERE { ?s ?p ?o FILTER(STR(?o; ORDER BY ?s)) }\n                                     ^"
+      REJECTS
+   \ ORDER BY outside GROUP_CONCAT, with no ; before it.
+   s" SELECT * WHERE { ?s ?p ?o FILTER(STR(?o ORDER BY ?s)) }"
+   s\" 1:34: expected GROUP_CONCAT, the only function that takes ORDER BY, found `STR`; remove the ORDER BY\n1 | SELECT * WHERE { ?s ?p ?o FILTER(STR(?o ORDER BY ?s)) }\n                                     ^"
+      REJECTS
+   \ A clause other than SEPARATOR or ORDER BY outside GROUP_CONCAT.
+   s" SELECT * WHERE { ?s ?p ?o FILTER(STR(?o; BY ?s)) }"
+   s\" 1:40: expected ), found `;`; remove the ;\n1 | SELECT * WHERE { ?s ?p ?o FILTER(STR(?o; BY ?s)) }\n                                           ^"
+      REJECTS
+   \ GROUP_CONCAT's ORDER BY without a condition.
+   s" SELECT (GROUP_CONCAT(?o; ORDER BY) AS ?c) WHERE { ?s ?p ?o }"
+   s\" 1:34: expected a variable or expression to order by, found `)`; write the variables to order by after ORDER BY\n1 | SELECT (GROUP_CONCAT(?o; ORDER BY) AS ?c) WHERE { ?s ?p ?o }\n                                     ^"
+      REJECTS
+   \ SEPARATOR after ORDER BY.
+   s\" SELECT (GROUP_CONCAT(?o; ORDER BY ?s; SEPARATOR=\",\") AS ?c) WHERE { ?s ?p ?o }"
+   s\" 1:39: expected ), found `SEPARATOR`; write SEPARATOR before ORDER BY\n1 | SELECT (GROUP_CONCAT(?o; ORDER BY ?s; SEPARATOR=\",\") AS ?c) WHERE { ?s ?p ?o }\n                                          ^"
+      REJECTS
+   \ SEPARATOR after ORDER BY, with no ; before it.
+   s\" SELECT (GROUP_CONCAT(?o; ORDER BY ?s SEPARATOR=\",\") AS ?c) WHERE { ?s ?p ?o }"
+   s\" 1:38: expected ;, found `SEPARATOR`; write ; here\n1 | SELECT (GROUP_CONCAT(?o; ORDER BY ?s SEPARATOR=\",\") AS ?c) WHERE { ?s ?p ?o }\n                                         ^"
+      REJECTS
+   \ ORDER BY with no ; before it.
+   s" SELECT (GROUP_CONCAT(?o ORDER BY ?s) AS ?c) WHERE { ?s ?p ?o }"
+   s\" 1:25: expected ;, found `ORDER`; write ; here\n1 | SELECT (GROUP_CONCAT(?o ORDER BY ?s) AS ?c) WHERE { ?s ?p ?o }\n                            ^"
+      REJECTS
+   \ A ; after ORDER BY's conditions.
+   s" SELECT (GROUP_CONCAT(?o; ORDER BY ?s;) AS ?c) WHERE { ?s ?p ?o }"
+   s\" 1:37: expected ), found `;`; remove the ;\n1 | SELECT (GROUP_CONCAT(?o; ORDER BY ?s;) AS ?c) WHERE { ?s ?p ?o }\n                                        ^"
+      REJECTS
+   \ A ; between ORDER BY's conditions.
+   s" SELECT (GROUP_CONCAT(?o; ORDER BY ?s; ?p) AS ?c) WHERE { ?s ?p ?o }"
+   s\" 1:37: expected ), found `;`; remove the ;\n1 | SELECT (GROUP_CONCAT(?o; ORDER BY ?s; ?p) AS ?c) WHERE { ?s ?p ?o }\n                                        ^"
+      REJECTS
+   \ A second ORDER BY.
+   s" SELECT (GROUP_CONCAT(?o; ORDER BY ?s; ORDER BY ?p) AS ?c) WHERE { ?s ?p ?o }"
+   s\" 1:39: expected ), found `ORDER`; write the conditions in one ORDER BY\n1 | SELECT (GROUP_CONCAT(?o; ORDER BY ?s; ORDER BY ?p) AS ?c) WHERE { ?s ?p ?o }\n                                          ^"
+      REJECTS
+   \ A second SEPARATOR.
+   s\" SELECT (GROUP_CONCAT(?o; SEPARATOR=\",\"; SEPARATOR=\",\") AS ?c) WHERE { ?s ?p ?o }"
+   s\" 1:41: expected ORDER, found `SEPARATOR`; remove the second SEPARATOR\n1 | SELECT (GROUP_CONCAT(?o; SEPARATOR=\",\"; SEPARATOR=\",\") AS ?c) WHERE { ?s ?p ?o }\n                                            ^"
+      REJECTS
+   \ A ; after SEPARATOR's string.
+   s\" SELECT (GROUP_CONCAT(?o; SEPARATOR=\",\";) AS ?c) WHERE { ?s ?p ?o }"
+   s\" 1:39: expected ), found `;`; remove the ;\n1 | SELECT (GROUP_CONCAT(?o; SEPARATOR=\",\";) AS ?c) WHERE { ?s ?p ?o }\n                                          ^"
+      REJECTS
+   \ A ; with no clause after it.
+   s" SELECT (GROUP_CONCAT(?o;) AS ?c) WHERE { ?s ?p ?o }"
+   s\" 1:24: expected ), found `;`; remove the ;\n1 | SELECT (GROUP_CONCAT(?o;) AS ?c) WHERE { ?s ?p ?o }\n                           ^"
+      REJECTS
+   \ A clause after SEPARATOR other than ORDER BY.
+   s\" SELECT (GROUP_CONCAT(?o; SEPARATOR=\",\"; BY ?s) AS ?c) WHERE { ?s ?p ?o }"
+   s\" 1:41: expected ORDER, found `BY`; write ORDER here\n1 | SELECT (GROUP_CONCAT(?o; SEPARATOR=\",\"; BY ?s) AS ?c) WHERE { ?s ?p ?o }\n                                            ^"
+      REJECTS
+   \ A first clause other than SEPARATOR or ORDER BY.
+   s" SELECT (GROUP_CONCAT(?o; BY ?s) AS ?c) WHERE { ?s ?p ?o }"
+   s\" 1:26: expected SEPARATOR or ORDER, found `BY`; write SEPARATOR or ORDER here\n1 | SELECT (GROUP_CONCAT(?o; BY ?s) AS ?c) WHERE { ?s ?p ?o }\n                             ^"
+      REJECTS
+   \ Two ; after SEPARATOR's string.
+   s\" SELECT (GROUP_CONCAT(?o; SEPARATOR=\",\";;) AS ?c) WHERE { ?s ?p ?o }"
+   s\" 1:39: expected ), found `;`; remove the ;\n1 | SELECT (GROUP_CONCAT(?o; SEPARATOR=\",\";;) AS ?c) WHERE { ?s ?p ?o }\n                                          ^"
+      REJECTS
+   \ A second SEPARATOR after ORDER BY.
+   s\" SELECT (GROUP_CONCAT(?o; SEPARATOR=\",\"; ORDER BY ?s; SEPARATOR=\",\") AS ?c) WHERE { ?s ?p ?o }"
+   s\" 1:54: expected ), found `SEPARATOR`; remove the second SEPARATOR\n1 | ..._CONCAT(?o; SEPARATOR=\",\"; ORDER BY ?s; SEPARATOR=\",\") AS ?c) WHERE { ?s ?p ?o }\n                                               ^"
+      REJECTS
+   \ An aggregate in an ORDER BY condition.
+   s\" SELECT (GROUP_CONCAT(?o; ORDER BY COUNT(?s)) AS ?c) WHERE { ?s ?p ?o }"
+   s\" 1:35: expected an expression without an aggregate, found `COUNT`; use aggregates only in SELECT, HAVING and ORDER BY, unnested\n1 | SELECT (GROUP_CONCAT(?o; ORDER BY COUNT(?s)) AS ?c) WHERE { ?s ?p ?o }\n                                      ^"
       REJECTS
    \ BOUND of a literal.
    s\" SELECT * WHERE { ?s ?p ?o FILTER(BOUND(1)) }"

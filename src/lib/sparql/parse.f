@@ -83,22 +83,6 @@ private
    state swap REVERSE {: expressions:n :}
    state N-HAVING expressions UNARY-NODE ;
 
-: ORDER-CONDITION ( ^syntax -- n )
-   {: state :}
-   state s" ASC" IS$ state s" DESC" IS$ or if
-      state s" DESC" IS$ if F-DESC else 0 then
-         {: flags:n :}
-      state NEXT-TOKEN state s" (" EXPECT$
-      state 0 EXPRESSION {: expression:n :}
-      state s" )" EXPECT$
-      state N-ORDER expression UNARY-NODE {: node:n :}
-      flags state node NODE NODE-FLAGS ! node
-   else
-      state TOKEN-K T-VAR = if state READ-TERM
-      else state CONSTRAINT then
-      state N-ORDER rot UNARY-NODE
-   then ;
-
 : ORDER-BY ( ^syntax -- n )
    {: state :}
    state s" BY" EXPECT$

@@ -1044,6 +1044,25 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    s" {'head':{'vars':['m']},'results':{'bindings':[{}]}}"
    EXPECT ;
 
+\ GROUP_CONCAT joins its values in its ORDER BY conditions' order.
+: ORDERED-CONCATS ( -- )
+   \ The second key orders the first one's ties.
+   s" SELECT (GROUP_CONCAT(?l; SEPARATOR=','; ORDER BY DESC(?k) ?l) AS ?c) WHERE { ?s a ?k ; rdfs:label ?l ; t:30 ?w }"
+   s" {'head':{'vars':['c']},'results':{'bindings':[{'c':{'type':'literal','value':'Bolt,Spindle,Lathe,Mill'}}]}}"
+   EXPECT
+   \ DISTINCT keeps each value's first place.
+   s" SELECT (GROUP_CONCAT(DISTINCT ?n; SEPARATOR=','; ORDER BY ?l) AS ?c) WHERE { ?s a ?k ; rdfs:label ?l ; t:30 ?w . ?k rdfs:label ?n }"
+   s" {'head':{'vars':['c']},'results':{'bindings':[{'c':{'type':'literal','value':'Part,Machine'}}]}}"
+   EXPECT
+   \ A key on a variable neither grouped nor projected.
+   s" SELECT ?k (GROUP_CONCAT(?l; SEPARATOR=','; ORDER BY ?w) AS ?c) WHERE { ?s a ?k ; rdfs:label ?l ; t:30 ?w } GROUP BY ?k"
+   s" {'head':{'vars':['k','c']},'results':{'bindings':[{'k':{'type':'uri','value':'urn:test:10'},'c':{'type':'literal','value':'Mill,Lathe'}},{'k':{'type':'uri','value':'urn:test:11'},'c':{'type':'literal','value':'Bolt,Spindle'}}]}}"
+   EXPECT
+   \ A path top down, by the depth a subquery counts.
+   s" SELECT ?l (GROUP_CONCAT(STR(?a); SEPARATOR=' / '; ORDER BY ?d) AS ?p) WHERE { VALUES ?l { t:60 t:61 } ?l t:26* ?a { SELECT ?a (COUNT(?up) AS ?d) WHERE { ?a t:26* ?up } GROUP BY ?a } } GROUP BY ?l"
+   s" {'head':{'vars':['l','p']},'results':{'bindings':[{'l':{'type':'uri','value':'urn:test:60'},'p':{'type':'literal','value':'urn:test:62 / urn:test:61 / urn:test:60'}},{'l':{'type':'uri','value':'urn:test:61'},'p':{'type':'literal','value':'urn:test:62 / urn:test:61'}}]}}"
+   EXPECT ;
+
 \ Numbers by subject: whole and fractional, wide, long fractions, scales
 \ apart.
 : EDGE-NUMBERS ( -- str )
@@ -1521,7 +1540,8 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    NULL-TESTS SUBJECT-ROWS FILTERS FILTER-EQUALITIES GRAPHS NAMED-GRAPHS OPTIONALS
    UNIONS MINUSES FILTER-EXISTS
    SUBSTITUTIONS MANY CONSTANTS WIDE FORMS
-   PROJECTIONS GROUPING AGGREGATES TYPED-AGGREGATES ONLY-COLUMNS
+   PROJECTIONS GROUPING AGGREGATES ORDERED-CONCATS TYPED-AGGREGATES
+   ONLY-COLUMNS
    TYPED-FILTERS BRANCH-GROUPING ORDERS DISTINCTS
    SUBQUERIES
    BINDS CHAINS UUIDS VOLATILE-BINDS DATA-BLOCKS PATHS ;

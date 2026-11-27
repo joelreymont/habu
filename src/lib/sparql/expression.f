@@ -1,5 +1,23 @@
 \ Precedence parsing of SPARQL expressions into syntax nodes; nothing is
 \ evaluated here.
+\
+\ A call's clauses each follow a `;`, and only GROUP_CONCAT takes any. On
+\ another call, a SEPARATOR or ORDER rejects at the call, any other token
+\ after a `;` at the `;`. A SEPARATOR or ORDER with no `;` before it
+\ rejects there: on GROUP_CONCAT with expected ;, write ; here. GROUP_CONCAT's
+\ state is none, separated (it has SEPARATOR) or ordered (it has ORDER BY,
+\ SEPARATOR or not). "At ;" rejects at the `;`, every other rejection at
+\ the token after it:
+\   ) or ;     any state: at ;, expected ), remove the ;
+\   SEPARATOR  none: read `= string`, go separated; separated: expected
+\              ORDER, remove the second SEPARATOR; ordered: expected ),
+\              remove the second SEPARATOR if it has one, else write
+\              SEPARATOR before ORDER BY
+\   ORDER      none, separated: read BY and the conditions, go ordered;
+\              ordered: expected ), write the conditions in one ORDER BY
+\   other      none: expected SEPARATOR or ORDER, write SEPARATOR or ORDER
+\              here; separated: expected ORDER, write ORDER here; ordered:
+\              at ;, expected ), remove the ;
 
 require src/lib/sparql/terms.f
 require src/lib/sparql/syntax.f
@@ -12,6 +30,7 @@ private
 
 defer EXPRESSION ( ^syntax n -- n )
 defer GROUP-PATTERN ( ^syntax -- n )
+defer ORDER-CONDITION ( ^syntax -- n )
 
 : OPERATOR-NODE ( ^syntax n str n n -- n )
    {: state kind:n text:str left:n right:n :}
@@ -44,24 +63,6 @@ defer GROUP-PATTERN ( ^syntax -- n )
    state s" )" ACCEPT$ if 0 exit then
    state EXPRESSIONS state s" )" EXPECT$ ;
 
-: CALL-ARGUMENTS ( ^syntax n -- )
-   {: state call:n :}
-   state s" DISTINCT" ACCEPT$ if
-      F-DISTINCT state call NODE NODE-FLAGS !
-   then
-   state s" *" ACCEPT$ if
-      F-STAR state call NODE NODE-FLAGS +!
-      state s" )" EXPECT$ exit
-   then
-   state s" )" ACCEPT$ if exit then
-   state EXPRESSIONS state call NODE NODE-A !
-   state s" ;" ACCEPT$ if
-      state s" SEPARATOR" EXPECT$
-      state s" =" EXPECT$
-      state T-STRING s" a string" REQUIRE-KIND
-      state STRING-TOKEN state call NODE NODE-B !
-   then state s" )" EXPECT$ ;
-
 : CALL-IS? ( ^syntax n str -- bool )
    {: state node:n text:str :}
    state node TEXT$ text STR:=CI ;
@@ -69,6 +70,110 @@ defer GROUP-PATTERN ( ^syntax -- n )
 : CALL-IN? ( ^syntax n str -- bool )
    {: state node:n list:str :}
    list state node TEXT$ LISTS? ;
+
+\ `= string` after a call's SEPARATOR, stored in call n.
+: CALL-SEPARATOR ( ^syntax n -- )
+   {: state call:n :}
+   state s" =" EXPECT$
+   state T-STRING s" a string" REQUIRE-KIND
+   state STRING-TOKEN state call NODE NODE-B ! ;
+
+\ Whether the current token is SEPARATOR or ORDER, which begin a clause.
+: CLAUSE-WORD? ( ^syntax -- bool )
+   {: state :} state s" SEPARATOR" IS$ state s" ORDER" IS$ or ;
+
+\ A call's ORDER BY conditions in written order, up to `)`, `;`, SEPARATOR
+\ or ORDER.
+: CALL-ORDER ( ^syntax n -- )
+   {: state call:n :}
+   state s" BY" EXPECT$
+   0 begin
+      state s" )" IS$ state s" ;" IS$ or state CLAUSE-WORD? or 0=
+   while
+      state ORDER-CONDITION state swap rot CONS
+   repeat
+   dup 0= if
+      state s" a variable or expression to order by"
+         s" write the variables to order by after ORDER BY" REJECT
+   then
+   state swap REVERSE state call NODE NODE-C ! ;
+
+: REJECT-IRI-CALL ( ^syntax n -- )
+   s" arguments without *, SEPARATOR or ORDER BY"
+   s" remove the *, SEPARATOR or ORDER BY" REJECT-NODE ;
+
+\ Rejects the `;` before the current token.
+: REJECT-SEMICOLON ( ^syntax -- )
+   {: state :}
+   state state SYNTAX-CURSOR @ 1- s" )" s" remove the ;" REJECT-TOKEN ;
+
+\ Rejects the current token in call n, which takes no clause.
+: NO-CLAUSES ( ^syntax n -- )
+   {: state call:n :}
+   state CLAUSE-WORD? 0= if state REJECT-SEMICOLON then
+   state call TEXT$ BUILTIN? 0= if state call REJECT-IRI-CALL then
+   state s" SEPARATOR" IS$ if
+      state call s" GROUP_CONCAT, the only function that takes SEPARATOR"
+         s" remove the SEPARATOR" REJECT-NODE
+   then
+   state call s" GROUP_CONCAT, the only function that takes ORDER BY"
+      s" remove the ORDER BY" REJECT-NODE ;
+
+\ Rejects the token after a `;`, which is not ORDER, in a call with
+\ SEPARATOR and no ORDER BY.
+: SEPARATED-CLAUSE ( ^syntax -- )
+   {: state :}
+   state s" SEPARATOR" IS$ if
+      state s" ORDER" s" remove the second SEPARATOR" REJECT
+   then state s" ORDER" EXPECT$ ;
+
+\ Rejects the token after a `;` in call n, which has its ORDER BY.
+: ORDERED-CLAUSE ( ^syntax n -- )
+   {: state call:n :}
+   state s" SEPARATOR" IS$ if
+      state s" )" state call NODE-B@ 0<> if
+         s" remove the second SEPARATOR"
+      else s" write SEPARATOR before ORDER BY" then REJECT
+   then
+   state s" ORDER" IS$ if
+      state s" )" s" write the conditions in one ORDER BY" REJECT
+   then state REJECT-SEMICOLON ;
+
+\ Reads or rejects the clause after a `;` in call n by the file header's table.
+: CLAUSE ( ^syntax n -- )
+   {: state call:n :}
+   state call s" GROUP_CONCAT" CALL-IS? 0= if state call NO-CLAUSES then
+   state s" )" IS$ state s" ;" IS$ or if state REJECT-SEMICOLON then
+   state call NODE-C@ 0<> if state call ORDERED-CLAUSE then
+   state s" ORDER" ACCEPT$ if state call CALL-ORDER exit then
+   state call NODE-B@ 0<> if state SEPARATED-CLAUSE then
+   state s" SEPARATOR" ACCEPT$ if state call CALL-SEPARATOR exit then
+   state s" SEPARATOR or ORDER" s" write SEPARATOR or ORDER here" REJECT ;
+
+\ The `; SEPARATOR = string` and `; ORDER BY` clauses of call n, by the file
+\ header's table.
+: CALL-CLAUSES ( ^syntax n -- )
+   {: state call:n :}
+   begin
+      state CLAUSE-WORD? if
+         state call s" GROUP_CONCAT" CALL-IS? if state s" ;" EXPECT$ then
+         state call NO-CLAUSES
+      then
+      state s" ;" ACCEPT$
+   while state call CLAUSE repeat ;
+
+: CALL-ARGUMENTS ( ^syntax n -- )
+   {: state call:n :}
+   state s" DISTINCT" ACCEPT$ if
+      F-DISTINCT state call NODE NODE-FLAGS !
+   then
+   state s" *" ACCEPT$ if
+      F-STAR state call NODE NODE-FLAGS +!
+   else
+      state s" )" ACCEPT$ if exit then
+      state EXPRESSIONS state call NODE NODE-A !
+   then
+   state call CALL-CLAUSES state s" )" EXPECT$ ;
 
 : AGGREGATE? ( ^syntax n -- bool )
    s" COUNT SUM MIN MAX AVG SAMPLE GROUP_CONCAT" CALL-IN? ;
@@ -115,10 +220,8 @@ defer GROUP-PATTERN ( ^syntax -- n )
 : CHECK-CALL ( ^syntax n -- )
    {: state call:n :}
    state call TEXT$ BUILTIN? 0= if
-      state call NODE NODE-FLAGS @ F-STAR and
-      state call NODE-B@ or 0<> if
-         state call s" arguments without * or SEPARATOR"
-            s" remove the * or SEPARATOR" REJECT-NODE
+      state call NODE NODE-FLAGS @ F-STAR and 0<> if
+         state call REJECT-IRI-CALL
       then exit
    then
    state call NODE NODE-FLAGS @ {: flags:n :}
@@ -132,13 +235,6 @@ defer GROUP-PATTERN ( ^syntax -- n )
       state call AGGREGATE? 0= if
          state call s" an aggregate before (DISTINCT"
             s" remove DISTINCT" REJECT-NODE
-      then
-   then
-   state call NODE-B@ 0<> if
-      state call s" GROUP_CONCAT" CALL-IS? 0= if
-         state call
-            s" GROUP_CONCAT, the only function that takes SEPARATOR"
-            s" remove the SEPARATOR" REJECT-NODE
       then
    then
    state call CALL-ARITY {: least:n most:n :}
@@ -276,6 +372,22 @@ defer GROUP-PATTERN ( ^syntax -- n )
          s" put the condition in parentheses" REJECT-TOKEN
    then ;
 
+: READ-ORDER-CONDITION ( ^syntax -- n )
+   {: state :}
+   state s" ASC" IS$ state s" DESC" IS$ or if
+      state s" DESC" IS$ if F-DESC else 0 then
+         {: flags:n :}
+      state NEXT-TOKEN state s" (" EXPECT$
+      state 0 EXPRESSION {: expression:n :}
+      state s" )" EXPECT$
+      state N-ORDER expression UNARY-NODE {: node:n :}
+      flags state node NODE NODE-FLAGS ! node
+   else
+      state TOKEN-K T-VAR = if state READ-TERM
+      else state CONSTRAINT then
+      state N-ORDER rot UNARY-NODE
+   then ;
+
 : ALIAS ( ^syntax -- n )
    {: state :}
    state s" (" EXPECT$
@@ -286,7 +398,8 @@ defer GROUP-PATTERN ( ^syntax -- n )
    state N-ALIAS value name BINARY-NODE ;
 
 : INSTALL-EXPRESSION ( -- )
-   ['] READ-EXPRESSION is EXPRESSION ;
+   ['] READ-EXPRESSION is EXPRESSION
+   ['] READ-ORDER-CONDITION is ORDER-CONDITION ;
 
 INSTALL-EXPRESSION
 
