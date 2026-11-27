@@ -2188,7 +2188,7 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
    s" Mcp-Name: " v VEC:APPEND
    name PLAIN-NAME? if name v VEC:APPEND else
       s" =?base64?" v VEC:APPEND
-      name v name STR:LEN 2 + 3 / 4 * VEC:EXTEND BASE64:ENCODE drop
+      name v BASE64:ENCODE+
       s" ?=" v VEC:APPEND
    then
    v VEC$ ;

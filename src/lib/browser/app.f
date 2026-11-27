@@ -122,27 +122,12 @@ APP-AT APP-MARK STR:LEN + constant APP-END
    HTML from + to from - >str v VEC:APPEND ;
 
 
-\ The n zero bytes appended to the vector.
-: TAIL+ ( ^VEC:vector<u8> n -- SPAN:span<u8> )
-   {: v:^ k:n :}
-   v VEC:COUNT {: old:n :}
-   v old k + VEC:ENSURE
-   v VEC:SPAN old SPAN:SKIP ;
-
-
-\ The bytes are read after the vector grows, so it must not hold them.
-: BASE64+ ( str ^VEC:vector<u8> -- )
-   {: s:str v:^ :}
-   v s STR:LEN 2 + 3 / 4 * TAIL+ {: out :}
-   s out BASE64:ENCODE drop ;
-
-
 \ The escaped title and the vector.
 : COMPOSE ( str ^VEC:vector<u8> -- )
    {: t:str v:^ :}
    0 TITLE-AT v GAP+  t v VEC:APPEND
    TITLE-END ID-AT v GAP+  ID ID-U >str v VEC:APPEND
-   ID-END APP-AT v GAP+  APP APP-U >str v BASE64+
+   ID-END APP-AT v GAP+  APP APP-U >str v BASE64:ENCODE+
    APP-END HTML-U v GAP+ ;
 
 
@@ -173,7 +158,7 @@ APP-AT APP-MARK STR:LEN + constant APP-END
    sha SHA256-BEGIN  sha m SHA256-FEED  sha FILES-FED
    sha SHA256-CTX-BYTES + {: dg:^ :}
    sha dg SHA256-END
-   v ID-U TAIL+ SPAN:$ STR:DATA {: hex:^ :}
+   v ID-U VEC:EXTEND SPAN:$ STR:DATA {: hex:^ :}
    dg hex SHA256>HEX ;
 
 public
@@ -189,7 +174,7 @@ public
 : FILE+ ( str str ^VEC:vector<u8> -- )
    {: name:str s:str v:^ :}
    s\" \"" v VEC:APPEND  name v VEC:APPEND
-   s\" \":\"" v VEC:APPEND  s v BASE64+  s\" \"" v VEC:APPEND ;
+   s\" \":\"" v VEC:APPEND  s v BASE64:ENCODE+  s\" \"" v VEC:APPEND ;
 
 
 \ The title and the vector the page is appended to; a title that is not XML

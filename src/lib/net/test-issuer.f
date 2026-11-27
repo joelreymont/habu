@@ -312,14 +312,6 @@ HTTP:MAX-WORKERS FIELDS * TYPED-BUFFER FIELD-LEN n
    {: path:str :}
    SB-RESET s" http://127.0.0.1:" SB-APPEND HTTP:PORT FMT:SB-U path SB-APPEND SB$ ;
 
-\ The bytes appended as unpadded base64url, whose length is exactly (4u+2)/3.
-\ The bytes must not lie in the vector, whose block the growth may move.
-: SEGMENT+ ( str ^VEC:vector<u8> -- )
-   {: s:str v:^ :}
-   v VEC:COUNT {: old:n :}
-   v old s STR:LEN 4 * 2 + 3 / + VEC:ENSURE
-   s v VEC:SPAN old SPAN:SKIP BASE64:ENCODE-URL drop ;
-
 \ The signature's first byte changed, so the key made no such signature.
 : FLIPPED ( ^VEC:vector<u8> -- )
    VEC:SPAN SPAN:$ STR:DATA {: at :}
@@ -333,16 +325,16 @@ HTTP:MAX-WORKERS FIELDS * TYPED-BUFFER FIELD-LEN n
    [: JWS-FIXTURE:PEM$ v VEC$ sig CRYPTO:RS256-SIGN
       forge if sig FLIPPED then
       [char] . v VEC:PUSH c!
-      sig VEC$ v SEGMENT+ ;]
+      sig VEC$ v BASE64:ENCODE-URL+ ;]
    [: sig VEC:DELETE ;] finally ;
 
 \ MINT's JWS, its signature forged when the flag is true.
 : JWS ( str ^VEC:vector<u8> bool -- str )
    {: claims:str v:^ forge:bool :}
    v 0 VEC:RESIZE
-   HEADER$ v SEGMENT+
+   HEADER$ v BASE64:ENCODE-URL+
    [char] . v VEC:PUSH c!
-   claims v SEGMENT+
+   claims v BASE64:ENCODE-URL+
    v forge SIGNED+
    v VEC$ ;
 

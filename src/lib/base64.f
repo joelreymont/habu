@@ -8,7 +8,9 @@
 \ STORAGE CLASS. CALLER-OWNED: the module keeps no state.
 
 require src/lib/error.f
+require src/lib/memory.f
 require src/lib/span.f
+require src/lib/vector.f
 require src/lib/reason.f
 require src/core/rejection.f
 
@@ -173,14 +175,22 @@ $03 constant TWO-BYTE-SPARE      \ "xxx=" carries 18 bits for 16: the third char
 : PUT ( n ^u8 n -- ) {: v out k:n :}
    k 0 ?do v 16 i 8 * - rshift OCTET and out i + c! loop ;
 
-\ Check the number of complete groups before multiplying by four, then the
-\ final 2/3/4 characters against the remaining capacity.
-: URL-ENCODE-LEN ( n n -- n ) {: u:n cap:n :}
-   u 3 / cap 4 / > if E-SPAN-CAPACITY throw then
+\ cap becomes the input bytes it can encode, three per four, before it meets u:
+\ u scaled up instead wraps near the maximum cell and can pass any cap.
+: ENCODE-LEN ( n n n -- n ) {: u:n cap:n code:n :}
+   u 0 < if E-SPAN-LENGTH throw then
+   cap 4 / 3 * u < if code throw then
+   u 2 + 3 / 4 * ;
+
+\ Complete groups are checked before they are multiplied by four, then the
+\ last group's 2 or 3 characters against what cap has left.
+: URL-ENCODE-LEN ( n n n -- n ) {: u:n cap:n code:n :}
+   u 0 < if E-SPAN-LENGTH throw then
+   u 3 / cap 4 / > if code throw then
    u 3 / 4 * {: full:n :}
    u 3 mod {: tail:n :}
    tail 0<> if tail 1+ else 0 then {: extra:n :}
-   extra cap full - > if E-SPAN-CAPACITY throw then
+   extra cap full - > if code throw then
    full extra + ;
 
 public
@@ -188,15 +198,9 @@ public
 \ A group is gathered whole before its characters are scattered, so one group
 \ may be encoded in place.
 : ENCODE ( str SPAN:span<u8> -- n ) {: src:str s :}
-   src STR:LEN 0 < if E-SPAN-LENGTH throw then
-   \ The input is compared with what the span holds, three bytes to four of
-   \ reach: scaled up first, a length near the maximum cell wraps the encoded
-   \ size negative and every span looks large enough.
-   s SPAN:$ STR:LEN 4 / 3 * src STR:LEN <
-   if E-SPAN-CAPACITY throw then
+   src STR:LEN s SPAN:$ STR:LEN E-SPAN-CAPACITY ENCODE-LEN {: len:n :}
    s SPAN:$ STR:DATA {: out :}
    src STR:LEN 2 + 3 / {: groups:n :}
-   groups 4 * {: len:n :}
    groups 0 ?do
       src STR:LEN i 3 * - 3 min {: k:n :}
       src STR:DATA i 3 * + k >str GATHER out i 4 * + k SCATTER
@@ -219,8 +223,7 @@ public
    len ;
 
 : ENCODE-URL ( str SPAN:span<u8> -- n ) {: src:str s :}
-   src STR:LEN 0 < if E-SPAN-LENGTH throw then
-   s SPAN:$ STR:LEN src STR:LEN swap URL-ENCODE-LEN {: len:n :}
+   s SPAN:$ STR:LEN src STR:LEN swap E-SPAN-CAPACITY URL-ENCODE-LEN {: len:n :}
    s SPAN:$ STR:DATA {: out :}
    src STR:LEN 2 + 3 / 0 ?do
       src STR:LEN i 3 * - 3 min {: k:n :}
@@ -228,6 +231,15 @@ public
       out i 4 * + k URL-SCATTER
    loop
    len ;
+
+\ The source may not lie in the vector these append to: growth may move it. A
+\ rejected length leaves the vector as it was.
+: ENCODE+ ( str ^VEC:vector<u8> -- )
+   {: src:str v:^ :}
+   src v src STR:LEN MEM-MAX-N E-VEC-CAPACITY ENCODE-LEN VEC:EXTEND ENCODE drop ;
+: ENCODE-URL+ ( str ^VEC:vector<u8> -- )
+   {: src:str v:^ :}
+   src v src STR:LEN MEM-MAX-N E-VEC-CAPACITY URL-ENCODE-LEN VEC:EXTEND ENCODE-URL drop ;
 
 : DECODE-URL ( str SPAN:span<u8> -- n ) {: src:str s :}
    src STR:LEN {: u:n :}

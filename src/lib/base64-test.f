@@ -9,6 +9,8 @@ require src/lib/string.f
 require src/lib/test/assert.f
 require src/lib/memory.f
 require src/lib/span.f
+require src/lib/heap.f
+require src/lib/vector.f
 require src/lib/base64.f
 require src/lib/reason.f
 require src/lib/crypto/sha1.f
@@ -314,6 +316,36 @@ variable STAGED-LEN
    s" ENCODE rejects a length whose encoded size wraps" T-LABEL
    [: 0 OUT$ STR:DATA MEM-MAX-N 2 - >str OUT BASE64:ENCODE drop ;] E-SPAN-CAPACITY TTHROWSQ ;
 
+\ The text after the vector's "x" is the word's, cut back to "x" first.
+: APPENDS ( ^VEC:vector<u8> str [ str ^VEC:vector<u8> -- ] str -- )
+   {: v:^ s:str put want:str :}
+   v 1 VEC:RESIZE
+   s v put execute
+   want T-LABEL
+   v VEC:COUNT want STR:LEN 1+ T=
+   v VEC:BYTES STR:DATA {: at :}
+   at c@ [char] x T=
+   at 1+ v VEC:COUNT 1- >str want T$= ;
+
+\ ENCODE+ and ENCODE-URL+ append RFC 4648 section 10's text to a vector.
+: APPENDING ( -- )
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: v:^ :}
+   s" x" v VEC:APPEND
+   v s" foobar" [: BASE64:ENCODE+ ;] s" Zm9vYmFy" APPENDS
+   v s" fooba" [: BASE64:ENCODE+ ;] s" Zm9vYmE=" APPENDS
+   v s" f" [: BASE64:ENCODE+ ;] s" Zg==" APPENDS
+   v s" " [: BASE64:ENCODE+ ;] s" " APPENDS
+   v s" fo" [: BASE64:ENCODE-URL+ ;] s" Zm8" APPENDS
+   v s" " [: BASE64:ENCODE-URL+ ;] s" " APPENDS
+   v 1 VEC:RESIZE
+   \ At this length 4n wraps to 4: sized by 4n+2 first, the vector would grow by 2.
+   s" ENCODE-URL+ and ENCODE+ reject a length no vector can hold" T-LABEL
+   [: 0 OUT$ STR:DATA $4000000000000001 >str v BASE64:ENCODE-URL+ ;] E-MEM-MAP TTHROWSQ
+   [: 0 OUT$ STR:DATA MEM-MAX-N 1- >str v BASE64:ENCODE+ ;] E-VEC-CAPACITY TTHROWSQ
+   s" and leave the vector as it was" T-LABEL
+   v VEC:COUNT 1 T=
+   v VEC:DELETE ;
+
 \ RFC 6455 section 1.3: the key decodes to sixteen bytes, and the accept value
 \ is the base64 of SHA-1 over the key and the protocol's GUID, fed as a server
 \ receives them.
@@ -330,7 +362,8 @@ public
 : RUN ( -- )
    T-RESET
    VECTORS ALPHABET ROUND-TRIP LENGTHS CHARS PADS CAPACITY HANDSHAKE
-   URL-VECTORS URL-ALPHABET PKCE URL-REJECTIONS URL-CAPACITY EVERY-BYTE ;
+   URL-VECTORS URL-ALPHABET PKCE URL-REJECTIONS URL-CAPACITY EVERY-BYTE
+   APPENDING ;
 
 ;package
 
