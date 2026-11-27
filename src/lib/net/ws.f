@@ -1314,7 +1314,8 @@ ENUM course
 
 \ The poll's readiness: room is written to, and anything else is read, which
 \ is how an end of stream or an error is learnt, while the slot's read is
-\ armed.
+\ armed. Linux reports a TCP hang-up or error with POLLOUT, so a held slot's
+\ write-only poll fails its write and is lost instead of polled again.
 : READY ( n n -- ) {: idx:n rev:n :}
    rev AIO:WRITABLE and 0 <> if
       idx LOCKED-FLUSH 0= if idx LOSE exit then
