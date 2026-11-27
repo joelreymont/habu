@@ -56,6 +56,8 @@ require src/lib/crypto/evp.f
 require src/lib/net/curl.f
 require src/lib/net/http.f
 require src/lib/reason.f
+require src/lib/fmt.f
+require src/lib/utf8-scalar.f
 require src/lib/uri.f
 require src/lib/net/http-arena.f
 require src/lib/net/http-request.f
@@ -77,6 +79,7 @@ public
 private
 EXPORT URI:DOT
 EXPORT URI:SECURE?
+EXPORT URI:HTTP-READ
 -9630 constant E-FIRST
 -9639 constant E-LAST
 
@@ -650,38 +653,78 @@ ENUM lookup-step
    url end row cu RESOURCE+ drop
    row split cu ;
 
+\ Opens the text of a rejected setting: its name, its value quoted and cut at
+\ REASON:QUOTE-MOST, `(hidden)` inside REASON:HIDDEN, then `: `.
+: SETTING ( str str -- )
+   {: value:str name:str :}
+   value REASON:QUOTE-MOST UTF8:FIT {: kept:n :}
+   REASON:OPEN name REASON:APPEND s"  " REASON:APPEND
+   value STR:DATA kept >str  kept value STR:LEN <  REASON:QUOTE
+   s" : " REASON:APPEND ;
+
+\ Appends `, found `, the byte, `(hidden)` inside REASON:HIDDEN, and its
+\ offset in the value, then `; `.
+: FOUND-BYTE ( n n -- )
+   {: c:n at:n :}
+   REASON:FOUND c REASON:BYTE
+   s"  at offset " REASON:APPEND at FMT:INT$ REASON:APPEND
+   REASON:FIX ;
+
 \ HTTP writes a header value as it is: a quote or backslash would end the
 \ quoted resource_metadata early, and a CR or LF would start a line of its own.
 \ A brace, no URI byte (RFC 3986 2), would make a named segment of a route.
+\ E-OPERAND names METADATA!'s URL and the first such byte.
 : QUOTABLE ( str -- )
    {: text:str :}
    text STR:LEN 0 ?do
       text STR:DATA i + c@ {: c :}
-      c $22 = c $5C = or c $7B = or c $7D = or c $20 < or c $7E > or if E-OPERAND throw then
+      c $22 = c $5C = or c $7B = or c $7D = or c $20 < or c $7E > or if
+         text s" METADATA!'s URL" SETTING REASON:EXPECTED
+         s" no quote, backslash, brace, control or non-ASCII byte" REASON:APPEND
+         c i FOUND-BYTE s" percent-encode it" REASON:APPEND
+         E-OPERAND REASON:STOP
+      then
    loop ;
 
 
 \ RFC 6749 A.1 and A.2: a client id and secret are VSCHAR, %x20-7E.
-: VSCHARS ( str -- )
-   {: text:str :}
+\ E-OPERAND names the setting and the first other byte.
+: VSCHARS ( str str -- )
+   {: text:str name:str :}
    text STR:LEN 0 ?do
       text STR:DATA i + c@ {: c :}
-      c $20 < c $7E > or if E-OPERAND throw then
+      c $20 < c $7E > or if
+         text name SETTING REASON:EXPECTED s" bytes $20 to $7E" REASON:APPEND
+         c i FOUND-BYTE
+         s" remove it, as the line end a pasted or piped value keeps" REASON:APPEND
+         E-OPERAND REASON:STOP
+      then
    loop ;
+
+\ E-OPERAND naming METADATA!'s scope and the byte at fault.
+: SCOPE-WRONG ( str n n -- )
+   {: text:str c:n at:n :}
+   text s" METADATA!'s scope" SETTING REASON:EXPECTED
+   s" tokens of printable ASCII but quote and backslash, one space apart"
+   REASON:APPEND
+   c at FOUND-BYTE s" remove it" REASON:APPEND
+   E-OPERAND REASON:STOP ;
 
 \ RFC 6749 3.3: tokens of NQCHAR (%x21, %x23-5B, %x5D-7E), each one space
 \ from the next. An empty scope names none.
 : SCOPE-TOKENS ( str -- )
    {: text:str :}
    text STR:LEN 0= if exit then
-   text STR:DATA c@ $20 =
-   text STR:DATA text STR:LEN 1- + c@ $20 = or if E-OPERAND throw then
+   text STR:DATA c@ $20 = if text $20 0 SCOPE-WRONG then
+   text STR:DATA text STR:LEN 1- + c@ $20 = if
+      text $20 text STR:LEN 1- SCOPE-WRONG
+   then
    text STR:LEN 0 ?do
       text STR:DATA i + c@ {: c :}
       c $20 = if
-         text STR:DATA i 1+ + c@ $20 = if E-OPERAND throw then
+         text STR:DATA i 1+ + c@ $20 = if text $20 i 1+ SCOPE-WRONG then
       else
-         c $21 < c $7E > or c $22 = or c $5C = or if E-OPERAND throw then
+         c $21 < c $7E > or c $22 = or c $5C = or if text c i SCOPE-WRONG then
       then
    loop ;
 
@@ -689,10 +732,22 @@ ENUM lookup-step
    PASSED @ 0= if false exit then
    FROM @ HTTP:>REQUEST HTTP:SERVING? ;
 
-\ E-OPERAND for an http URL whose host is no loopback IP literal; URI:ORIGIN's
-\ rejection for one it cannot read.
-: SECURE ( str -- )
-   SECURE? 0= if E-OPERAND throw then ;
+\ The URL of the named setting is https, or http to a loopback IP literal:
+\ E-OPERAND for another http URL, URI:ORIGIN's code for one it cannot read,
+\ each with a text naming the setting.
+: SECURE ( str str -- )
+   {: url:str name:str :}
+   url HTTP-READ {: s:n h:str p:n end:n code:n :}
+   code 0<> if
+      url name SETTING code ERROR:TEXT$ REASON:APPEND
+      code REASON:STOP
+   then
+   url SECURE? if exit then
+   url name SETTING REASON:EXPECTED
+   s" https, or http to a loopback IP literal" REASON:APPEND
+   REASON:FOUND s" http to " REASON:APPEND h REASON:VISIBLE
+   REASON:FIX s" use https" REASON:APPEND
+   E-OPERAND REASON:STOP ;
 
 \ The resource's path: nothing, or `/` and no query or fragment.
 : PATH? ( str -- bool )
@@ -701,18 +756,45 @@ ENUM lookup-step
    p STR:DATA c@ [char] / <> if false exit then
    p s" ?" STR:CONTAINS? 0= p s" #" STR:CONTAINS? 0= and ;
 
+\ Appends `, found ` and the part quoted and cut at REASON:QUOTE-MOST, or
+\ `nothing`, then `; `.
+: FOUND-PART ( str -- )
+   {: part:str :}
+   REASON:FOUND
+   part STR:LEN 0= if s" nothing" REASON:APPEND else
+      part REASON:QUOTE-MOST UTF8:FIT {: kept:n :}
+      part STR:DATA kept >str  kept part STR:LEN <  REASON:QUOTE
+   then
+   REASON:FIX ;
+
 \ Where the well-known segment starts in METADATA!'s URL, 0 for an empty
-\ URL; SECURE's rejection, or E-OPERAND for a URL not of RFC 9728 3.1's form.
+\ URL; SECURE's rejection, or E-OPERAND for a URL not of RFC 9728 3.1's form,
+\ naming the part at fault.
 : WELL-KNOWN-AT ( str -- n )
    {: url:str :}
    url STR:LEN 0= if 0 exit then
-   url SECURE
+   url s" METADATA!'s URL" SECURE
    url URI:REQUEST-TARGET$ STR:DATA url STR:DATA - {: end:n :}
    url STR:DATA end + url STR:LEN end - >str {: rest:str :}
-   rest WELL-KNOWN STR:STARTS-WITH? 0= if E-OPERAND throw then
+   rest WELL-KNOWN STR:STARTS-WITH? 0= if
+      url s" METADATA!'s URL" SETTING REASON:EXPECTED
+      s" `" REASON:APPEND WELL-KNOWN REASON:APPEND
+      s" ` right after the authority" REASON:APPEND
+      rest FOUND-PART
+      s" insert it before the resource's path" REASON:APPEND
+      E-OPERAND REASON:STOP
+   then
    rest STR:DATA WELL-KNOWN STR:LEN +
-   rest STR:LEN WELL-KNOWN STR:LEN - >str
-   PATH? 0= if E-OPERAND throw then
+   rest STR:LEN WELL-KNOWN STR:LEN - >str {: tail:str :}
+   tail PATH? 0= if
+      url s" METADATA!'s URL" SETTING REASON:EXPECTED
+      s" nothing or a path with no query or fragment after `" REASON:APPEND
+      WELL-KNOWN REASON:APPEND s" `" REASON:APPEND
+      tail FOUND-PART
+      s" start the resource's path with `/` and drop the query and fragment"
+      REASON:APPEND
+      E-OPERAND REASON:STOP
+   then
    end ;
 
 : SCOPES+ ( ^JSON:writer str n -- ^JSON:writer )
@@ -742,11 +824,12 @@ public
 \ server, as literals do. A built program keeps none: it states them at run
 \ time. E-HTTP-STATE while HTTP serves; E-OPERAND for an iss or key set URL
 \ neither https nor http to a loopback IP literal, URI:ORIGIN's rejection for
-\ one it cannot read, either leaving the previous issuer in force.
+\ one it cannot read, either leaving the previous issuer in force; each
+\ rejection's REASON:TEXT$ names the setting, the value and the fix.
 : ISSUER! ( str str str -- )
    {: iss:str aud:str url:str :}
    HTTP:RUNNING? if E-HTTP-STATE throw then
-   iss SECURE url SECURE
+   iss s" ISSUER!'s iss" SECURE  url s" ISSUER!'s key set URL" SECURE
    iss STR:DATA ISSUER-AT ! iss STR:LEN ISSUER-LEN !
    aud STR:DATA AUDIENCE-AT ! aud STR:LEN AUDIENCE-LEN !
    url STR:DATA KEYS-URL-AT ! url STR:LEN KEYS-URL-LEN !
@@ -766,7 +849,8 @@ public
 \ (RFC 9728 3.1), or holding a quote, a backslash, a brace, or a byte below $20
 \ or above $7E unencoded, or for a scope that is not space-separated RFC 6749
 \ 3.3 scope tokens; URI:ORIGIN's rejection for a URL it cannot read. A rejected
-\ text or failed allocation leaves the previous statement in force.
+\ text or failed allocation leaves the previous statement in force. Each
+\ rejection's REASON:TEXT$ names the setting, the value and the fix.
 \ E-HTTP-STATE while HTTP serves.
 : METADATA! ( str str -- )
    {: url:str scope:str :}
@@ -1062,11 +1146,13 @@ ENUM grant
 \ at run time. E-OPERAND for a URL neither https nor http to a loopback IP
 \ literal or an id or secret holding a byte outside %x20-7E, URI:ORIGIN's
 \ rejection for a URL it cannot read, each leaving the previous client in
-\ force.
+\ force; each rejection's REASON:TEXT$ names the setting, the value and the
+\ fix, the secret's showing `(hidden)` for its value and byte.
 : CLIENT! ( str str str -- )
    {: url:str id:str secret:str :}
-   url SECURE
-   id VSCHARS  secret VSCHARS
+   url s" CLIENT!'s token endpoint URL" SECURE
+   id s" CLIENT!'s client id" VSCHARS
+   secret s" CLIENT!'s client secret" [: VSCHARS ;] REASON:HIDDEN
    url STR:DATA url STR:LEN SPAN:MAKE ENDPOINT !
    id STR:DATA id STR:LEN SPAN:MAKE CLIENT-ID !
    secret STR:DATA secret STR:LEN SPAN:MAKE SECRET !

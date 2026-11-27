@@ -36,6 +36,7 @@ require src/lib/crypto/jws-fixture.f
 require src/lib/net/curl.f
 require src/lib/net/http.f
 require src/lib/net/bearer.f
+require src/lib/reason.f
 require src/lib/json/write.f
 
 \ White-box reads no public word answers, defined into BEARER-TEST so BEARER's
@@ -744,10 +745,15 @@ TASK:MIN-STACK TASK:TASK CLAIMER
 
 : CLIENT-AT ( str -- ) s" app" s" " BEARER:CLIENT! ;
 
+\ The text of the last E-OPERAND is the span.
+: SAID ( str -- ) BEARER:E-OPERAND REASON:TEXT$ swap T$= ;
+
 \ Leaves ISSUER! and CLIENT! stating SECURE$.
 : URL-CASES ( -- )
    s" ISSUER! rejects an http URL to a named host" T-LABEL
    [: NAMED-HOST$ ISSUED-AT ;] BEARER:E-OPERAND TTHROWSQ
+   s" ISSUER!'s key set URL `http://bearer-test.example/keys`: expected https, or http to a loopback IP literal, found http to bearer-test.example; use https"
+   SAID
    s" ISSUER! rejects http://localhost" T-LABEL
    [: LOCALHOST$ ISSUED-AT ;] BEARER:E-OPERAND TTHROWSQ
    s" ISSUER! rejects an http iss to a named host" T-LABEL
@@ -761,6 +767,8 @@ TASK:MIN-STACK TASK:TASK CLAIMER
    [: LOCALHOST$ CLIENT-AT ;] BEARER:E-OPERAND TTHROWSQ
    s" CLIENT! rejects a secret ending in a line end" T-LABEL
    [: SECURE$ s" app" s\" secret\n" BEARER:CLIENT! ;] BEARER:E-OPERAND TTHROWSQ
+   s" CLIENT!'s client secret (hidden): expected bytes $20 to $7E, found (hidden) at offset 6; remove it, as the line end a pasted or piped value keeps"
+   SAID
    s" ISSUER! and CLIENT! accept http to 127.0.0.1 and [::1], and https" T-LABEL
    V4$ ISSUED-AT V6$ ISSUED-AT SECURE$ ISSUED-AT
    V4$ CLIENT-AT V6$ CLIENT-AT SECURE$ CLIENT-AT ;
@@ -780,7 +788,9 @@ TASK:MIN-STACK TASK:TASK CLAIMER
    [: s" http://localhost:8080/.well-known/oauth-protected-resource" METADATA-AT ;]
    BEARER:E-OPERAND TTHROWSQ
    s" METADATA! rejects a URL without the well-known segment" T-LABEL
-   [: s" https://bearer-test.example/mcp" METADATA-AT ;] BEARER:E-OPERAND TTHROWSQ ;
+   [: s" https://bearer-test.example/mcp" METADATA-AT ;] BEARER:E-OPERAND TTHROWSQ
+   s" METADATA!'s URL `https://bearer-test.example/mcp`: expected `/.well-known/oauth-protected-resource` right after the authority, found `/mcp`; insert it before the resource's path"
+   SAID ;
 
 
 : ROUTES ( -- )
@@ -871,6 +881,8 @@ TASK:MIN-STACK TASK:TASK CLAIMER
       SCOPE$ BEARER:METADATA! ;] BEARER:E-OPERAND TTHROWSQ
    s" METADATA! with a quote in its scope throws E-OPERAND" T-LABEL
    [: REPLACED$ s\" tender.read \"x" BEARER:METADATA! ;] BEARER:E-OPERAND TTHROWSQ
+   S\" METADATA!'s scope `tender.read \"x`: expected tokens of printable ASCII but quote and backslash, one space apart, found byte $22 at offset 12; remove it"
+   SAID
    s" METADATA! with two spaces between scope tokens throws E-OPERAND" T-LABEL
    [: REPLACED$ s" tender.read  tender.write" BEARER:METADATA! ;] BEARER:E-OPERAND TTHROWSQ
    METADATA-REJECTS
