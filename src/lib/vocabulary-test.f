@@ -316,6 +316,16 @@ PATH-CAP 1 + BUFFER: AT-BUF
    s" allow-root-scope-seal" HARNESS!
    s" " 0 s" error[E-POLICY]: the source policy is already sealed" s" test/policy/allow-root-scope-seal.f:14:" S\" 70\n70\n70\n70\n\n" SAYS ;
 
+\ A require a SOURCE-ROOT:WITH body made resolved under the body's root: the
+\ help spells the require that resolves from the reader instead.
+: SCOPED-IN ( CMD:command -- CMD:command )
+   >r s" " 70 s" error[E-UNREQUIRED]: `UA:HELLO` is defined in `test/policy/scoped/src/a.f`, which `test/policy/scoped/tools/t.f` does not require" s" = expected: `require ../src/a.f` in `test/policy/scoped/tools/t.f`" s" " r> SAYS-IN
+   s" = help: add `require ../src/a.f` to `test/policy/scoped/tools/t.f`" HOLDS ;
+
+: SCOPED ( -- )
+   s" scoped/tools/t" HARNESS!
+   [: SCOPED-IN ;] CMD:WITH-COMMAND ;
+
 \ A definer's built words call the names a sealed table gives as the table's
 \ text would: an ACTION outside the vocabulary is rejected at its name, and
 \ `require` is one: only a top-level token may name it.
@@ -335,7 +345,7 @@ public
    LOADERS KEYWORDS SCOPES WIDENING
    BODIES MODELED
    NAMES
-   HARNESSES BOUND SEAM CONFINED BUILT
+   HARNESSES BOUND SEAM CONFINED SCOPED BUILT
    T-REPORT ;
 
 ;package

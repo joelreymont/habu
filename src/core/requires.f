@@ -25,8 +25,9 @@
 \ A diagnostic spells the missing require for its reader: an engine root's file
 \ by its name there, unless that root holds that name; any other as the
 \ reader's require of the file nearest it is spelled, where that spelling names
-\ a directory above both, since a file's own requires resolve under each root
-\ its programs read it from; else by its path from the root the reader's next
+\ a directory above both and, read under the root the reader's next require
+\ resolves under, still names that file, as one a SOURCE-ROOT:WITH body made
+\ under another root does not; else by its path from the root the reader's next
 \ require resolves under, through `..` where it is not below it, or by its
 \ canonical path where the reader has no root. `require` reads one
 \ token, so a path with a blank is spelled for `required`.
@@ -304,11 +305,26 @@ SRCLOC:SOURCE-CELL RESERVED-PTR-U8-CELL LOADER
 : EDGE-PATH$ ( n -- str ) cells EDGE-KEYS @ + @ $FFFFFFFF and PATH$ ;
 : EDGE-TEXT$ ( n -- str ) EDGE-TEXTS @ TEXT$ ;
 
+create NAMED-BUF PATH-CAP 1 + SCRATCH-ALLOT
+
+\ Whether edge i's spelling, read under its requirer's root now, names its
+\ file: one read under another root, as a SOURCE-ROOT:WITH body's, does not.
+: NAMES? ( n -- bool ) {: i:n :}
+   i EDGE-TEXT$ {: s:str :}
+   s PORTABLE? 0= if 0 0= exit then
+   i EDGE-FROM BASE$ {: r:str :}
+   r STR:LEN 0= if 0 0= 0= exit then
+   r s UNDER {: q:str :}
+   q STR:DATA NAMED-BUF PATH-CAP 1 + >span realpath {: n:n :}
+   n 0 > 0= if 0 0= 0= exit then
+   NAMED-BUF n >str  i EDGE-PATH$  STR:= ;
+
 \ The bytes of edge i's path that name a directory holding path t too, where
-\ its spelling holds the rest; 0 where it does not.
+\ its spelling holds the rest and names its file now; 0 where it does not.
 : COMMON ( str n -- n ) {: t:str i:n :}
    i EDGE-PATH$ {: p:str :}
    p PORTABLE? if 0 exit then
+   i NAMES? 0= if 0 exit then
    p  t DIR$  SHARED {: k:n :}
    i EDGE-TEXT$  p k PAST  ENDS? if k else 0 then ;
 
