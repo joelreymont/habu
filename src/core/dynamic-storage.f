@@ -2,11 +2,11 @@
 \ and HEAP. A buffer record is a head cell holding the mapping (`^^a`)
 \ and the control block right behind it (capacity and registry slot + 1;
 \ `^n`); a DYNAMIC-BUFFER's block follows them with its element width in
-\ bytes. No word views a pointer cell as bytes or cells. Release zeroes the
-\ record, so no process address survives capture; the head and the control
-\ cells are scratch, so a save or a file's object holds every record released
-\ and the registry empty even while this process keeps them. It loads below the
-\ core-prefix mark:
+\ bytes. No word stores through a view of a pointer cell; COPY alone reads
+\ one as a number, to skip a zero. Release zeroes the record, so no process
+\ address survives capture; the head and the control cells are scratch, so a
+\ save or a file's object holds every record released and the registry empty
+\ even while this process keeps them. It loads below the core-prefix mark:
 \ rewound generated declarations call it.
 package DYNAMIC-STORAGE
 public
@@ -35,8 +35,14 @@ $40 constant REG-INIT
 \ every registry extent is whole rows of cells, so the byte count is a cell
 \ multiple and copying whole cells preserves the entire capacity, a fractional
 \ element's tail included. The cells move as `a`, so pointers move as pointers.
+\ The destination is a fresh map-anon mapping, which reads zero already: no
+\ zero cell is written, so a page of zeroes holds no memory.
 : COPY ( ^a ^a n -- ) {: src:^ dst:^ bytes:n :}
-   bytes CELL / 0 ?do src i cells + @ dst i cells + ! loop ;
+   bytes CELL / 0 ?do
+      src i cells + BYTE-VIEW CELL-VIEW @ 0 <> if
+         src i cells + @ dst i cells + !
+      then
+   loop ;
 
 \ One registry per runtime instance. Empty capacity is retained until capture,
 \ so the pointer itself is the authority on whether the mapping is live.
