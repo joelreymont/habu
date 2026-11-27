@@ -631,15 +631,18 @@ defer EXISTS-SQL ( ^plan n -- )
       state s" _:#" state node NODE-VALUE@ FMT:INT$ JOIN$ exit
    then state s" _:" state node TEXT$ JOIN$ ;
 
-\ Counts one more read.
-: +READ ( ^plan -- )
-   {: plan :}
-   1 plan PLAN-READS +!
-   plan PLAN-READS @ MOST > if
+\ Rejects the query when n reads more than those so far pass MOST.
+: CHECK-READS ( ^plan n -- )
+   {: plan more:n :}
+   plan PLAN-READS @ more + MOST > if
       plan s" at most 512 patterns, sources they match and variables"
          s" split the query, or state predicates so that fewer sources match"
          TOO-MANY
    then ;
+
+\ Counts one more read.
+: +READ ( ^plan -- )
+   {: plan :} plan 1 CHECK-READS 1 plan PLAN-READS +! ;
 
 : NAMED? ( ^name str n -- bool )
    {: v:^ name:str frame:n :}
@@ -3170,6 +3173,12 @@ STRUCTURE pruning DERIVE addr
    plan items plan at s fwd o TRIPLE-NODE plan at o inv s TRIPLE-NODE
    ALTERNATIVE ;
 
+\ The members of path's `|` chain.
+: CHAIN-MEMBERS ( ^syntax n -- n )
+   {: state path:n :}
+   state path s" |" OPERATOR? 0= if 1 exit then
+   state state path NODE-A@ RECURSE state state path NODE-B@ RECURSE + ;
+
 \ Union u, 0 for none, and the groups of s m o for each member m of
 \ path's `|` chain, in written order, nested left as a written UNION.
 : PATH-UNION ( ^plan n n n n n -- n )
@@ -3205,6 +3214,8 @@ STRUCTURE pruning DERIVE addr
       plan plan PLAN-FRESH @ plan f VAR +INDEX plan PLAN-FRESH ! exit
    then
    state path s" |" OPERATOR? if
+      \ Each member reads at least once: reject a long chain before it is built.
+      plan state path CHAIN-MEMBERS CHECK-READS
       plan items plan 0 at s path o PATH-UNION UNION-ITEM exit
    then
    state path NEGATED? if plan items at s path o NEGATED-ITEM exit then
