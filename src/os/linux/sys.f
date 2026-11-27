@@ -25,9 +25,13 @@ $104022 constant MAP-DATA-RESERVE
 \ MREMAP-MOVE-FIXED moves a mapping to an exact address, replacing what is
 \ mapped there: MREMAP_MAYMOVE 1 | MREMAP_FIXED 2.
 $3 constant MREMAP-MOVE-FIXED
-\ The code region's two views map one memfd.
-$01 constant MAP-SHARED
-$11 constant MAP-SHARED-FIXED
+\ MREMAP-MAYMOVE lets mremap place the mapping where the kernel chooses:
+\ MREMAP_MAYMOVE 1.
+$1 constant MREMAP-MAYMOVE
+\ The code region's pages, which both its views map: MAP_SHARED $01 |
+\ MAP_ANONYMOUS $20, and with MAP_FIXED $10 at an exact address.
+$21 constant MAP-ANON-SHARED
+$31 constant MAP-ANON-SHARED-FIXED
 
 private
 93  constant NR-EXIT
@@ -66,8 +70,6 @@ public
 132 constant NR-SIGALTSTACK
 169 constant NR-GETTIMEOFDAY
 222 constant NR-MMAP
-279 constant NR-MEMFD-CREATE
-46  constant NR-FTRUNCATE
 73  constant NR-POLL
 220 constant NR-SPAWN
 220 constant NR-FORK      \ clone(SIGCHLD, 0, 0, 0, 0)

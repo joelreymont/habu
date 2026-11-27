@@ -2386,25 +2386,17 @@ package LIBC-OS
 
 public
 
-\ Linux: x0 = a new memfd "hb-region" of REGION bytes, close-on-exec and
-\ executable. A kernel before 6.3 rejects MFD_EXEC with EINVAL, and that answer
-\ alone retries without it; any other failure jumps to fail with no descriptor
-\ left open. Clobbers x0, x1, x5, x8, x16.
-: REGION-MEMFD ( label -- ) {: fail:label :}
-   LBL LBL LBL {: made:label retry:label sized:label :}
-   SP SP 16 SUBI,
-   1 $6F696765722D6268 LIT64,  1 SP 0 STR,          \ "hb-region" + NUL
-   1 $6E MOVZ,  1 SP 8 STR,
-   0 SP 0 ADDI,  1 $11 MOVZ,  NR-MEMFD-CREATE SYS,   \ MFD_CLOEXEC | MFD_EXEC
-   C-CC made BCOND,
-   1 21 MOVN,  0 1 CMP,  C-EQ retry BCOND,           \ -EINVAL
-      SP SP 16 ADDI,  fail B,
-   retry LBL,
-   0 SP 0 ADDI,  1 1 MOVZ,  NR-MEMFD-CREATE SYS,     \ MFD_CLOEXEC
-   made LBL,  SP SP 16 ADDI,  C-CS fail BCOND,
-   5 0 0 ADDI,  1 REGION LIT64,  NR-FTRUNCATE SYS,  C-CC sized BCOND,
-      0 5 0 ADDI,  NR-CLOSE SYS,  fail B,
-   sized LBL,  0 5 0 ADDI, ;
+\ Linux: x9 = REGION shared anonymous RX bytes at x0 by flags x3, x10 = a RW view;
+\ a failure unmaps what it mapped and jumps to fail. Clobbers x0-x5, x8, x16.
+: REGION-PAIR ( label -- ) {: fail:label :}
+   LBL LBL {: unview:label done:label :}
+   1 REGION LIT64,  2 5 MOVZ,  4 0 MOVN,  5 0 MOVZ,  NR-MMAP SYS,  C-CS fail BCOND,
+   9 0 0 ADDI,  1 0 MOVZ,  2 REGION LIT64,  3 MREMAP-MAYMOVE MOVZ,
+   NR-MREMAP SYS,  C-CS unview BCOND,
+   10 0 0 ADDI,  1 REGION LIT64,  2 3 MOVZ,  NR-MPROTECT SYS,  C-CC done BCOND,
+   0 10 0 ADDI,  NR-MUNMAP SYS,
+   unview LBL,  0 9 0 ADDI,  1 REGION LIT64,  NR-MUNMAP SYS,  fail B,
+   done LBL, ;
 
 \ macOS: map the region's RW alias over [x0, x0+REGION) with mach_vm_remap
 \ (copy FALSE) and leave x0 = alias - x0. x16 = __text base on entry. fixed
@@ -2477,31 +2469,20 @@ public
    done LBL,
    SP SP 48 ADDI,  0 G-PUSH ;
 
-\ Darwin's libc fork reinitializes libSystem's child state, including Mach
-\ reply ports. A raw syscall child can execute Habu but subsequent Mach VM
-\ queries fail; the same query succeeds after libc fork. Linux keeps clone.
-\ Each child owns its region before any Habu code runs, so its compiles stay
-\ out of the parent's code and the parent's patches out of the child's. On
-\ Linux both views are MAP_SHARED, so a child would alias the parent's live
-\ memfd, which the parent keeps writing once `fork` has returned to it: the
-\ parent fills a fresh memfd with its region's used extent BEFORE the clone and
-\ the child maps that memfd over both views, so the child's region is the
-\ parent's as it stood when the parent made the copy, and no byte the parent
-\ writes afterwards reaches it. A failure before the clone answers -1, as a
-\ failed clone does; a child that cannot map its views dies named with exit 71.
-\ The child starts with no exit owner, so its own exit runs the actions.
+\ A child owns its region before any Habu code runs, and starts with no exit
+\ owner, so its own exit runs the actions.
 : FORK ( -- )                         \ ( -- pid|-1 )
    HB-TARGET-LINUX-ARM64? IF
-      LBL LBL LBL LBL LBL {: unfd:label failed:label parent:label done:label dead:label :}
+      LBL LBL LBL LBL LBL {: unmap:label failed:label parent:label done:label dead:label :}
       LBL LBL LBL LBL {: scan:label next:label scanned:label plain:label :}
       LBL LBL {: span:label out:label :}
-      SP SP 32 SUBI,                    \ [0] the child's memfd, [8] its filling view, [16] code end
+      SP SP 32 SUBI,                    \ [0] the copy's RX view, [8] its RW view, [16] code end
       \ Delta 0 = no alias (a stripped image): the startup maps one anywhere but DBASE.
       9 XREG-RBASE REGION-ALIAS:DELTA-CELL LDR,  9 plain CBZ,
-      failed REGION-MEMFD  0 SP 0 STR,
-      4 0 0 ADDI,  0 0 MOVZ,  1 REGION LIT64,  2 3 MOVZ,  3 MAP-SHARED LIT64,  5 0 MOVZ,
-      NR-MMAP SYS,  C-CS unfd BCOND,
-      0 SP 8 STR,  12 0 DBASE SUB,                          \ x12 = view - DBASE
+      \ Both views are the parent's live pages, so the child's region is a fresh
+      \ shared copy, filled before the clone and unmapped by the parent after it.
+      0 0 MOVZ,  3 MAP-ANON-SHARED LIT64,  failed REGION-PAIR
+      9 SP 0 STR,  10 SP 8 STR,  12 10 DBASE SUB,           \ x12 = RW view - DBASE
       \ The used extent, every region byte a Habu word in the child can reach:
       \ the records below the larger of NDICT + 1 (DEF-OPEN keeps the open
       \ definition's record at NDICT) and the high-water (the records a
@@ -2533,31 +2514,30 @@ public
       9 9 7 ADDI,  9 9 3 LSRI,  9 9 3 LSLI,  9 SP 16 STR,
       1 CFSTK-OFF LIT64,  1 DBASE 1 ADD,  2 9 0 ADDI,
       ALIAS-COPY,
-      0 SP 8 LDR,  1 REGION LIT64,  NR-MUNMAP SYS,  C-CS unfd BCOND,
       0 17 MOVZ,  1 0 MOVZ,  2 0 MOVZ,  3 0 MOVZ,  4 0 MOVZ,
       NR-FORK SYS,
-      C-CS unfd BCOND,  0 parent CBNZ,
-      \ The child: the filled memfd mapped RW at the parent's alias address, DBASE
-      \ + delta, so every region's inherited delta cell stays true and none is
-      \ rewritten, then RX over the inherited RX view, whose bytes the copy
-      \ repeats under the code running here; the copied code is then flushed.
-      10 SP 0 LDR,  12 XREG-RBASE REGION-ALIAS:DELTA-CELL LDR,
-      0 DBASE 12 ADD,  1 REGION LIT64,  2 3 MOVZ,  3 MAP-SHARED-FIXED LIT64,
-      4 10 0 ADDI,  5 0 MOVZ,  NR-MMAP SYS,  C-CS dead BCOND,
-      0 DBASE 0 ADDI,  1 REGION LIT64,  2 5 MOVZ,  3 MAP-SHARED-FIXED LIT64,
-      4 10 0 ADDI,  5 0 MOVZ,  NR-MMAP SYS,  C-CS dead BCOND,
-      0 10 0 ADDI,  NR-CLOSE SYS,  C-CS dead BCOND,
+      C-CS unmap BCOND,  0 parent CBNZ,
+      \ The child moves the copy's RW view to DBASE + delta, so no delta cell
+      \ changes, and its RX view over the inherited one.
+      12 XREG-RBASE REGION-ALIAS:DELTA-CELL LDR,
+      0 SP 8 LDR,  1 REGION LIT64,  2 REGION LIT64,  3 MREMAP-MOVE-FIXED MOVZ,
+      4 DBASE 12 ADD,  NR-MREMAP SYS,  C-CS dead BCOND,
+      0 SP 0 LDR,  1 REGION LIT64,  2 REGION LIT64,  3 MREMAP-MOVE-FIXED MOVZ,
+      4 DBASE 0 ADDI,  NR-MREMAP SYS,  C-CS dead BCOND,
       9 DICT-SIZE LIT64,  9 DBASE 9 ADD,  11 SP 16 LDR,  LFLUSHTO LABEL@ BL,
       0 0 MOVZ,  done B,
       dead LBL,
          S\" hb: fork: cannot map the child's own region\n" ERR-TEXT,
          0 EXIT-STATUS:SYSTEM MOVZ,  NR-EXIT-GROUP SYS,
-      parent LBL,                       \ the descriptor is released whatever close answers
-         9 0 0 ADDI,  0 SP 0 LDR,  NR-CLOSE SYS,  0 9 0 ADDI,  done B,
+      parent LBL,                       \ the copy is unmapped whatever munmap answers
+         9 0 0 ADDI,  0 SP 0 LDR,  1 REGION LIT64,  NR-MUNMAP SYS,
+         0 SP 8 LDR,  1 REGION LIT64,  NR-MUNMAP SYS,  0 9 0 ADDI,  done B,
       plain LBL,
          0 17 MOVZ,  1 0 MOVZ,  2 0 MOVZ,  3 0 MOVZ,  4 0 MOVZ,
          NR-FORK SYS,  C-CC done BCOND,  failed B,
-      unfd LBL,  0 SP 0 LDR,  NR-CLOSE SYS,
+      unmap LBL,
+         0 SP 0 LDR,  1 REGION LIT64,  NR-MUNMAP SYS,
+         0 SP 8 LDR,  1 REGION LIT64,  NR-MUNMAP SYS,
       failed LBL,  0 0 MOVN,
       done LBL,
       0 out CBNZ,  9 DATA-VA VA>N LIT64,  0 9 EXIT-OWNER-CELL STR,
@@ -2565,6 +2545,8 @@ public
       SP SP 32 ADDI,  0 G-PUSH
       exit
    THEN
+   \ Darwin's libc fork reinitializes libSystem's child state (Mach reply
+   \ ports): after a raw fork syscall the child's Mach VM queries fail.
    HB-TARGET-MACOS? IF
       LBL LBL LBL {: done:label dead:label out:label :}
       s" fork" SLOT,  16 BLR,

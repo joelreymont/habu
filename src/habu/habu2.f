@@ -1399,21 +1399,15 @@ public
    \ Leaves x0 = the base code runs from and x21 = the RW alias - base; x13-x15
    \ (argc, argv, envp), x19 and x20 survive.
    HB-TARGET-LINUX-ARM64? IF
-      \ The RX view maps fixed over the image's own load of the region, at its
-      \ base plus REGION-OFF; the RW alias goes where the kernel puts it.
+      \ Shared anonymous RX pages over the image's own load; mremap of old size
+      \ 0 maps them again, RX like the view it copies, and that alias goes RW.
       LBL LBL {: vfail:label vdone:label :}
       9 CODE-OFF MOVZ,  9 XREG-RBASE 9 SUB,           \ x9 = this run's image base
       10 REGION-OFF LIT64,  9 9 10 ADD,               \ x9 = region base
-      vfail LIBC-OS:REGION-MEMFD  10 0 0 ADDI,        \ x10 = fd
-      0 9 0 ADDI,  1 REGION LIT64,  2 5 MOVZ,  3 MAP-SHARED-FIXED LIT64,
-      4 10 0 ADDI,  5 0 MOVZ,  NR-MMAP SYS,  C-CS vfail BCOND,
-      0 0 MOVZ,  1 REGION LIT64,  2 3 MOVZ,  3 MAP-SHARED LIT64,
-      4 10 0 ADDI,  5 0 MOVZ,  NR-MMAP SYS,  C-CS vfail BCOND,
-      21 0 9 SUB,
-      0 10 0 ADDI,  NR-CLOSE SYS,  C-CS vfail BCOND,
-      0 9 0 ADDI,  vdone B,
+      0 9 0 ADDI,  3 MAP-ANON-SHARED-FIXED LIT64,  vfail LIBC-OS:REGION-PAIR
+      21 10 9 SUB,  0 9 0 ADDI,  vdone B,
       vfail LBL,
-         s" hb: mapping the code region's views failed; raise the open-file limit (ulimit -n) or the address-space limit (ulimit -v)"
+         s" hb: cannot map the code region; raise the address-space limit (ulimit -v)"
          EXIT-STATUS:SYSTEM DIE-LINE,
       vdone LBL,
    ELSE

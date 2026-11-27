@@ -337,6 +337,15 @@ variable BIG-U
    limit MAP-FRAME
    limit MAP-STREAM ;
 
+\ hb starts and forks under a file-size limit below the code region's size: the
+\ region and a forked child's copy of it are no file the limit counts.
+: FSIZE-FORK ( -- )
+   s" fsize-fork" {: label:str :}
+   GE-HB-RESET  s" -c" GE-ARG+  s" ulimit -f 1; exec bin/hb --load test/fsize-fork.f" GE-ARG+
+   s" /bin/sh" PROCESS:WAIT-FOREVER GE-RUN-ENV
+   S\" child\nparent\n" label GE-EXPECT-OUT
+   label GE-EXPECT-OK ;
+
 create NEED-PATH PATH-CAP allot
 
 \ The fixture path of that name, valid until the next.
@@ -412,6 +421,7 @@ create NEED-PATH PATH-CAP allot
    QUIET-COUNT-ONCE
    MAP-REJECTS
    HB-TARGET-LINUX? if MAP-LIMITED then
+   FSIZE-FORK
    s" test/program-diagnostic-long-row.f" 70 s" LONG-ROW-ARMED"
       s" error[E-MISMATCH]: LONG-ROW ends with (2952 more) n n" NEGATIVE
    s" test/program-diagnostic-long-quot.f" 70 s" LONG-QUOT-ARMED"

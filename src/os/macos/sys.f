@@ -15,8 +15,8 @@ $1012 constant MAP-ANON-PRIVATE-FIXED
 \ MAP-DATA-RESERVE maps the DATA window: Darwin's MAP_ANON|MAP_PRIVATE|MAP_FIXED
 \ is already lazy, charged only for touched pages.
 $1012 constant MAP-DATA-RESERVE
-$01  constant MAP-SHARED
-$11  constant MAP-SHARED-FIXED
+$1001 constant MAP-ANON-SHARED
+$1011 constant MAP-ANON-SHARED-FIXED
 
 private
 $1   constant NR-EXIT
@@ -62,7 +62,6 @@ $7FFFFFFFFFFFFFFF constant RLIM-INFINITY
 $35  constant NR-SIGALTSTACK
 $74  constant NR-GETTIMEOFDAY
 $C5  constant NR-MMAP
-$C9  constant NR-FTRUNCATE
 $E6  constant NR-POLL
 $F4  constant NR-SPAWN     \ posix_spawn(&pid, path, 0, 0, argv, envp)
 $80  constant NR-RENAME
@@ -83,7 +82,10 @@ $1   constant NR-EXIT-GROUP
 \ instead of reaching the kernel. 0 cannot mark an absent call: Darwin syscall
 \ 0 is the indirect `syscall` entry, which dispatches on x0.
 -1   constant NR-CLOSE-RANGE
--1   constant NR-MEMFD-CREATE
+-1   constant NR-MREMAP
+\ Linux's mremap flags, which only the Linux emitters name.
+$1   constant MREMAP-MAYMOVE
+$3   constant MREMAP-MOVE-FIXED
 
 private
 -2 constant AT-FDCWD
