@@ -257,6 +257,17 @@ STRUCTURE stream DERIVE addr
 
 CAST: >STREAM ( ^u8 -- ^stream )
 
+\ What the last reply names of what served it: its tier and model, each empty
+\ for none, and its created_at, whole seconds since the epoch, none when the
+\ reply omits it or gives null.
+STRUCTURE served-by DERIVE addr
+   FIELD tier ^VEC:vector<u8>
+   FIELD model ^VEC:vector<u8>
+   FIELD created option<n>
+;STRUCTURE
+
+CAST: >SERVED-BY ( ^u8 -- ^served-by )
+
 \ The land machine's steps: settling ends the call's transfer and lands it;
 \ recording runs the recorder; serving and rejecting run it, then the put.
 ENUM land-step settling recording serving rejecting landed ;ENUM
@@ -358,8 +369,7 @@ BODY-AT 1 cells + constant INPUT-HDR-AT
 INPUT-HDR-AT BUF:HDR-BYTES + constant URI-HDR-AT
 URI-HDR-AT BUF:HDR-BYTES + constant EFFORT-HDR-AT
 EFFORT-HDR-AT BUF:HDR-BYTES + constant TIER-HDR-AT
-TIER-HDR-AT BUF:HDR-BYTES + constant SERVED-HDR-AT
-SERVED-HDR-AT BUF:HDR-BYTES + constant ENDPOINT-HDR-AT
+TIER-HDR-AT BUF:HDR-BYTES + constant ENDPOINT-HDR-AT
 ENDPOINT-HDR-AT BUF:HDR-BYTES + constant IDENTITY-HDR-AT
 IDENTITY-HDR-AT BUF:HDR-BYTES + constant BASE-URL-HDR-AT
 BASE-URL-HDR-AT BUF:HDR-BYTES + constant URL-HDR-AT
@@ -389,7 +399,8 @@ RECORD-TEXT-HDR-AT BUF:HDR-BYTES + constant COUNTS-AT
 COUNTS-AT TOKENS-BYTES + constant ACCOUNTS-AT
 ACCOUNTS-AT LEDGER-BYTES + constant EVENTS-AT
 EVENTS-AT STREAM-BYTES + constant ENDING-AT
-ENDING-AT RECEIPT-BYTES + constant HASH-AT
+ENDING-AT RECEIPT-BYTES + constant REPLY-AT
+REPLY-AT SERVED-BY-BYTES + constant HASH-AT
 \ A purpose row: the offset and length in the row text of its purpose, model,
 \ effort and service tier.
 8 cells constant ROW-BYTES
@@ -424,6 +435,16 @@ CAST: >VEC-CELL ( ^u8 -- ^^VEC:vector<u8> )
 \ Fresh storage is zero, so a cell INIT-BUFFERS has not reached holds NULL.
 : BYTES-DELETE ( ^u8 -- ) >VEC-CELL @ VEC:DELETE ;
 
+: MAKE-SERVED-BY ( ^u8 -- )
+   >SERVED-BY {: s :}
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW s SERVED-BY-TIER !
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW s SERVED-BY-MODEL ! ;
+
+: DELETE-SERVED-BY ( ^u8 -- )
+   >SERVED-BY {: s :}
+   s SERVED-BY-TIER @ VEC:DELETE
+   s SERVED-BY-MODEL @ VEC:DELETE ;
+
 : INIT-BUFFERS ( ^call -- )
    {: c :}
    c MODEL-CALL:ARENA MODEL-ALLOCATION:BASE @ {: base:^ :}
@@ -440,7 +461,7 @@ CAST: >VEC-CELL ( ^u8 -- ^^VEC:vector<u8> )
    base URI-HDR-AT + CELL-VIEW SCRATCH-INITIAL BUF:N>BLEN BUF:INIT
    base EFFORT-HDR-AT + CELL-VIEW 32 BUF:N>BLEN BUF:INIT
    base TIER-HDR-AT + CELL-VIEW 32 BUF:N>BLEN BUF:INIT
-   base SERVED-HDR-AT + CELL-VIEW 32 BUF:N>BLEN BUF:INIT
+   base REPLY-AT + MAKE-SERVED-BY
    base ENDPOINT-HDR-AT + CELL-VIEW 128 BUF:N>BLEN BUF:INIT
    base IDENTITY-HDR-AT + CELL-VIEW 128 BUF:N>BLEN BUF:INIT
    base BASE-URL-HDR-AT + CELL-VIEW 128 BUF:N>BLEN BUF:INIT
@@ -483,7 +504,7 @@ CAST: >VEC-CELL ( ^u8 -- ^^VEC:vector<u8> )
    base URI-HDR-AT + CELL-VIEW BUF:DISPOSE
    base EFFORT-HDR-AT + CELL-VIEW BUF:DISPOSE
    base TIER-HDR-AT + CELL-VIEW BUF:DISPOSE
-   base SERVED-HDR-AT + CELL-VIEW BUF:DISPOSE
+   base REPLY-AT + DELETE-SERVED-BY
    base ENDPOINT-HDR-AT + CELL-VIEW BUF:DISPOSE
    base IDENTITY-HDR-AT + CELL-VIEW BUF:DISPOSE
    base BASE-URL-HDR-AT + CELL-VIEW BUF:DISPOSE
@@ -550,10 +571,8 @@ CAST: >VEC-CELL ( ^u8 -- ^^VEC:vector<u8> )
 : INPUT-BUF ( ^call -- ^n ) INPUT-HDR-AT HEADER ;
 : URI-BUF ( ^call -- ^n ) URI-HDR-AT HEADER ;
 : EFFORT-BUF ( ^call -- ^n ) EFFORT-HDR-AT HEADER ;
-\ The service tier generation requests without a purpose row name; the
-\ one the last reply says served it.
+\ The service tier generation requests without a purpose row name.
 : TIER-BUF ( ^call -- ^n ) TIER-HDR-AT HEADER ;
-: SERVED-BUF ( ^call -- ^n ) SERVED-HDR-AT HEADER ;
 : ENDPOINT-BUF ( ^call -- ^n ) ENDPOINT-HDR-AT HEADER ;
 : IDENTITY-BUF ( ^call -- ^n ) IDENTITY-HDR-AT HEADER ;
 : BASE-URL-BUF ( ^call -- ^n ) BASE-URL-HDR-AT HEADER ;
@@ -618,6 +637,8 @@ CAST: >VEC-CELL ( ^u8 -- ^^VEC:vector<u8> )
    EVENTS-AT STREAM-BYTES REGION SPAN:$ STR:DATA >STREAM ;
 : RECEIPT ( ^call -- ^receipt )
    ENDING-AT RECEIPT-BYTES REGION SPAN:$ STR:DATA >RECEIPT ;
+: SERVED-BY ( ^call -- ^served-by )
+   REPLY-AT SERVED-BY-BYTES REGION SPAN:$ STR:DATA >SERVED-BY ;
 \ Keeps in buf the text of n, a code just caught: REASON:TEXT$ holds it only
 \ until the task's next REASON:THROW.
 : CAUGHT-TEXT! ( n ^n -- )
@@ -760,7 +781,6 @@ CAST: >VEC-CELL ( ^u8 -- ^^VEC:vector<u8> )
    c PICK-CELL @ {: r:n :}
    r 0<> if r 1- 3 c ROW$ exit then
    c TIER-BUF BUFFER$ ;
-: SERVED$ ( ^call -- str ) SERVED-BUF BUFFER$ ;
 : ENDPOINT$ ( ^call -- str ) ENDPOINT-BUF BUFFER$ ;
 : IDENTITY$ ( ^call -- str ) IDENTITY-BUF BUFFER$ ;
 : BASE-URL$ ( ^call -- str ) BASE-URL-BUF BUFFER$ ;
@@ -1022,6 +1042,13 @@ CAST: >VEC-CELL ( ^u8 -- ^^VEC:vector<u8> )
    OPTION:NONE t TOKENS-WRITTEN !
    OPTION:NONE t TOKENS-OUTPUT !
    OPTION:NONE t TOKENS-REASONING ! ;
+
+\ No reply has named what served it yet.
+: CLEAR-SERVED-BY ( ^call -- )
+   SERVED-BY {: s :}
+   s SERVED-BY-TIER @ 0 VEC:RESIZE
+   s SERVED-BY-MODEL @ 0 VEC:RESIZE
+   OPTION:NONE s SERVED-BY-CREATED ! ;
 
 \ A call reports only the counts of its own answered reply.
 : CLEAR-COUNTS ( ^call -- )
@@ -2995,26 +3022,60 @@ private
       some OF c FAULT-PROMPT ENDOF
    ;MATCH ;
 
-\ Keeps the served tier's name; an empty one is E-RESPONSE.
-: SERVED! ( str ^call -- )
-   {: s:str c :}
+\ Keeps the text a reply names; an empty one is E-RESPONSE.
+: SERVED! ( str ^VEC:vector<u8> -- )
+   {: s:str v:^ :}
    s STR:LEN 0= if E-RESPONSE throw then
-   s c SERVED-BUF REPLACE$ ;
+   v 0 VEC:RESIZE
+   s v VEC:APPEND ;
 
-\ A served tier: a nonempty string, or null for none.
-: SERVED-TIER ( JSON:value ^call -- )
-   {: t c :}
-   t JSON:NULL? if exit then
-   t JSON:STRING? 0= if E-RESPONSE throw then
-   t [: c SERVED! ;] JSON:WITH-STRING ;
+\ A served member: a nonempty string, or null for none.
+: SERVED-STRING ( JSON:value ^VEC:vector<u8> -- )
+   {: m v:^ :}
+   m JSON:NULL? if exit then
+   m JSON:STRING? 0= if E-RESPONSE throw then
+   m [: v SERVED! ;] JSON:WITH-STRING ;
+
+\ The reply's member key, kept in v when the reply names one.
+: ACCEPT-SERVED ( JSON:value str ^VEC:vector<u8> -- )
+   {: r key:str v:^ :}
+   r key JSON:FIND MATCH option
+      none OF ENDOF
+      some OF v SERVED-STRING ENDOF
+   ;MATCH ;
 
 \ The tier the reply says served it, when it names one.
 : ACCEPT-TIER ( JSON:value ^call -- )
    {: v c :}
-   v s" service_tier" JSON:FIND MATCH option
-      none OF ENDOF
-      some OF c SERVED-TIER ENDOF
+   v s" service_tier" c SERVED-BY SERVED-BY-TIER @ ACCEPT-SERVED ;
+
+\ The model the reply says served it, when it names one.
+: ACCEPT-MODEL ( JSON:value ^call -- )
+   {: v c :}
+   v s" model" c SERVED-BY SERVED-BY-MODEL @ ACCEPT-SERVED ;
+
+\ A creation time: whole seconds since the epoch, or none for null.
+: CREATED-SECONDS ( JSON:value -- option<n> )
+   {: v :}
+   v JSON:NULL? if OPTION:NONE exit then
+   v JSON:INTEGER? 0= if E-RESPONSE throw then
+   v JSON:>N {: secs:n :}
+   secs 0< if E-RESPONSE throw then
+   secs OPTION:SOME ;
+
+\ The reply's created_at, none when absent or null.
+: CREATED-AT ( JSON:value -- option<n> )
+   s" created_at" JSON:FIND MATCH option
+      none OF OPTION:NONE ENDOF
+      some OF CREATED-SECONDS ENDOF
    ;MATCH ;
+
+\ The model a generation or compaction reply names, and when it says it was
+\ created.
+: ACCEPT-SERVED-BY ( JSON:value ^call -- )
+   {: v c :}
+   v c ACCEPT-MODEL
+   v CREATED-AT c SERVED-BY SERVED-BY-CREATED ! ;
 
 \ The reply's top object, with no vectors read yet; a reply that is not JSON
 \ is E-RESPONSE.
@@ -3028,9 +3089,11 @@ private
    r JSON:OBJECT? 0= if E-RESPONSE throw then
    r ;
 
-\ The reply's vectors, and its usage object, none without one.
+\ The model the reply names, its vectors, and its usage object, none without
+\ one.
 : PARSE-EMBED ( JSON:value ^call -- option<JSON:value> )
    {: r c :}
+   r c ACCEPT-MODEL
    c MODEL-CALL:EMBEDDING-KIND @ OLLAMA = if
       r c ACCEPT-OLLAMA
    else
@@ -3045,7 +3108,7 @@ private
    c CONTENT-BUF c MODEL-CALL:CONTENT-U @ c MODEL-CALL:INCOMPLETE-U @ max c RESET-SIZED
    c RESPONSE-BUF c MODEL-CALL:RESPONSE-U @ c RESET-SIZED
    c ERROR-BUF c RESET-SCRATCH
-   c SERVED-BUF BUF:CLEAR
+   c CLEAR-SERVED-BY
    c RESPONSE-ID-BUF BUF:CLEAR
    0 c STREAM STREAM-FAULT !
    false c STREAM STREAM-DONE !
@@ -3465,12 +3528,13 @@ ENUM poll none fed spoiled done ;ENUM
    s STREAM-FAULT @ 0<> if s STREAM-FAULT @ throw then
    c ;
 
-\ Reads a chat reply's usage, service tier and content.
+\ Reads a chat reply's usage, service tier, model, creation time and content.
 : READ-CHAT ( ^call -- )
    {: c :}
    c RESPONSE$ JSON:PARSE {: v :}
    v c ACCEPT-USAGE
    v c ACCEPT-TIER
+   v c ACCEPT-SERVED-BY
    v c ACCEPT-CHAT ;
 
 : CHAT-PARSE ( ^call -- ^call )
@@ -3556,13 +3620,14 @@ ENUM poll none fed spoiled done ;ENUM
    construct input-state building c MODEL-CALL:CHAT-INPUT !
    c PART-FINISH ;
 
-\ A compaction reply, checked before the input changes: its usage and served
-\ tier, then its window as the call's input.
+\ A compaction reply, checked before the input changes: its usage, served
+\ tier, model and creation time, then its window as the call's input.
 : ACCEPT-COMPACT ( ^call -- )
    {: c :}
    c RESPONSE$ JSON:PARSE {: v :}
    v c ACCEPT-USAGE
    v c ACCEPT-TIER
+   v c ACCEPT-SERVED-BY
    v WINDOW-ITEMS {: items :}
    items CHECK-WINDOW
    items c TAKE-WINDOW
@@ -3662,12 +3727,18 @@ ENUM poll none fed spoiled done ;ENUM
    rec JOURNAL-CALL-ID c LEDGER LEDGER-CALL-ID !
    c MODEL-CALL:KIND @ OPTION:SOME c MODEL-CALL:REPLAY-KIND ! ;
 
-\ A usage count, null when the reply omitted it.
+\ An integer member, null for none.
 : COUNT-FIELD ( ^JSON:writer str option<n> -- ^JSON:writer )
    MATCH option
       none OF JSON:WRITE-FIELD-NULL ENDOF
       some OF JSON:WRITE-FIELD-INT ENDOF
    ;MATCH ;
+
+\ A served member's text, null for none.
+: SERVED-FIELD ( ^JSON:writer str ^VEC:vector<u8> -- ^JSON:writer )
+   VEC:BYTES {: key:str s:str :}
+   key s STR:LEN 0<> if s JSON:WRITE-FIELD-S
+   else JSON:WRITE-FIELD-NULL then ;
 
 \ The call's kind, configured model and usage counts, when the reply carried
 \ usage.
@@ -3764,6 +3835,8 @@ ENUM poll none fed spoiled done ;ENUM
 \ The call's accounting record, the JSON object RECORDER!'s record receives.
 \ outcome is ok, cancelled, tier_unavailable for E-TIER, else failed. A send
 \ the provider throttled has throttled true; any other has no such member.
+\ served_model is the model the reply names and served_at its created_at, in
+\ seconds since the epoch, each null when the reply names none.
 : CALL-RECORD ( ^call -- )
    {: c :}
    c LEDGER {: l :}
@@ -3792,9 +3865,8 @@ ENUM poll none fed spoiled done ;ENUM
    ;MATCH if
       c EFFORT$ JSON:WRITE-FIELD-S
    else JSON:WRITE-FIELD-NULL then
-   JSON:WRITE-COMMA s" service_tier" c SERVED$ STR:LEN 0<> if
-      c SERVED$ JSON:WRITE-FIELD-S
-   else JSON:WRITE-FIELD-NULL then
+   JSON:WRITE-COMMA s" service_tier"
+   c SERVED-BY SERVED-BY-TIER @ SERVED-FIELD
    JSON:WRITE-COMMA s" requested_tier" c MODEL-CALL:KIND @ MATCH call-kind
       chat OF c TIER$ STR:LEN 0<> ENDOF
       embed OF false ENDOF
@@ -3803,6 +3875,10 @@ ENUM poll none fed spoiled done ;ENUM
    ;MATCH if
       c TIER$ JSON:WRITE-FIELD-S
    else JSON:WRITE-FIELD-NULL then
+   JSON:WRITE-COMMA s" served_model"
+   c SERVED-BY SERVED-BY-MODEL @ SERVED-FIELD
+   JSON:WRITE-COMMA s" served_at"
+   c SERVED-BY SERVED-BY-CREATED @ COUNT-FIELD
    JSON:WRITE-COMMA s" purpose" c LABEL$ JSON:WRITE-FIELD-S
    JSON:WRITE-COMMA s" outcome" l LEDGER-CANCELLED @ if s" cancelled"
    else fault E-TIER = if s" tier_unavailable"
@@ -4591,15 +4667,13 @@ FSM:DEFINE SEND-MACHINE ( ^call ) send-step lookup-event
    0 l LEDGER-TRANSPORT !
    false l LEDGER-THROTTLED ! ;
 
-\ Ends a call whose send a stop or CANCEL kept from being sent again, its
-\ outcome E-CANCELLED already, stored by the gate hold that decided so
-\ (RESEND-LOCKED, LAND-CANCELLED); a dispatched one is recorded cancelled,
-\ with no status, throttle, tier, usage or duration of its own.
+\ Ends a call a stop or CANCEL kept from being resent, E-CANCELLED stored by
+\ RESEND-LOCKED or LAND-CANCELLED; a dispatched one is recorded cancelled.
 : CANCEL-RECORD ( ^call -- )
    {: c :}
    0 c MODEL-CALL:HTTP-STATUS !
    false c LEDGER LEDGER-THROTTLED !
-   c SERVED-BUF BUF:CLEAR
+   c CLEAR-SERVED-BY
    c RESET-USAGE
    TIME:MONO-NS c LEDGER LEDGER-STARTED-NS !
    E-CANCELLED true c END-LEDGER

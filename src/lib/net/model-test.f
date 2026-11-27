@@ -495,10 +495,12 @@ $300000 constant BIG-U
    TRUE-HEAD FIXED-USAGE s" }" JSON:WRITE-RAW ;
 
 
-\ A response whose service_tier member is the JSON value text.
+\ A response whose service_tier member is the JSON value text, naming the
+\ model that served it and when it was created.
 : TIERED-RESPONSE ( ^JSON:writer str -- ^JSON:writer )
    {: tier:str :}
    TRUE-HEAD
+   S\" ,\qmodel\q:\qtest-generation-1127\q,\qcreated_at\q:1764201600" JSON:WRITE-RAW
    S\" ,\qservice_tier\q:" JSON:WRITE-RAW
    tier JSON:WRITE-RAW
    s" }" JSON:WRITE-RAW ;
@@ -921,10 +923,10 @@ variable KEPT-U
 
 
 \ A compaction reply whose output holds no compaction item, naming flex as the
-\ tier that served it.
+\ tier and test-compaction-1127 as the model that served it.
 : NO-WINDOW ( ^JSON:writer -- ^JSON:writer )
    WINDOW-HEAD s" ]" JSON:WRITE-RAW
-   FIXED-USAGE S\" ,\qservice_tier\q:\qflex\q}" JSON:WRITE-RAW ;
+   FIXED-USAGE S\" ,\qmodel\q:\qtest-compaction-1127\q,\qservice_tier\q:\qflex\q}" JSON:WRITE-RAW ;
 
 
 \ A compaction reply whose output is empty.
@@ -2940,7 +2942,8 @@ variable LOOKUPS    \ COUNT-GET's lookups
 \ empty or non-string reply tier is rejected. A tier with no room fails E-TIER
 \ and records tier_unavailable. A purpose's row sets the tier of that
 \ purpose's calls in place of the call's, an empty one sending none; a
-\ negative tier length is rejected.
+\ negative tier length is rejected. The record names the model and creation
+\ time a reply names, and NULL for each after a reply that names neither.
 : TIERS ( -- )
    CAPTURE
    TEST-RECORDER
@@ -2974,6 +2977,8 @@ variable LOOKUPS    \ COUNT-GET's lookups
    s" service_tier" SENT s" auto" STR-IS
    s" service_tier" ROW s" flex" STR-IS
    s" requested_tier" ROW s" auto" STR-IS
+   s" served_model" ROW s" test-generation-1127" STR-IS
+   s" served_at" ROW 1764201600 INT-IS
    s" embed" M MODEL:PURPOSE!
    s" one" INPUTS s" two" M MODEL:INPUT+ M MODEL:EMBED
    s" kind" ROW s" embedding" STR-IS
@@ -2989,6 +2994,8 @@ variable LOOKUPS    \ COUNT-GET's lookups
    NO-TIER
    s" service_tier" ROW NULL-IS
    s" requested_tier" ROW NULL-IS
+   s" served_model" ROW NULL-IS
+   s" served_at" ROW NULL-IS
    s" flex" M MODEL:SERVICE-TIER!
    s" reason" s" test-generation" s" " s" priority" M MODEL:PURPOSE-MODEL!
    s" translate" s" test-generation" s" " s" " M MODEL:PURPOSE-MODEL!
@@ -4801,10 +4808,8 @@ variable COUNTED-U
    s UNTOUCHED ;
 
 
-\ A compaction reply whose output ends in no compaction item is E-RESPONSE,
-\ leaves the input as built, and is recorded with the reply's usage, the
-\ requested tier and the tier the reply names. The recorder stays until OPEN,
-\ so the call is opened again for the cases after.
+\ A compaction reply with no compaction item is E-RESPONSE and is recorded; the
+\ recorder stays until OPEN, so the call is opened again for the cases after.
 : COMPACT-REPLY ( -- )
    CAPTURE
    TEST-RECORDER
@@ -4816,6 +4821,8 @@ variable COUNTED-U
    s" input_tokens" ROW 11 INT-IS
    s" requested_tier" ROW s" auto" STR-IS
    s" service_tier" ROW s" flex" STR-IS
+   s" served_model" ROW s" test-compaction-1127" STR-IS
+   s" served_at" ROW 0 INT-IS
    PURPOSE s" bad-compact" UNTOUCHED
    M MODEL:CLOSE SETUP ;
 
