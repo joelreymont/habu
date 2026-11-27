@@ -708,6 +708,10 @@ SUITE unicode-class-exhaustive
    tools/unicode/class-verify-main.f
 ;SUITE
 
+SUITE unicode-case-exhaustive
+   tools/unicode/case-verify-main.f
+;SUITE
+
 SUITE unicode-script-exhaustive
    tools/unicode/script-verify-main.f
 ;SUITE

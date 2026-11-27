@@ -13,4 +13,5 @@ also a library; `-core.f` and `-lib.f` hold what tests and other tools reuse;
 - Checks: `check.f`, `lsp.f` and `lsp-*.f`.
 - Inspection: `engine-size.f`, `imagedisasm.f`, `code-dump.f`.
 - `unicode/` generates and verifies `src/lib/unicode/class-data.f`,
-  `src/lib/unicode/visible-data.f` and `src/lib/unicode/script-data.f`.
+  `src/lib/unicode/visible-data.f`, `src/lib/unicode/script-data.f` and
+  `src/lib/unicode/case-data.f`.

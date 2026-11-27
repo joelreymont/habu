@@ -1,35 +1,28 @@
 \ unicode.f - Unicode whitespace, locale-independent full casefold equality
-\ and full lowercasing. CASEFOLD= compares whole UTF-8 spans by full case
-\ folding (Straße equals STRASSE), with no normalization, keeping embedded
-\ NULs. FOLD writes a span's full case folding and LOWER its full lowercase
-\ (Straße folds to strasse but lowercases to straße). LOWERS-TO? tells
-\ whether a span's full lowercase is another span byte for byte, and LOWER=
-\ whether two spans' full lowercases are the same bytes. With no
-\ language, both mappings take an all-ASCII span (every byte below $80) to
-\ itself with A-Z lowered to a-z (UnicodeData.txt, CaseFolding.txt; no
-\ SpecialCasing entry has an ASCII source without a language), which these
-\ words compute without libunistring; CASEFOLD= does so only when both spans
-\ are ASCII, since other text can fold to ASCII (U+212A KELVIN SIGN folds to
-\ k). Other text goes to libunistring's u8_casecmp, u8_casefold and
-\ u8_tolower with NULL language and normalization, so its case data is the
-\ installed library's.
-\ STORAGE CLASS. TASK-LOCAL: C's result cell, a TASK:+USER row.
-\ U+03A3 lowers by Unicode's Final_Sigma as Rust's str::to_lowercase does.
+\ and full lowercasing, from the pinned Unicode 16.0.0 case data generated
+\ into src/lib/unicode/case-data.f. CASEFOLD= compares whole UTF-8 spans by
+\ full case folding (Straße equals STRASSE), with no normalization, keeping
+\ embedded NULs. FOLD writes a span's full case folding and LOWER its full
+\ lowercase (Straße folds to strasse but lowercases to straße). LOWERS-TO?
+\ tells whether a span's full lowercase is another span byte for byte, and
+\ LOWER= whether two spans' full lowercases are the same bytes. No language
+\ applies: each scalar maps by itself except U+03A3, which lowers by
+\ Final_Sigma as Rust's str::to_lowercase decides it, to ς when, past
+\ Case_Ignorable scalars, a Cased scalar precedes it and none follows.
+\ Every word walks a span's mapped scalars with NEXT and allocates nothing.
+\ STORAGE CLASS. PROCESS-WIDE read-only tables; any task may call.
 
+require src/lib/sort.f
 require src/lib/unicode/class.f
+require src/lib/unicode/case-data.f
 require src/lib/utf8-scalar.f
-require src/lib/ffi-abi.f
 require src/lib/string.f
-s" src/lib/task.f" required
 
 package UNICODE
-using FFI
 
 public
 
 -9150 s" a negative length or malformed UTF-8" ERROR:CODE E-UTF8
--9153 s" libunistring failed to fold, lower or compare the text, or to allocate its result"
-   ERROR:FAULT E-CASEFOLD
 -9154 s" the destination is shorter than the mapped text: pass a larger destination"
    ERROR:CODE E-CAPACITY
 
@@ -40,6 +33,20 @@ EXPORT UNICODE-CLASS:MARK?
 
 private
 
+$80 constant ASCII-LIMIT
+$3A3 constant CAPITAL-SIGMA
+$3C3 constant SMALL-SIGMA
+$3C2 constant FINAL-SIGMA
+$C0 constant CONTINUATION-MASK
+$80 constant CONTINUATION-TAG
+21 constant TARGET-BITS
+$1FFFFF constant TARGET-MASK
+
+\ A walk's mode: a span's scalars as they are, folded or lowered.
+0 constant AS-IS
+1 constant FOLDING
+2 constant LOWERING
+
 : VALID-LENGTH ( n -- )
    0 < if E-UTF8 throw then ;
 
@@ -48,68 +55,64 @@ private
    source STR:LEN VALID-LENGTH
    source UTF8:VALID? 0= if E-UTF8 throw then ;
 
-\ C's four-byte int output, in a task-local cell each call zeroes first.
-TASK:+USER RESULT n
-
-\ Exact u8_casecmp schema: two counted, read-only UTF-8 spans, two NULL
-\ policy pointers, and one four-byte writable result. u8_casefold and
-\ u8_tolower share one schema; NULL resultbuf asks either for one owned
-\ allocation, which only the matched private free binding may consume. No
-\ callable raw binding or configurable foreign symbol escapes this package.
-VERSIONED-LIBRARY unistring 5
-FUNCTION: COMPARE-CALL u8_casecmp ( str str n n ^u8 -- i32 ) ;FUNCTION
-FUNCTION: FOLD-CALL u8_casefold ( str n n n ^u8 -- ^u8 ) ;FUNCTION
-FUNCTION: LOWER-CALL u8_tolower ( str n n n ^u8 -- ^u8 ) ;FUNCTION
-FUNCTION: CASED-CALL uc_is_property_cased ( u32 -- u8 ) ;FUNCTION
-FUNCTION: IGNORABLE-CALL uc_is_property_case_ignorable ( u32 -- u8 )
-;FUNCTION
-PROCESS-SYMBOLS
-FUNCTION: ALLOC-CALL malloc ( n -- nullable<u8> ) ;FUNCTION
-FUNCTION: RELEASE free ( ^u8 -- ) ;FUNCTION
-
-$80 constant ASCII-LIMIT
-$3A3 constant CAPITAL-SIGMA
-$CF constant SMALL-LEAD
-$83 constant SMALL-TAIL
-$82 constant FINAL-TAIL
-
-\ Whether every byte of a span is below $80; a negative length is E-UTF8.
-: ASCII? ( str -- bool )
-   {: text:str :}
-   text STR:LEN VALID-LENGTH
-   0 begin dup text STR:LEN < while
-      dup text STR:DATA + c@ ASCII-LIMIT < 0= if drop false exit then
-      1+
-   repeat
-   drop true ;
-
-\ Writes an ASCII span's lowercase to a destination of a given capacity.
-: ASCII-LOWER-INTO ( str ^u8 n -- n )
-   {: text:str out:^ capacity:n :}
-   capacity text STR:LEN < if E-CAPACITY throw then
-   text STR:LEN 0 ?do text STR:DATA i + c@ STR:ASCII-LOWER out i + c! loop
-   text STR:LEN ;
-
-\ Whether an ASCII span's lowercase is another span byte for byte.
-: ASCII-LOWERS-TO? ( str str -- bool )
-   {: text:str target:str :}
-   text STR:LEN target STR:LEN <> if false exit then
-   text STR:LEN 0 ?do
-      text STR:DATA i + c@ STR:ASCII-LOWER target STR:DATA i + c@ <> if
-         false unloop exit
-      then
-   loop
-   true ;
-
-: CASED? ( n -- bool ) CASED-CALL 0<> ;
-: IGNORABLE? ( n -- bool ) IGNORABLE-CALL 0<> ;
-
 \ The scalar at a cursor of valid UTF-8 and the cursor after it.
 : SCALAR@ ( str n -- n n )
    UTF8:NEXT MATCH UTF8:scalar-step
       scalar OF ENDOF
       raw-byte OF ENDOF
    ;MATCH ;
+
+\ The cursor of the scalar before a cursor of valid UTF-8.
+: SCALAR-BEFORE ( str n -- n )
+   {: text:str at:n :}
+   at 1- begin
+      dup text STR:DATA + c@ CONTINUATION-MASK and
+      CONTINUATION-TAG =
+   while 1- repeat ;
+
+: ENTRY ( ^n n -- ^n )
+   {: table:^ idx:n :}
+   table idx 2 * cells + ;
+
+\ The last of a table's sorted two-cell entries whose first cell is at
+\ most cp, and whether there is one.
+: AT-MOST ( n ^n n -- ^n bool )
+   {: cp:n table:^ count:n :}
+   0 count [: table swap ENTRY @ cp <= ;] SORT:PARTITION-POINT
+   {: at:n :}
+   at 0= if table false exit then
+   table at 1- ENTRY true ;
+
+: IN-RANGES? ( n ^n n -- bool )
+   {: cp:n ranges:^ count:n :}
+   cp ranges count AT-MOST 0= if drop false exit then
+   cell+ @ cp >= ;
+
+: CASED? ( n -- bool )
+   UNICODE-CASE-DATA:CASED-RANGES IN-RANGES? ;
+
+: IGNORABLE? ( n -- bool )
+   UNICODE-CASE-DATA:CASE-IGNORABLE-RANGES IN-RANGES? ;
+
+\ A mapping table's packed targets for cp, else cp itself.
+: MAPPING ( n ^n n -- n )
+   {: cp:n table:^ count:n :}
+   cp table count AT-MOST 0= if drop cp exit then
+   {: entry:^ :}
+   entry @ cp <> if cp exit then
+   entry cell+ @ ;
+
+\ Whether the first scalar before a cursor that is not Case_Ignorable is
+\ Cased; false at the start.
+: CASED-BEFORE? ( str n -- bool )
+   {: text:str at:n :}
+   at begin dup 0 > while
+      text swap SCALAR-BEFORE {: before:n :}
+      text before SCALAR@ drop {: cp:n :}
+      cp IGNORABLE? 0= if cp CASED? exit then
+      before
+   repeat
+   drop false ;
 
 \ Whether the first scalar from a cursor that is not Case_Ignorable is
 \ Cased; false at the end.
@@ -122,130 +125,131 @@ $82 constant FINAL-TAIL
    repeat
    drop false ;
 
-\ Writes the sigma of the U+03A3 at a cursor: final when, past
-\ Case_Ignorable scalars by libunistring's tests, a Cased one precedes
-\ it and none follows. A scalar both Cased and Case_Ignorable is passed.
-: SIGMA! ( bool str n -- )
-   {: before:bool text:str at:n :}
-   before text at 2 + CASED-AFTER? 0= and
-   if FINAL-TAIL else SMALL-TAIL then
-   text STR:DATA at + 1+ c!
-   SMALL-LEAD text STR:DATA at + c! ;
+\ The lowercase of the U+03A3 between two cursors. A scalar both Cased
+\ and Case_Ignorable is passed.
+: SIGMA ( str n n -- n )
+   {: text:str at:n next:n :}
+   text at CASED-BEFORE? text next CASED-AFTER? 0= and
+   if FINAL-SIGMA else SMALL-SIGMA then ;
 
-\ Lowers every U+03A3 in valid UTF-8 in place. The flag carried
-\ between turns is whether the last scalar not Case_Ignorable is Cased.
-: SIGMAS! ( str -- )
-   {: text:str :}
-   false 0 begin dup text STR:LEN < while
-      {: before:bool at:n :}
-      text at SCALAR@ {: cp:n next:n :}
-      cp CAPITAL-SIGMA = if before text at SIGMA! then
-      cp IGNORABLE? if before else cp CASED? then next
-   repeat
-   2drop ;
-
-\ u8_tolower's schema. With no language, Final_Sigma is u8_tolower's
-\ one context-dependent mapping, so a copy whose capital sigmas are
-\ already lowered leaves it none to apply.
-: SIGMA-LOWER ( str n n n ^u8 -- ^u8 )
-   {: text:str lang:n form:n buf:n out:^ :}
-   text s" Σ" STR:CONTAINS? 0= if
-      text lang form buf out LOWER-CALL exit
+\ The packed targets of the scalar cp between two cursors in a mode.
+: MAPPED ( str n n n n -- n )
+   {: text:str at:n next:n cp:n mode:n :}
+   mode AS-IS = if cp exit then
+   cp ASCII-LIMIT < if cp STR:ASCII-LOWER exit then
+   mode FOLDING = if
+      cp UNICODE-CASE-DATA:FOLD-MAPPINGS MAPPING exit
    then
-   text STR:LEN ALLOC-CALL MATCH nullable
-      none OF E-CASEFOLD throw ENDOF
-      some OF ENDOF
-   ;MATCH {: copy:^ :}
-   text STR:DATA copy text STR:LEN BYTE-COPY
-   copy text STR:LEN >str SIGMAS!
-   copy text STR:LEN >str lang form buf out LOWER-CALL
-   copy RELEASE ;
+   cp CAPITAL-SIGMA = if text at next SIGMA exit then
+   cp UNICODE-CASE-DATA:LOWER-MAPPINGS MAPPING ;
 
-\ Runs MAP, FOLD-CALL or SIGMA-LOWER, on a valid span and answers its
-\ owned result and that result's length.
-: ALLOCATE-MAP ( str [ str n n n ^u8 -- ^u8 ] -- str )
-   {: source:str map :}
-   source VALID-UTF8
-   0 RESULT !
-   source 0 0 0 RESULT BYTE-VIEW map execute
-   dup >CELL 0= if E-CASEFOLD throw then
-   RESULT @ >str ;
+\ The rest of packed targets and the first.
+: TARGET ( n -- n n )
+   {: packed:n :}
+   packed TARGET-BITS rshift packed TARGET-MASK and ;
 
-\ Keep the same stack shape on success and failure for the cleanup path.
-: COPY-MAPPED ( str ^u8 n -- str ^u8 n )
-   {: source:str out:^ capacity:n :}
-   capacity source STR:LEN < if E-CAPACITY throw then
-   source STR:DATA out source STR:LEN BYTE-COPY
-   source out capacity ;
+\ One step of a valid span's walk in a mode from a cursor and packed
+\ targets left: the next of both, a mapped scalar and true, or false.
+: NEXT ( n n str n -- n n n bool )
+   {: at:n rest:n text:str mode:n :}
+   rest 0<> if at rest TARGET true exit then
+   at text STR:LEN >= if at 0 0 false exit then
+   text at SCALAR@ {: cp:n next:n :}
+   next text at next cp mode MAPPED TARGET true ;
 
-: MAPPED-BYTES ( str [ str n n n ^u8 -- ^u8 ] -- n )
-   {: source:str map :}
-   source ASCII? if source STR:LEN exit then
-   source map ALLOCATE-MAP dup STR:DATA RELEASE STR:LEN ;
+: SCALAR-LENGTH ( n -- n )
+   {: cp:n :}
+   cp $80 < if 1 exit then
+   cp $800 < if 2 exit then
+   cp $10000 < if 3 exit then
+   4 ;
 
-: MAP-INTO ( str ^u8 n [ str n n n ^u8 -- ^u8 ] -- n )
-   {: source:str out:^ capacity:n map :}
-   source ASCII? if
-      source out capacity ASCII-LOWER-INTO exit
-   then
-   source map ALLOCATE-MAP {: mapped:str :}
-   mapped out capacity [: COPY-MAPPED ;] catch
-   {: error:n :} 2drop drop
-   \ catch restores depth, not cells overwritten by a callee before throw.
-   \ The owner is kept in this outer lexical frame, never recovered from args.
-   mapped STR:DATA RELEASE
-   error 0<> if error throw then
-   mapped STR:LEN ;
+: LEAD ( n -- n )
+   {: length:n :}
+   length 2 = if $C0 exit then
+   length 3 = if $E0 exit then
+   $F0 ;
+
+\ Writes a scalar's UTF-8 and answers the address after it.
+: SCALAR! ( n ^u8 -- ^u8 )
+   {: cp:n out:^ :}
+   cp SCALAR-LENGTH {: length:n :}
+   length 1 = if cp out c! out 1+ exit then
+   cp length 1- 6 * rshift length LEAD or out c!
+   length 1 ?do
+      cp length 1- i - 6 * rshift $3F and $80 or out i + c!
+   loop
+   out length + ;
+
+\ The UTF-8 length of a valid span's walk.
+: WALK-LENGTH ( str n -- n )
+   {: text:str mode:n :}
+   0 0 0 begin
+      {: size:n at:n rest:n :}
+      at rest text mode NEXT {: next:n left:n cp:n more:bool :}
+      more 0= if size exit then
+      size cp SCALAR-LENGTH + next left
+   again ;
+
+: WALK-WRITE ( str n ^u8 -- )
+   {: text:str mode:n out:^ :}
+   out 0 0 begin
+      {: to:^ at:n rest:n :}
+      at rest text mode NEXT {: next:n left:n cp:n more:bool :}
+      more 0= if exit then
+      cp to SCALAR! next left
+   again ;
+
+\ Writes a span's walk only when the destination holds all of it.
+: MAP-INTO ( str ^u8 n n -- n )
+   {: text:str out:^ capacity:n mode:n :}
+   text VALID-UTF8
+   text mode WALK-LENGTH {: size:n :}
+   capacity size < if E-CAPACITY throw then
+   text mode out WALK-WRITE
+   size ;
+
+\ Whether two valid spans' walks answer the same scalars.
+: SAME-WALKS? ( str n str n -- bool )
+   {: left:str lmode:n right:str rmode:n :}
+   0 0 0 0 begin
+      {: la:n lr:n ra:n rr:n :}
+      la lr left lmode NEXT {: la2:n lr2:n lc:n lmore:bool :}
+      ra rr right rmode NEXT {: ra2:n rr2:n rc:n rmore:bool :}
+      lmore 0= if rmore 0= exit then
+      rmore 0= if false exit then
+      lc rc <> if false exit then
+      la2 lr2 ra2 rr2
+   again ;
 
 public
 
 : CASEFOLD= ( str str -- bool )
    {: left:str right:str :}
-   left ASCII? right ASCII? and if
-      left right STR:=CI exit
-   then
    left VALID-UTF8 right VALID-UTF8
-   0 RESULT !
-   left right 0 0 RESULT BYTE-VIEW COMPARE-CALL
-   0<> if E-CASEFOLD throw then
-   RESULT @ 0= ;
+   left FOLDING right FOLDING SAME-WALKS? ;
 
 : FOLDED-BYTES ( str -- n )
-   [: FOLD-CALL ;] MAPPED-BYTES ;
+   dup VALID-UTF8 FOLDING WALK-LENGTH ;
 
 : FOLD ( str ^u8 n -- n )
-   [: FOLD-CALL ;] MAP-INTO ;
+   FOLDING MAP-INTO ;
 
 : LOWERED-BYTES ( str -- n )
-   [: SIGMA-LOWER ;] MAPPED-BYTES ;
+   dup VALID-UTF8 LOWERING WALK-LENGTH ;
 
 : LOWER ( str ^u8 n -- n )
-   [: SIGMA-LOWER ;] MAP-INTO ;
+   LOWERING MAP-INTO ;
 
-\ The second span is checked before the first is lowered, so nothing after
-\ ALLOCATE-MAP can throw and the owned result is always released.
 : LOWERS-TO? ( str str -- bool )
    {: source:str target:str :}
-   target VALID-UTF8
-   source ASCII? if
-      source target ASCII-LOWERS-TO? exit
-   then
-   source [: SIGMA-LOWER ;] ALLOCATE-MAP
-   {: lowered:str :}
-   lowered target STR:=
-   lowered STR:DATA RELEASE ;
+   target VALID-UTF8 source VALID-UTF8
+   source LOWERING target AS-IS SAME-WALKS? ;
 
-\ Whether two spans' full lowercases are the same bytes.
 : LOWER= ( str str -- bool )
    {: left:str right:str :}
    left VALID-UTF8 right VALID-UTF8
-   left ASCII? right ASCII? and if
-      left right STR:=CI exit
-   then
-   left [: SIGMA-LOWER ;] ALLOCATE-MAP
-   {: lowered:str :}
-   [: right lowered LOWERS-TO? ;] [: lowered STR:DATA RELEASE ;] finally ;
+   left LOWERING right LOWERING SAME-WALKS? ;
 
 seal-package
-;using
 ;package

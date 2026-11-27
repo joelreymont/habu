@@ -3,7 +3,8 @@
 This directory pins the final Unicode Character Database for Unicode 16.0.0.
 The class generator reads only `UnicodeData.txt`, `PropList.txt` and
 `BidiBrackets.txt`; the script generator reads only `Scripts.txt` and
-`PropertyValueAliases.txt`. The `ReadMe.txt` file identifies them as final
+`PropertyValueAliases.txt`; the case generator reads only `UnicodeData.txt`,
+`SpecialCasing.txt`, `CaseFolding.txt` and `DerivedCoreProperties.txt`. The `ReadMe.txt` file identifies them as final
 Version 16.0.0 data, and `LICENSE.txt` records the Unicode Data Files and
 Software License.
 
@@ -15,6 +16,9 @@ Software License.
 | `BidiBrackets.txt` | `https://www.unicode.org/Public/16.0.0/ucd/BidiBrackets.txt` | `b8f32554c6f658821fb0ee742d21c5b1f2086b9bf13071fed04894b022f93d67` |
 | `Scripts.txt` | `https://www.unicode.org/Public/16.0.0/ucd/Scripts.txt` | `9e88f0a677df47311106340be8ede2ecdacd9c1c931831218d2be6d5508e0039` |
 | `PropertyValueAliases.txt` | `https://www.unicode.org/Public/16.0.0/ucd/PropertyValueAliases.txt` | `440fd3e5460b9bfe31da67b6f923992e1989d31fe2ed91e091c4b8f8e2620bf9` |
+| `SpecialCasing.txt` | `https://www.unicode.org/Public/16.0.0/ucd/SpecialCasing.txt` | `8d5de354eef79f2395a54c9c7dcebbaf3d30fc962d0f85611ea97aa973a0c451` |
+| `CaseFolding.txt` | `https://www.unicode.org/Public/16.0.0/ucd/CaseFolding.txt` | `6f1f9c588eb4a5c718d9e8f93b782685e5c7fec872cf05e8e6878053599e09bb` |
+| `DerivedCoreProperties.txt` | `https://www.unicode.org/Public/16.0.0/ucd/DerivedCoreProperties.txt` | `39d35161f2954497f69e08bdb9e701493f476a3d30222de20028feda36c1dabd` |
 | `LICENSE.txt` | `https://www.unicode.org/license.txt` | `e7a93b009565cfce55919a381437ac4db883e9da2126fa28b91d12732bc53d96` |
 
 Each generator verifies its input digests before parsing and writes its

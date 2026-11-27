@@ -34,6 +34,8 @@ create SECOND-BUF CAPACITY allot
    [: s" x" OUTPUT -1 UNICODE:FOLD drop ;] E-CAPACITY TTHROWSQ CANARY=
    [: s\" x\xFF" OUTPUT CAPACITY UNICODE:FOLD drop ;] E-UTF8 TTHROWSQ CANARY=
    [: s\" \xC0\xAF" FOLDED-BYTES drop ;] E-UTF8 TTHROWSQ
+   s" İ" OUTPUT 3 UNICODE:FOLD 3 T=
+   OUTPUT 3 >str s\" i\xCC\x87" T$=
    s" Straße" s" strasse" FOLDED= ;
 
 : LOWER-PREFLIGHT ( -- )
@@ -43,6 +45,8 @@ create SECOND-BUF CAPACITY allot
    [: s\" \xC0\xAF" LOWERED-BYTES drop ;] E-UTF8 TTHROWSQ
    [: s" xy" OUTPUT 1 UNICODE:LOWER drop ;] E-CAPACITY TTHROWSQ CANARY=
    [: s" x" STR:DATA -1 >str LOWERED-BYTES drop ;] E-UTF8 TTHROWSQ
+   s" İ" OUTPUT 3 UNICODE:LOWER 3 T=
+   OUTPUT 3 >str s\" i\xCC\x87" T$=
    s" Az" s" Az" LOWERS-TO? TFALSE
    s" STRASSE" s" straße" LOWERS-TO? TFALSE
    s" Straße" s" Straße" LOWERS-TO? TFALSE

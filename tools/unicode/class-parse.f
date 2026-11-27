@@ -105,6 +105,14 @@ variable PENDING-NAME-U
    s STR:DATA pos + c@ HEX-DIGIT 0= if drop E-SYNTAX throw then {: digit:n :}
    s pos 1+ acc 16 * digit + recurse ;
 
+: BYTE-INDEX ( str n -- n ) {: s:str c:n :}
+   0 begin dup s STR:LEN < while
+      dup s STR:DATA + c@ c = if exit then
+      1+
+   repeat ;
+
+public
+
 : PARSE-HEX ( str -- n ) {: s:str :}
    s STR:LEN 0= s STR:LEN 6 > or if E-SYNTAX throw then
    s 0 0 HEX-FOLD ;
@@ -113,16 +121,13 @@ variable PENDING-NAME-U
    lo 0 < hi lo < or hi SCALAR-MAX > or if E-RANGE throw then
    lo SURROGATE-LAST <= hi SURROGATE-FIRST >= and if E-RANGE throw then ;
 
-: BYTE-INDEX ( str n -- n ) {: s:str c:n :}
-   0 begin dup s STR:LEN < while
-      dup s STR:DATA + c@ c = if exit then
-      1+
-   repeat ;
-
+\ The `;`-separated field that starts at a cursor, and the next cursor.
 : NEXT-FIELD ( str n -- str n ) {: s:str start:n :}
    s SEMICOLON start STR:SPLIT-NEXT {: f:str next:n valid:bool :}
    valid 0= next s STR:LEN > or if E-SYNTAX throw then
    f next ;
+
+private
 
 : CATEGORY-SECOND? ( n str -- bool ) {: c:n allowed:str :}
    allowed c BYTE-INDEX allowed STR:LEN < ;

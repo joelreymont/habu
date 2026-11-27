@@ -16,7 +16,6 @@ package UNICODE-SCRIPT-TOOL
 
 private
 
-$10FFFF constant SCALAR-MAX
 $110000 constant SCALAR-COUNT
 256 constant NAME-CAPACITY
 2048 constant RANGE-CAPACITY
@@ -107,7 +106,7 @@ CODEGEN:BUFFER OUTPUT
    tag 1+ at ! ;
 
 : SCRIPT-ROW ( n n str -- ) {: lo:n hi:n s:str :}
-   lo 0 < hi lo < or hi SCALAR-MAX > or if UNICODE-CLASS-TOOL:E-RANGE throw then
+   lo hi UNICODE-CLASS-TOOL:SCALAR-RANGE
    s NAME-INDEX {: tag:n :}
    hi 1+ lo ?do i tag MARK-SCALAR loop ;
 

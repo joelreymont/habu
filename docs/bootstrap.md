@@ -69,7 +69,7 @@ on PATH for their loopback server; where the distribution ships an older
 mbedTLS, build 4.x from source.
 On Linux the secret-linux test needs dbus-daemon, gnome-keyring-daemon,
 gdbus and secret-tool on PATH.
-On macOS the library tests use Homebrew libzip, libunistring, openssl@3,
+On macOS the library tests use Homebrew libzip, openssl@3,
 libpq and socat; SVG/PDF checks also need librsvg, qpdf and Poppler.
 The FFI test compiles its struct-by-value fixture library with /usr/bin/cc.
 Keg-only postgresql@18 needs its bin directory on PATH.
