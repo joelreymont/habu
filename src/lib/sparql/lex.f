@@ -731,7 +731,8 @@ private
 
 : UNNEST ( ^syntax -- ) -1 swap SYNTAX-NESTING +! ;
 
-\ Rejects at the token node n was read at.
+\ Rejects at the token node n was read at; a shared term's node holds
+\ its first occurrence's token.
 : REJECT-NODE ( ^syntax n str str -- )
    {: state index:n x:str f:str :}
    state state index NODE-TOKEN@ x f REJECT-TOKEN ;

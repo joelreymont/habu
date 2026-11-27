@@ -2109,6 +2109,18 @@ DOTTED-AUTHORITY
    s\" SELECT * WHERE { ?s ?p ?o FILTER(BOUND(1)) }"
    s\" 1:40: expected a variable, found `1`; pass BOUND a variable\n1 | SELECT * WHERE { ?s ?p ?o FILTER(BOUND(1)) }\n                                           ^"
       REJECTS
+   \ BOUND of a term the query writes before it.
+   s\" SELECT * WHERE { ?s ?p 1 FILTER(BOUND(1)) }"
+   s\" 1:39: expected a variable, found `1`; pass BOUND a variable\n1 | SELECT * WHERE { ?s ?p 1 FILTER(BOUND(1)) }\n                                          ^"
+      REJECTS
+   \ BOUND of a string.
+   s\" SELECT * WHERE { ?s ?p ?o FILTER(BOUND(\"abc\")) }"
+   s\" 1:40: expected a variable, found `\"abc\"`; pass BOUND a variable\n1 | SELECT * WHERE { ?s ?p ?o FILTER(BOUND(\"abc\")) }\n                                           ^"
+      REJECTS
+   \ BOUND of an operation.
+   s\" SELECT * WHERE { ?s ?p ?o FILTER(BOUND(?s + 1)) }"
+   s\" 1:40: expected a variable, found `?s + 1`; pass BOUND a variable\n1 | SELECT * WHERE { ?s ?p ?o FILTER(BOUND(?s + 1)) }\n                                           ^"
+      REJECTS
    \ A call without its (.
    s" SELECT * WHERE { ?s ?p ?o FILTER(BOUND ?o)) }"
    s\" 1:40: expected (, found `?o`; write ( here\n1 | SELECT * WHERE { ?s ?p ?o FILTER(BOUND ?o)) }\n                                           ^"

@@ -472,6 +472,24 @@ defer ORDER-CONDITION ( ^syntax [ ^syntax -- bool ] -- n )
    state s" call " state call TEXT$ JOIN$
    state swap s"  with " JOIN$ state swap count JOIN$ ;
 
+\ The decoded offset of the last token from offset a that starts before
+\ offset b; a scan.
+: LAST-BEFORE ( ^syntax n n -- n )
+   {: state a:n b:n :}
+   a begin
+      state over PAST-TOKEN dup b <
+   while nip repeat drop ;
+
+\ Rejects call n's one argument over its text; the parser is past the
+\ call's ).
+: REJECT-ARGUMENT ( ^syntax n str str -- )
+   {: state call:n x:str f:str :}
+   state PREVIOUS-AT {: close:n :}
+   state state state call NODE-TOKEN@ PAST-TOKEN PAST-TOKEN
+      {: start:n :}
+   state start close LAST-BEFORE state swap LEX-FROM
+   state LEX-ONE state start x f REJECT-SPAN ;
+
 : CHECK-CALL ( ^syntax n -- )
    {: state call:n :}
    state call TEXT$ BUILTIN? 0= if
@@ -500,8 +518,8 @@ defer ORDER-CONDITION ( ^syntax [ ^syntax -- bool ] -- n )
    state call s" BOUND" CALL-IS? if
       state state call NODE-A@ NODE-A@ {: argument:n :}
       state argument NODE-K N-VAR <> if
-         state argument s" a variable" s" pass BOUND a variable"
-            REJECT-NODE
+         state call s" a variable" s" pass BOUND a variable"
+            REJECT-ARGUMENT
       then
    then ;
 
