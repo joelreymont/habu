@@ -1,14 +1,14 @@
 set Orders
  type sap:label=Sales Order
  key Year OrderID
- property OrderID Edm.String not-null
+ property OrderID Edm.String not-null unsortable
  property Year Edm.Int16 not-null
  property Placed Edm.DateTimeOffset nullable
  property Shipped Edm.DateTime nullable unfilterable
 set ArchivedOrders
  type sap:label=Sales Order
  key Year OrderID
- property OrderID Edm.String not-null
+ property OrderID Edm.String not-null unsortable
  property Year Edm.Int16 not-null
  property Placed Edm.DateTimeOffset nullable
  property Shipped Edm.DateTime nullable unfilterable

@@ -1,7 +1,7 @@
 set Customers
  type Common.Label=Customer
  key PartyID
- property PartyID Edm.String not-null Common.Label=Party
+ property PartyID Edm.String not-null Common.Label=Party unsortable
  property Email Edm.String nullable unfilterable
  property Name Edm.String nullable unfilterable
  property Home self.Address nullable
@@ -13,8 +13,8 @@ set Customers
 set Orders
  type Common.Label=Order
  key OrderID
- property OrderID Edm.Int64 not-null unfilterable
- property Placed Edm.DateTimeOffset nullable Common.Label=Placed at Core.Computed=true unfilterable
+ property OrderID Edm.Int64 not-null unfilterable unsortable
+ property Placed Edm.DateTimeOffset nullable Common.Label=Placed at Core.Computed=true unfilterable unsortable
  navigation Buyer to-one Customers
  navigation Lines to-many none
 set Showcase

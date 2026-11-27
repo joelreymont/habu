@@ -68,14 +68,19 @@ STRUCTURE path DERIVE addr
    FIELD next ^path
 ;STRUCTURE
 
-\ A V4 Capabilities.FilterRestrictions: its term's namespace, an alias resolved
-\ when read, its Filterable and its NonFilterableProperties paths.
-STRUCTURE filter DERIVE addr
+\ The capability a V4 Capabilities restriction term restricts: $filter's or
+\ $orderby's.
+ENUM capability DERIVE eq filter sort ;ENUM
+
+\ A V4 Capabilities.FilterRestrictions or SortRestrictions: its term's
+\ namespace, an alias resolved when read, its flag and its excluded paths.
+STRUCTURE restriction DERIVE addr
+   FIELD capability capability
    FIELD namespace str
-   FIELD filterable bool
+   FIELD allowed bool
    FIELD paths ^path
    FIELD offset n
-   FIELD next ^filter
+   FIELD next ^restriction
 ;STRUCTURE
 
 \ A V2 Association End: many when its Multiplicity is `*`.
@@ -123,8 +128,6 @@ STRUCTURE type-definition DERIVE addr
 
 \ `names` maps the name of a set, a singleton or a type's member to its
 \ `named`; `targets` maps to a binding's target (V4) or an association set (V2).
-\ A set's `filters` are the FilterRestrictions read for it, `filter` the one
-\ kept, null for none.
 \ A key-ref's `enum-type` is set when its `kind` is `enumeration`.
 \ An entity type's `rank-end` is 0 until the walk of the base types leaves it.
 \ `types` heads the ENTITY-TYPE-NEXT chain of every type. No set of a
@@ -140,12 +143,15 @@ STRUCTURE metadata OPAQUE DERIVE addr
    FIELD targets ^n
    FIELD types ^entity-type
 ;STRUCTURE
+\ A set's `restrictions` are the FilterRestrictions and SortRestrictions read
+\ for it, `filter` and `sort` the one of each term kept, null for none.
 STRUCTURE entity-set OPAQUE DERIVE addr
    FIELD name str
    FIELD type-name str
    FIELD type ^entity-type
-   FIELD filters ^filter
-   FIELD filter ^filter
+   FIELD restrictions ^restriction
+   FIELD filter ^restriction
+   FIELD sort ^restriction
    FIELD offset n
    FIELD next ^entity-set
 ;STRUCTURE
@@ -262,7 +268,7 @@ STRUCTURE binding DERIVE addr
 STRUCTURE block DERIVE addr
    FIELD target str
    FIELD annotations ^annotation
-   FIELD filters ^filter
+   FIELD restrictions ^restriction
    FIELD next ^block
 ;STRUCTURE
 
@@ -283,7 +289,7 @@ ENUM kind DERIVE tag
 ENUM phase DERIVE eq
    document edmx reference data-services schema type-body key property-body
    container set-body association-body set-pairs annotations enum-body
-   filter-body record paths-value paths path-text bool-value bool-text skip
+   restriction-body record paths-value paths path-text bool-value bool-text skip
 ;ENUM
 
 \ An element's namespace: EDMX of V2 or V4, CSDL of V2 (1.0, 1.1, 2.0) or
@@ -291,7 +297,7 @@ ENUM phase DERIVE eq
 ENUM space DERIVE eq edmx2 edmx4 edm2 edm4 other ;ENUM
 
 \ One METADATA call's state: names holds the map, keys, arrays, scratch and
-\ the cursor; `home` is the phase a filter's end returns to.
+\ the cursor; `home` is the phase a restriction's end returns to.
 STRUCTURE doc DERIVE addr
    FIELD model ^metadata
    FIELD arena ^ARENA:arena
@@ -312,7 +318,7 @@ STRUCTURE doc DERIVE addr
    FIELD set ^entity-set
    FIELD association-set ^association-set
    FIELD block ^block
-   FIELD filter ^filter
+   FIELD restriction ^restriction
    FIELD home phase
    FIELD enum-type ^enum-type
    FIELD set-last ^entity-set
@@ -344,7 +350,7 @@ ARENA TYPES entity-type
 ARENA PROPERTIES property
 ARENA NAVIGATIONS navigation
 ARENA ANNOTATIONS annotation
-ARENA FILTERS filter
+ARENA RESTRICTIONS restriction
 ARENA PATHS path
 ARENA ENDS association-end
 ARENA ASSOCIATIONS association
@@ -547,8 +553,8 @@ CAST: >RECORD ( n -- ^t )
       set-pairs OF PHASE-CONTAINER ENDOF
       annotations OF PHASE-SCHEMA ENDOF
       enum-body OF PHASE-SCHEMA ENDOF
-      filter-body OF d DOC-HOME @ ENDOF
-      record OF PHASE-FILTER-BODY ENDOF
+      restriction-body OF d DOC-HOME @ ENDOF
+      record OF PHASE-RESTRICTION-BODY ENDOF
       paths-value OF PHASE-RECORD ENDOF
       paths OF PHASE-PATHS-VALUE ENDOF
       path-text OF PHASE-PATHS ENDOF
@@ -1272,34 +1278,59 @@ CAST: >RECORD ( n -- ^t )
    d b ADD-BINDING
    d SKIP-START ;
 
-: FILTER-NAME? ( str -- bool ) s" FilterRestrictions" STR:= ;
+: TERM-NAME$ ( capability -- str )
+   MATCH capability
+      filter OF s" FilterRestrictions" ENDOF
+      sort OF s" SortRestrictions" ENDOF
+   ;MATCH ;
 
-: FILTER-TERM? ( XML:reader ^doc -- XML:reader bool )
+: ALLOWED-NAME$ ( capability -- str )
+   MATCH capability
+      filter OF s" Filterable" ENDOF
+      sort OF s" Sortable" ENDOF
+   ;MATCH ;
+
+: PATHS-NAME$ ( capability -- str )
+   MATCH capability
+      filter OF s" NonFilterableProperties" ENDOF
+      sort OF s" NonSortableProperties" ENDOF
+   ;MATCH ;
+
+\ The capability whose restriction term is named TAIL, and whether one is.
+: CAPABILITY-OF ( str -- capability bool )
+   {: tail:str :}
+   tail CAPABILITY-FILTER TERM-NAME$ STR:= if CAPABILITY-FILTER true exit then
+   tail CAPABILITY-SORT TERM-NAME$ STR:= if CAPABILITY-SORT true exit then
+   CAPABILITY-FILTER false ;
+
+: RESTRICTION-TERM? ( XML:reader ^doc -- XML:reader bool )
    {: d:^ :}
    d s" Term" ATTR$ 0= if drop false exit then
-   QUALIFIER {: q:str tail:str :} tail FILTER-NAME? ;
+   QUALIFIER {: q:str tail:str :} tail CAPABILITY-OF nip ;
 
-\ A FilterRestrictions with no Qualifier onto LIST, read in filter-body; any
-\ other Annotation is read past.
-: FILTER-START ( XML:reader ^doc ^^filter -- XML:reader )
+\ A FilterRestrictions or SortRestrictions with no Qualifier onto LIST, read in
+\ restriction-body; any other Annotation is read past.
+: RESTRICTION-START ( XML:reader ^doc ^^restriction -- XML:reader )
    {: d:^ list:^ :}
    s" Qualifier" FIND-ATTR if d SKIP-START exit then
    d TERM-OF {: q:str tail:str :}
-   tail FILTER-NAME? 0= if d SKIP-START exit then
-   d DOC-ARENA @ FILTERS-NEW {: f:^ :}
-   q f FILTER-NAMESPACE !
-   true f FILTER-FILTERABLE !
-   d DOC-OFFSET @ f FILTER-OFFSET !
-   list @ f FILTER-NEXT ! f list !
-   f d DOC-FILTER !
+   tail CAPABILITY-OF 0= if drop d SKIP-START exit then
+   {: c:capability :}
+   d DOC-ARENA @ RESTRICTIONS-NEW {: r:^ :}
+   c r RESTRICTION-CAPABILITY !
+   q r RESTRICTION-NAMESPACE !
+   true r RESTRICTION-ALLOWED !
+   d DOC-OFFSET @ r RESTRICTION-OFFSET !
+   list @ r RESTRICTION-NEXT ! r list !
+   r d DOC-RESTRICTION !
    d DOC-PHASE @ d DOC-HOME !
-   d PHASE-FILTER-BODY ENTER ;
+   d PHASE-RESTRICTION-BODY ENTER ;
 
 : IN-SET ( XML:reader ^doc -- XML:reader )
    {: d:^ :}
    d SPACE-EDM4 s" NavigationPropertyBinding" IS? if d BINDING-START exit then
    d SPACE-EDM4 s" Annotation" IS? if
-      d d DOC-SET @ ENTITY-SET-FILTERS FILTER-START exit
+      d d DOC-SET @ ENTITY-SET-RESTRICTIONS RESTRICTION-START exit
    then
    d SKIP-START ;
 
@@ -1330,7 +1361,9 @@ CAST: >RECORD ( n -- ^t )
 : IN-ANNOTATIONS ( XML:reader ^doc -- XML:reader )
    {: d:^ :}
    d SPACE-EDM4 s" Annotation" IS? if
-      d FILTER-TERM? if d d DOC-BLOCK @ BLOCK-FILTERS FILTER-START exit then
+      d RESTRICTION-TERM? if
+         d d DOC-BLOCK @ BLOCK-RESTRICTIONS RESTRICTION-START exit
+      then
       d d DOC-BLOCK @ BLOCK-ANNOTATIONS ANNOTATION-START exit
    then
    d SKIP-START ;
@@ -1380,28 +1413,28 @@ CAST: >RECORD ( n -- ^t )
    d SPACE-EDM4 s" TypeDefinition" IS? if d DEFINITION-START exit then
    d SKIP-START ;
 
-: IN-FILTER ( XML:reader ^doc -- XML:reader )
+: IN-RESTRICTION ( XML:reader ^doc -- XML:reader )
    {: d:^ :}
    d SPACE-EDM4 s" Record" IS? if d PHASE-RECORD ENTER exit then
    d SKIP-START ;
 
-\ Filterable as a Bool attribute is read here, as a Bool element in bool-value.
-: FILTERABLE-START ( XML:reader ^doc -- XML:reader )
+\ Filterable or Sortable as a Bool attribute is read here, as a Bool element
+\ in bool-value.
+: ALLOWED-START ( XML:reader ^doc -- XML:reader )
    {: d:^ :}
    s" Bool" FIND-ATTR 0= if d PHASE-BOOL-VALUE ENTER exit then
-   d s" Bool" true BOOL-ATTR d DOC-FILTER @ FILTER-FILTERABLE !
+   d s" Bool" true BOOL-ATTR d DOC-RESTRICTION @ RESTRICTION-ALLOWED !
    d SKIP-START ;
 
 : PROPERTY-VALUE-START ( XML:reader ^doc -- XML:reader )
    {: d:^ :}
    d s" Property" ATTR$ drop {: name:str :}
-   name s" NonFilterableProperties" STR:= if
-      d PHASE-PATHS-VALUE ENTER exit
-   then
-   name s" Filterable" STR:= if d FILTERABLE-START exit then
+   d DOC-RESTRICTION @ RESTRICTION-CAPABILITY @ {: c:capability :}
+   name c PATHS-NAME$ STR:= if d PHASE-PATHS-VALUE ENTER exit then
+   name c ALLOWED-NAME$ STR:= if d ALLOWED-START exit then
    d SKIP-START ;
 
-: IN-FILTER-RECORD ( XML:reader ^doc -- XML:reader )
+: IN-RECORD ( XML:reader ^doc -- XML:reader )
    {: d:^ :}
    d SPACE-EDM4 s" PropertyValue" IS? if d PROPERTY-VALUE-START exit then
    d SKIP-START ;
@@ -1457,8 +1490,8 @@ CAST: >RECORD ( n -- ^t )
       set-pairs OF d IN-SET-PAIRS ENDOF
       annotations OF d IN-ANNOTATIONS ENDOF
       enum-body OF d IN-ENUM ENDOF
-      filter-body OF d IN-FILTER ENDOF
-      record OF d IN-FILTER-RECORD ENDOF
+      restriction-body OF d IN-RESTRICTION ENDOF
+      record OF d IN-RECORD ENDOF
       paths-value OF d IN-PATHS-VALUE ENDOF
       paths OF d IN-PATHS ENDOF
       path-text OF d s" PropertyPath" NOT-TEXT ENDOF
@@ -1479,13 +1512,13 @@ CAST: >RECORD ( n -- ^t )
    {: d:^ :}
    d DOC-ARENA @ PATHS-NEW {: p:^ :}
    d d SCRATCH$ KEEP p PATH-TEXT !
-   d DOC-FILTER @ {: f:^ :}
-   f FILTER-PATHS @ p PATH-NEXT ! p f FILTER-PATHS ! ;
+   d DOC-RESTRICTION @ {: r:^ :}
+   r RESTRICTION-PATHS @ p PATH-NEXT ! p r RESTRICTION-PATHS ! ;
 
 : BOOL-END ( ^doc -- )
    {: d:^ :}
    d d DOC-OFFSET @ s" Bool" s" PropertyValue" d SCRATCH$ BOOL-OF
-   d DOC-FILTER @ FILTER-FILTERABLE ! ;
+   d DOC-RESTRICTION @ RESTRICTION-ALLOWED ! ;
 
 : ON-END ( ^doc -- )
    {: d:^ :}
@@ -2340,17 +2373,17 @@ CAST: >RECORD ( n -- ^t )
       b list !
    repeat drop ;
 
-: ATTACH-FILTERS ( ^filter ^^filter -- )
-   {: f:^ list:^ :}
-   f begin dup NULL-PTR <> while
-      {: g:^filter :}
-      g FILTER-NEXT @
-      list @ g FILTER-NEXT !
+: ATTACH-RESTRICTIONS ( ^restriction ^^restriction -- )
+   {: r:^ list:^ :}
+   r begin dup NULL-PTR <> while
+      {: g:^restriction :}
+      g RESTRICTION-NEXT @
+      list @ g RESTRICTION-NEXT !
       g list !
    repeat drop ;
 
 \ A Target naming a type or property takes the block's annotations, a set of
-\ the container its filters; others, as SAP's navigations, are read past.
+\ the container its restrictions; others, as SAP's navigations, are read past.
 : BLOCK ( ^doc ^block -- )
    {: d:^ b:^ :}
    b BLOCK-TARGET @ {: text:str :}
@@ -2362,7 +2395,7 @@ CAST: >RECORD ( n -- ^t )
    text i SPLIT {: head:str tail:str :}
    d head CONTAINER-PATH? if
       d tail FIND-SET dup NULL-PTR = if drop exit then
-      b BLOCK-FILTERS @ swap ENTITY-SET-FILTERS ATTACH-FILTERS exit
+      b BLOCK-RESTRICTIONS @ swap ENTITY-SET-RESTRICTIONS ATTACH-RESTRICTIONS exit
    then
    d head FIND-TYPE {: t:^ :}
    t NULL-PTR = if exit then
@@ -2445,43 +2478,49 @@ CAST: >RECORD ( n -- ^t )
 
 : CAPABILITIES$ ( -- str ) s" Org.OData.Capabilities.V1" ;
 
-\ The earlier of F and G in the document; either may be null.
-: EARLIER-FILTER ( ^filter ^filter -- ^filter )
-   {: f:^ g:^ :}
-   f NULL-PTR = if g exit then
-   g NULL-PTR = if f exit then
-   f FILTER-OFFSET @ g FILTER-OFFSET @ < if f else g then ;
+\ The earlier of R and G in the document; either may be null.
+: EARLIER-RESTRICTION ( ^restriction ^restriction -- ^restriction )
+   {: r:^ g:^ :}
+   r NULL-PTR = if g exit then
+   g NULL-PTR = if r exit then
+   r RESTRICTION-OFFSET @ g RESTRICTION-OFFSET @ < if r else g then ;
 
-\ Whether F's term, its alias resolved, is in Org.OData.Capabilities.V1.
-: CAPABILITIES? ( ^doc ^filter -- bool )
-   {: d:^ f:^ :}
-   d f FILTER-NAMESPACE @ ALIAS CAPABILITIES$ STR:= ;
+: CAPABILITIES? ( ^doc ^restriction -- bool )
+   {: d:^ r:^ :}
+   d r RESTRICTION-NAMESPACE @ ALIAS CAPABILITIES$ STR:= ;
 
-\ The earliest CAPABILITIES? filter on LIST other than BUT, null for none.
-: EARLIEST ( ^doc ^filter ^filter -- ^filter )
-   {: d:^ list:^ but:^ :}
+\ The earliest CAPABILITIES? restriction of C on LIST other than BUT, null for
+\ none.
+: EARLIEST ( ^doc ^restriction capability ^restriction -- ^restriction )
+   {: d:^ list:^ c:capability but:^ :}
    NULL-PTR list begin dup NULL-PTR <> while
-      {: least:^filter f:^filter :}
+      {: least:^restriction r:^restriction :}
       least
-      f but <> d f CAPABILITIES? and if f EARLIER-FILTER then
-      f FILTER-NEXT @
+      r RESTRICTION-CAPABILITY @ c CAPABILITY-EQ
+      r but <> and d r CAPABILITIES? and if r EARLIER-RESTRICTION then
+      r RESTRICTION-NEXT @
    repeat drop ;
 
-\ The earliest is the set's filter; a second is rejected.
-: SET-FILTER ( ^doc ^entity-set -- )
-   {: d:^ s:^ :}
-   s ENTITY-SET-FILTERS @ {: list:^filter :}
-   d list NULL-PTR EARLIEST {: first:^filter :}
-   first s ENTITY-SET-FILTER !
-   d list first EARLIEST {: second:^filter :}
-   second NULL-PTR = if exit then
-   d second FILTER-OFFSET @ CAPABILITIES$
-   s" FilterRestrictions" SECOND-TERM ;
+\ The earliest of S's restrictions of C is the one kept; a second is rejected.
+: KEPT ( ^doc ^entity-set capability -- ^restriction )
+   {: d:^ s:^ c:capability :}
+   s ENTITY-SET-RESTRICTIONS @ {: list:^restriction :}
+   d list c NULL-PTR EARLIEST {: first:^restriction :}
+   d list c first EARLIEST {: second:^restriction :}
+   second NULL-PTR <> if
+      d second RESTRICTION-OFFSET @ CAPABILITIES$ c TERM-NAME$ SECOND-TERM
+   then
+   first ;
 
-: RESOLVE-FILTERS ( ^doc -- )
+: SET-RESTRICTIONS ( ^doc ^entity-set -- )
+   {: d:^ s:^ :}
+   d s CAPABILITY-FILTER KEPT s ENTITY-SET-FILTER !
+   d s CAPABILITY-SORT KEPT s ENTITY-SET-SORT ! ;
+
+: RESOLVE-RESTRICTIONS ( ^doc -- )
    {: d:^ :}
    d DOC-MODEL @ METADATA-SETS @ begin dup NULL-PTR <> while
-      d over SET-FILTER ENTITY-SET-NEXT @
+      d over SET-RESTRICTIONS ENTITY-SET-NEXT @
    repeat drop ;
 
 : RESOLVE ( ^doc -- )
@@ -2497,7 +2536,7 @@ CAST: >RECORD ( n -- ^t )
    d RESOLVE-BINDINGS
    d RESOLVE-SECONDS
    d RESOLVE-BLOCKS
-   d RESOLVE-FILTERS
+   d RESOLVE-RESTRICTIONS
    d RESOLVE-TERMS ;
 
 : PARSE ( ^doc str -- )
@@ -2666,19 +2705,22 @@ CAST: >RECORD ( n -- ^t )
    s NULL-PTR = if false exit then
    s SERVED? 0= ;
 
-: V2-FILTERABLE? ( ^property -- bool )
-   PROPERTY-ANNOTATIONS @ s" http://www.sap.com/Protocols/SAPData"
-   s" filterable" ANNOTATION if s" false" STR:= 0= exit then
-   drop true ;
-
-\ Whether F makes no property filterable or lists P's name.
-: RESTRICTS? ( ^filter ^property -- bool )
-   {: f:^ p:^ :}
-   f FILTER-FILTERABLE @ 0= if true exit then
-   f FILTER-PATHS @ begin dup NULL-PTR <> while
+\ Whether R allows its capability on no property or lists P's name.
+: RESTRICTS? ( ^restriction ^property -- bool )
+   {: r:^ p:^ :}
+   r RESTRICTION-ALLOWED @ 0= if true exit then
+   r RESTRICTION-PATHS @ begin dup NULL-PTR <> while
       dup PATH-TEXT @ p PROPERTY-NAME @ STR:= if drop true exit then
       PATH-NEXT @
    repeat drop false ;
+
+\ Whether P's sap: attribute NAME and R, unless null, allow P.
+: ALLOWED? ( ^property str ^restriction -- bool )
+   {: p:^ name:str r:^ :}
+   p PROPERTY-ANNOTATIONS @ s" http://www.sap.com/Protocols/SAPData" name
+   ANNOTATION if s" false" STR:= if false exit then else drop then
+   r NULL-PTR = if true exit then
+   r p RESTRICTS? 0= ;
 
 public
 
@@ -2775,11 +2817,12 @@ public
 \ Whether a $filter on SET may name PROP, a property of SET's type: false when
 \ PROP's sap:filterable or SET's FilterRestrictions says not, else true.
 : FILTERABLE? ( ^entity-set ^property -- bool )
-   {: s:^ p:^ :}
-   p V2-FILTERABLE? 0= if false exit then
-   s ENTITY-SET-FILTER @ {: f:^filter :}
-   f NULL-PTR = if true exit then
-   f p RESTRICTS? 0= ;
+   {: s:^ p:^ :} p s" filterable" s ENTITY-SET-FILTER @ ALLOWED? ;
+
+\ Whether an $orderby on SET may name PROP, a property of SET's type: false
+\ when PROP's sap:sortable or SET's SortRestrictions says not, else true.
+: SORTABLE? ( ^entity-set ^property -- bool )
+   {: s:^ p:^ :} p s" sortable" s ENTITY-SET-SORT @ ALLOWED? ;
 
 \ Hides the type of the set NAME and SETTLEs; false, changing nothing, when
 \ the model has no such set.

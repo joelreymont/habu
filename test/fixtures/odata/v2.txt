@@ -1,7 +1,7 @@
 set Orders
  type sap:label=Sales Order
  key Year OrderID
- property OrderID Edm.String not-null
+ property OrderID Edm.String not-null unsortable
  property Year Edm.Int16 not-null
  property Amount Edm.Decimal nullable Common.Label=Net Amount
  property Placed Edm.DateTimeOffset nullable
@@ -10,7 +10,7 @@ set Orders
 set ArchivedOrders
  type sap:label=Sales Order
  key Year OrderID
- property OrderID Edm.String not-null
+ property OrderID Edm.String not-null unsortable
  property Year Edm.Int16 not-null
  property Amount Edm.Decimal nullable Common.Label=Net Amount
  property Placed Edm.DateTimeOffset nullable

@@ -23,7 +23,7 @@
           <PropertyRef Name="Year"/>
           <PropertyRef Name="OrderID"/>
         </Key>
-        <Property Name="OrderID" Type="Edm.String" Nullable="false"/>
+        <Property Name="OrderID" Type="Edm.String" Nullable="false" sap:sortable="false"/>
         <Property Name="Year" Type="Edm.Int16" Nullable="false"/>
         <Property Name="Amount" Type="Edm.Decimal" Precision="13" Scale="2"/>
         <Property Name="Placed" Type="Edm.DateTimeOffset"/>

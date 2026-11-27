@@ -70,6 +70,7 @@ TYPED-VARIABLE LINK ^VEC:vector<u8>  \ and this one
    p COMMON$ s" Label" ODATA:PROPERTY-ANNOTATION$ s" Common.Label" SHOW
    p CORE$ s" Computed" ODATA:PROPERTY-ANNOTATION$ s" Core.Computed" SHOW
    SET @ p ODATA:FILTERABLE? 0= if s"  unfilterable" ADD then
+   SET @ p ODATA:SORTABLE? 0= if s"  unsortable" ADD then
    NL ;
 
 : SHOW-KEY ( ^ODATA:property -- ) s"  " ADD ODATA:PROPERTY-NAME$ ADD ;
@@ -290,6 +291,9 @@ TYPED-VARIABLE LINK ^VEC:vector<u8>  \ and this one
    REJECTS
    s" test/fixtures/odata/repeated-filter-inline.xml"
    s" 17:11: expected one `Annotation` of term `FilterRestrictions` of `Org.OData.Capabilities.V1` per target, found a second; remove one of the two"
+   REJECTS
+   s" test/fixtures/odata/repeated-sort-inline.xml"
+   s" 17:11: expected one `Annotation` of term `SortRestrictions` of `Org.OData.Capabilities.V1` per target, found a second; remove one of the two"
    REJECTS
    s" test/fixtures/odata/repeated-filter-block.xml"
    s" 18:9: expected one `Annotation` of term `FilterRestrictions` of `Org.OData.Capabilities.V1` per target, found a second; remove one of the two"

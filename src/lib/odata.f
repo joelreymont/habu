@@ -13,11 +13,12 @@
 \ `<Annotations Target>` block, its term's alias resolved through edmx:Include
 \ or a Schema's Alias. An annotation with a Qualifier is not kept, nor one whose
 \ value is a Record, a Collection or an element. An entity set's
-\ Capabilities.FilterRestrictions with no Qualifier, inline or in an
-\ `<Annotations>` block whose Target is the container and the set, a V2
-\ document's included, is read for FILTERABLE?: its Filterable and its
-\ NonFilterableProperties paths, every other member read past; a second on one
-\ set is rejected.
+\ Capabilities.FilterRestrictions and SortRestrictions with no Qualifier,
+\ inline or in an `<Annotations>` block whose Target is the container and the
+\ set, a V2 document's included, are read for FILTERABLE? and SORTABLE?: each
+\ one's Filterable or Sortable and its NonFilterableProperties or
+\ NonSortableProperties paths, every other member read past; a second of one
+\ term on one set is rejected.
 \ A rejected document is E-METADATA with REASON text `L:C: expected X, found
 \ Y; fix`: L:C is the line and byte column in the document, from 1, counted
 \ as the XML reader counts its own, and a name, value or namespace URI from the
