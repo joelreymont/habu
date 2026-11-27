@@ -31,6 +31,7 @@ public
 -9260 s" an inotify read failed" ERROR:CODE E-INOTIFY
 
 \ Watch masks, <linux/inotify.h>.
+$1 constant IN-ACCESS
 $2 constant IN-MODIFY
 $4 constant IN-ATTRIB
 $8 constant IN-CLOSE-WRITE
