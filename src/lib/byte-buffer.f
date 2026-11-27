@@ -3,7 +3,8 @@
 \ block at its storage pointer: a HEAP:ALLOCATOR block below
 \ STACK-ABI:PAGE-BYTES, an OS mapping otherwise. The capacity cell is the
 \ ownership token: positive, a live block of that many bytes; zero, none (fresh
-\ or disposed), and any growth makes one.
+\ or disposed), and any growth makes one. DISPOSE of a header with no block
+\ frees nothing.
 \ STORAGE CLASS. CALLER-OWNED: the caller embeds the header; BUF owns the block.
 
 require src/lib/error.f
@@ -126,6 +127,7 @@ private
 
 \ Clear the entire header before release; dead headers retain no process address.
 : DISPOSE-RAW ( ^a -- ) {: buf:^ :}
+   buf CAP-RAW@ 0= if exit then
    buf BUF-SPAN {: owned :}
    NULL-PTR buf DATA!
    0 buf CAP-RAW!
@@ -195,7 +197,6 @@ public
 \ longer length takes in are unspecified until written.
 : LEN! ( NUM:byte-len ^a -- ) {: n:NUM:byte-len buf:^ :}
    n BLEN>N buf SET-LEN ;
-: LIVE? ( ^a -- bool )  CAP-RAW@ 0<> ;
 \ SPAN and SPAN$ borrow exactly the active prefix until the next mutation or
 \ disposal; the span enforces neither that lifetime nor read-only use, and the
 \ borrower never frees it.
@@ -226,10 +227,9 @@ public
 : RESIZE ( ^a NUM:byte-len -- ) {: buf:^ n:NUM:byte-len :}
    buf n BLEN>N RESIZE-RAW ;
 
-\ n zero on a dead header is E-BUF-CAPACITY, as INIT; a failed growth leaves a
-\ live one empty at its old capacity.
+\ n zero leaves the buffer empty with whatever block it has; a failed growth
+\ leaves it empty at its old capacity.
 : RESET ( ^a NUM:byte-len -- ) {: buf:^ n:NUM:byte-len :}
-   buf LIVE? 0= if buf n INIT exit then
    buf CLEAR  buf n RESERVE ;
 
 \ Appends keep saved offsets valid; CLEAR and REPLACE do not. APPEND-SPAN

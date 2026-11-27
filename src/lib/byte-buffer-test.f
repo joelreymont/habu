@@ -11,7 +11,7 @@ require src/lib/property.f
 create BUFT-BUF BUF:HDR-BYTES allot
 create BUFT-REL-BUF BUF:HDR-BYTES allot
 create BUFT-BIG-BUF BUF:HDR-BYTES allot
-create BUFT-LIVE-BUF BUF:HDR-BYTES allot
+create BUFT-EMPTY-BUF BUF:HDR-BYTES allot
 create BUFT-NEW-BUF BUF:HDR-BYTES allot
 create BUFT-CHUNK 1024 allot
 create BUFT-REF 4096 allot
@@ -265,13 +265,22 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
       BUFT-REL-BUF BUF:DISPOSE
    loop ;
 
-\ LIVE? answers on a header never initialised, a live one and a disposed one.
-: BUFT-LIVE ( -- )
-   BUFT-LIVE-BUF BUF:LIVE? TFALSE
-   BUFT-LIVE-BUF BUFT-CAP0 BUF:N>BLEN BUF:INIT
-   BUFT-LIVE-BUF BUF:LIVE? TTRUE
-   BUFT-LIVE-BUF BUF:DISPOSE
-   BUFT-LIVE-BUF BUF:LIVE? TFALSE ;
+\ A header holding no block, fresh or disposed, stays empty through a RESET to
+\ zero and a DISPOSE; an append then makes its block.
+: BUFT-EMPTY ( -- )
+   BUFT-EMPTY-BUF 0 BUF:N>BLEN BUF:RESET
+   BUFT-EMPTY-BUF BUFT-TLEN 0 T=
+   BUFT-EMPTY-BUF BUFT-TCAP 0 T=
+   BUFT-EMPTY-BUF BUF:DISPOSE
+   BUFT-EMPTY-BUF BUFT-TLEN 0 T=
+   BUFT-EMPTY-BUF BUFT-TCAP 0 T=
+   BUFT-EMPTY-BUF BUF:DISPOSE
+   BUFT-EMPTY-BUF BUFT-TLEN 0 T=
+   BUFT-EMPTY-BUF BUFT-TCAP 0 T=
+   s" abc" BUFT-BLEN BUFT-EMPTY-BUF BUF:APPEND-SPAN
+   BUFT-EMPTY-BUF BUFT-TCAP 3 T=
+   BUFT-EMPTY-BUF BUF:SPAN$ BUFT-BL>RAW >str s" abc" T$=
+   BUFT-EMPTY-BUF BUF:DISPOSE ;
 
 : BUFT-APPEND-NEW ( -- )
    s" abc" BUFT-BLEN BUFT-NEW-BUF BUF:APPEND-SPAN
@@ -399,8 +408,8 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
    BUFT-SMALL-SHARE
    s" a disposed small buffer's block is reused" T-LABEL
    BUFT-SMALL-REUSE
-   s" LIVE? answers on a fresh, live and disposed header and never throws" T-LABEL
-   [: BUFT-LIVE ;] catch 0 T=
+   s" a fresh or disposed header stays empty through reset to zero and dispose, and an append makes its block" T-LABEL
+   [: BUFT-EMPTY ;] catch 0 T=
    s" a span appended to a header never initialised grows it to fit" T-LABEL
    BUFT-APPEND-NEW
    s" a failed growth leaves the buffer as it was" T-LABEL

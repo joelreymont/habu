@@ -879,7 +879,6 @@ CAST: HELD>N ( held -- n )
 \ The text written into the BUF, which grows to hold it.
 : TEXT-SET ( str ^n -- )
    {: s:str buf:^ :}
-   buf BUF:LIVE? 0= if buf 64 BUF:N>BLEN BUF:INIT then
    s STR:DATA s STR:LEN BUF:N>BLEN buf BUF:REPLACE ;
 
 : KEEP-FREE? ( n -- bool )
@@ -1244,11 +1243,11 @@ CAST: HELD>N ( held -- n )
    fault SLOT FAULT !
    CALL-REPLY GOOD SEND ;
 
-\ The worker's BUF in a table of BUF headers, made live the first time.
+\ The worker's BUF in a table of BUF headers.
 : WORKER-BUF ( ^u8 -- ^n )
    {: table:^ :}
    SLOT BUF:HDR-BYTES * table + CELL-VIEW {: buf:^ :}
-   buf BUF:LIVE? 0= if buf 1024 BUF:N>BLEN BUF:INIT then
+   buf 1024 BUF:N>BLEN BUF:RESERVE
    buf ;
 
 \ Under LOG the text is copied: its debug line is written after the body returns.
