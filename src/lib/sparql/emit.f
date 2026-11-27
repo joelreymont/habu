@@ -2322,14 +2322,15 @@ STRUCTURE pruning DERIVE addr
    from t +REL from s"  AS " +TEXT from alias +TEXT alias ;
 
 \ b binds column c of the derived table under alias, each leaf's copies
-\ what c copies.
+\ what c copies; b may be c.
 : SET-COLUMN ( ^plan ^binding str ^binding -- )
    {: plan b:^ alias:str c:^ :}
    c BINDING-VAR @ {: var:n :}
+   c BINDING-ALWAYS @ {: always:bool :} c COPIED {: copied:n :}
    b var c BINDING-SHAPE @ plan alias var COLUMN-OF
       c BINDING-TERM @ SET-BINDING
-   c BINDING-ALWAYS @ b BINDING-ALWAYS !
-   c COPIED b BINDING-SQL @ REL-COPIES ! ;
+   always b BINDING-ALWAYS !
+   copied b BINDING-SQL @ REL-COPIES ! ;
 
 \ Appends the derived table under a new alias to from and answers its
 \ columns as bindings there.
@@ -2342,27 +2343,73 @@ STRUCTURE pruning DERIVE addr
       plan occs VEC:PUSH alias cols i VEC:AT SET-COLUMN
    loop occs ;
 
-\ Appends the derived table under a new alias to from and meets each of
-\ its columns, written into the plan's column binding, into the scope.
-: MEET-TABLE ( ^plan ^rel ^VEC:vector<binding> ^rel
-      ^VEC:vector<binding> ^rel bool -- )
-   {: plan t:^ cols:^ from:^ scope:^ where:^ optional:bool :}
-   plan t from +AS {: alias:str :}
-   plan PLAN-COLUMN @ {: b:^ :}
-   cols VEC:COUNT 0 ?do
-      plan b alias cols i VEC:AT SET-COLUMN
-      plan scope b where optional MEET
-   loop ;
+\ b's variable may be missing on a row: no WHERE condition tests it.
+: MAY-MISS ( ^binding -- )
+   {: b:^ :}
+   false b BINDING-ALWAYS ! false b BINDING-NULLABLE ! ;
 
-\ Joins the derived table into r, its columns meeting r's bindings; r
-\ then drops the variables SETTLED by it.
+\ The list drops its bindings of the variables the scope binds; the
+\ others keep their order.
+: DROP-MET ( ^VEC:vector<binding> ^VEC:vector<binding> -- )
+   {: scope:^ list:^ :}
+   0 list VEC:COUNT 0 ?do
+      list i VEC:AT {: o:^ :}
+      scope o BINDING-VAR @ FIND-VAR 0< if
+         list over VEC:AT o MOVE-BINDING 1+
+      then
+   loop list swap VEC:RESIZE ;
+
+\ The list's bindings move up behind copies of the scope's.
+: SCOPE-FIRST ( ^VEC:vector<binding> ^VEC:vector<binding> -- )
+   {: scope:^ list:^ :}
+   scope VEC:COUNT {: s:n :} list VEC:COUNT {: m:n :}
+   list s m + VEC:RESIZE
+   m 0 ?do
+      m 1- i - {: k:n :}
+      list s k + VEC:AT list k VEC:AT MOVE-BINDING
+   loop
+   s 0 ?do list i VEC:AT scope i VEC:AT MOVE-BINDING loop ;
+
+\ Meets the optional list into r's bindings as MEET-ALL does. A list
+\ longer than the scope is consumed: r adopts it, the scope's bindings
+\ first and the list's others after them, as MEET-ALL would append them.
+: ADOPT-ALL ( ^plan ^relation ^VEC:vector<binding> ^rel -- )
+   {: plan r:^ list:^ where:^ :}
+   r RELATION-BINDINGS @ {: scope:^ :}
+   list VEC:COUNT scope VEC:COUNT <= if
+      plan scope list where true MEET-ALL exit
+   then
+   list VEC:COUNT 0 ?do
+      list i VEC:AT {: o:^ :}
+      scope o BINDING-VAR @ FIND-VAR -1 > if
+         plan scope o where true MEET
+      else o MAY-MISS then
+   loop
+   scope list DROP-MET scope list SCOPE-FIRST
+   list r RELATION-BINDINGS ! ;
+
+\ Appends the OPTIONAL's derived table under a new alias to r's FROM; its
+\ columns, rewritten in place, meet r's bindings in on and r may adopt them.
+: ADOPT-TABLE ( ^plan ^rel ^VEC:vector<binding> ^relation ^rel -- )
+   {: plan t:^ cols:^ r:^ on:^ :}
+   plan t r RELATION-FROM @ +AS {: alias:str :}
+   cols VEC:COUNT 0 ?do
+      cols i VEC:AT {: c:^ :} plan c alias c SET-COLUMN
+   loop plan r cols on ADOPT-ALL ;
+
+\ Joins the derived table into r, each column met into r's bindings
+\ through the plan's column binding, never rewritten in place: LATE reads
+\ the item's columns again. r then drops the variables SETTLED by it.
 : JOIN-TABLE ( ^plan ^rel ^VEC:vector<binding> ^relation -- )
    {: plan t:^ cols:^ r:^ :}
    r RELATION-BINDINGS @ {: scope:^ :}
    plan scope cols SETTLED {: done:^ :}
-   plan t cols r RELATION-FROM @ scope r RELATION-WHERE @ false
-      MEET-TABLE
-   r done FORGET-ALL ;
+   plan t r RELATION-FROM @ +AS {: alias:str :}
+   plan PLAN-COLUMN @ {: b:^ :}
+   cols VEC:COUNT 0 ?do
+      plan b alias cols i VEC:AT SET-COLUMN
+      plan scope b r RELATION-WHERE @ false MEET
+   loop r done FORGET-ALL ;
 
 \ The derived table's rows whose columns meet the substitution.
 : SUBSTITUTED ( ^plan ^rel ^VEC:vector<binding> -- ^rel )
@@ -3125,17 +3172,18 @@ STRUCTURE pruning DERIVE addr
    from s"  CROSS JOIN " +SEP
    plan it ITEM-TABLE @ it ITEM-COLUMNS @ r JOIN-TABLE ;
 
-\ Appends the OPTIONAL's table to from, its columns meeting the scope in
-\ on: a group as it is in parentheses, its WHERE in on, else a derived table.
-: +OPTIONAL-TABLE ( ^plan ^item ^rel ^VEC:vector<binding> ^rel -- )
-   {: plan it:^ from:^ scope:^ on:^ :}
+\ Appends the OPTIONAL's table to r's FROM, its columns meeting r's
+\ bindings in on: a group as it is in parentheses, its WHERE in on, else
+\ a derived table.
+: +OPTIONAL-TABLE ( ^plan ^item ^relation ^rel -- )
+   {: plan it:^ r:^ on:^ :}
    it ITEM-WHERE @ {: where:^ :}
    where NULL-PTR = if
-      plan it ITEM-TABLE @ it ITEM-COLUMNS @ from scope on true MEET-TABLE
-      exit
+      plan it ITEM-TABLE @ it ITEM-COLUMNS @ r on ADOPT-TABLE exit
    then
+   r RELATION-FROM @ {: from:^ :}
    from s" (" +TEXT from it ITEM-TABLE @ VIEW +REL from s" )" +TEXT
-   plan scope it ITEM-COLUMNS @ on true MEET-ALL
+   plan r it ITEM-COLUMNS @ on ADOPT-ALL
    where EMPTY? if exit then
    on s"  AND " +SEP on s" (" +SQL on where VIEW +REL on s" )" +SQL ;
 
@@ -3143,14 +3191,14 @@ STRUCTURE pruning DERIVE addr
 \ FILTERs on the joined bindings. An empty FROM is one empty row.
 : OPTIONAL-STEP ( ^plan ^item ^relation -- )
    {: plan it:^ r:^ :}
-   r RELATION-BINDINGS @ {: scope:^ :}
    r RELATION-FROM @ {: from:^ :}
    from EMPTY? if
       plan plan TEXTS s" (SELECT)" TEXT-REL from +AS drop
    then
    from s"  LEFT JOIN " +TEXT true r RELATION-OPTIONAL !
    plan NEW-SQL {: on:^ :}
-   plan it from scope on +OPTIONAL-TABLE
+   plan it r on +OPTIONAL-TABLE
+   r RELATION-BINDINGS @ {: scope:^ :}
    it ITEM-FILTERS @ {: filters:^ :}
    filters VEC:COUNT 0 ?do
       plan scope filters i VEC:AT @ on +FILTER
