@@ -27,8 +27,7 @@
 \ pending per connection; a send copies its statement and parameters. A SQL
 \ rejection is the result's `failed` outcome with SQLSTATE and message. A
 \ TASK:HALT ends a wait and leaves the connection to the task's own cleanup:
-\ CLOSE, or ABANDON under a halt; LIVE? is false where it ended a
-\ transaction's body, which closes it. Each WITH- word runs one operation and
+\ CLOSE, or ABANDON under a halt. Each WITH- word runs one operation and
 \ the body over its result, then clears it whether the body returns or throws;
 \ the body hands the token back. The token does not survive a throw out of the
 \ body, so the scope keeps its packed handle in the running task's SCOPE-HEAD
@@ -210,8 +209,8 @@ TASK:+USER CONNECT-HEAD n
 \ The task's record: its last operation's failure text, no bytes when that
 \ operation has none, null until the task's first.
 TASK:+USER REJECTED-TEXT ^VEC:vector<u8>
-\ Nonzero while ABORT-TX's ROLLBACK runs: nothing then changes REJECTED-TEXT, so
-\ it stays as the failure being rolled back left it.
+\ Nonzero while ROLLBACK's statement runs: nothing then changes REJECTED-TEXT,
+\ so it stays as the failure being rolled back left it.
 TASK:+USER REJECTED-HOLD n
 
 : CONN-CAP ( -- n ) CONN-CAPACITY @ ;
@@ -1536,12 +1535,11 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
 
 
 \ PostgreSQL answers COMMIT of no or a failed transaction with no error; E-EXEC
-\ here leaves the record. A throw before the send is rolled back, none after.
+\ here leaves the record.
 : COMMIT-TX ( n -- ) {: slot:n :}
    slot CONN-PG@ LIB-TRANSACTION-STATUS {: status:n :}
    status TRANS-IDLE = status TRANS-INERROR = or if E-EXEC throw then
    slot s" COMMIT" SEND-VERB {: deadline:n :}
-   0 slot CONN-TX!
    slot deadline WAIT-VERB ;
 
 
@@ -2022,28 +2020,25 @@ public
    WAIT-NOTIFIES ;
 
 
-private
-
-\ A halted task must not wait on the server, and a ROLLBACK that fails leaves
-\ the transaction's state unknown: both close the connection.
-: ABORT-TX ( connection -- )
+\ Ends the open transaction, keeping the failure's text; throws only E-HANDLE. A
+\ halted task, which must not wait, or a failed ROLLBACK closes the connection.
+: ROLLBACK ( connection -- )
    {: handle:connection :}
    handle LIVE? 0= if exit then
    handle CONN-SLOT {: slot:n :}
-   slot CONN-TX@ 0= if exit then
+   slot CONNECTING@ 0<> if exit then
+   handle IDLE? if 0 slot CONN-TX! exit then
    TASK:HALTED? if handle ABANDON exit then
    1 REJECTED-HOLD !
-   slot [: [: dup ROLLBACK-TX ;] catch ;] [: 0 REJECTED-HOLD ! ;] finally
-   {: stale:n code:n :}
-   code 0= if exit then
-   \ A ROLLBACK that expired has closed the connection and freed its slot.
-   handle LIVE? if handle CONN-SLOT ABANDON-SLOT then ;
-
-public
+   \ The hold still set marks a ROLLBACK that threw or whose wait a halt ended.
+   slot [: [: dup ROLLBACK-TX 0 REJECTED-HOLD ! ;] catch 2drop ;]
+   [: REJECTED-HOLD @ 0 REJECTED-HOLD ! 0<> handle LIVE? and if
+         TASK:HALTED? if handle ABANDON else slot ABANDON-SLOT then
+      then ;] finally ;
 
 
-\ Commits when the body returns. Its throw rolls back and goes on; a halt in it,
-\ or a ROLLBACK that fails, closes the connection. Nested is E-TRANSACTION.
+\ Commits when the body returns; its throw goes on after ROLLBACK. Nested is
+\ E-TRANSACTION.
 : WITH-TRANSACTION ( R connection [ R -- S ] -- S )
    {: handle:connection body :}
    handle OP-SLOT {: slot:n :}
@@ -2052,7 +2047,7 @@ public
    slot BEGIN-TX
    \ The body may close the connection and let another CONNECT take its slot.
    [: body execute handle CONN-SLOT COMMIT-TX ;]
-   [: handle ABORT-TX ;] finally ;
+   [: handle ROLLBACK ;] finally ;
 
 
 : OUTCOME ( PG:result -- PG:result outcome )

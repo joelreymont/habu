@@ -1017,6 +1017,23 @@ TYPED-VARIABLE HELD-ID n
    c ;
 
 
+: PLAIN-ROLLBACK-CASES ( PG:connection -- PG:connection ) {: c :}
+   s" ROLLBACK ends a transaction plain begin text opened" T-LABEL
+   c s" begin" EXEC-OK
+   c s" insert into pqt (id, label, note) values (974, 'plain', null)"
+   EXEC-OK
+   c s" select 1/0" EXEC-TAG TAG-FAILED T=
+   c ROLLBACK
+   c PG:LIVE? TTRUE
+   c IDLE? TTRUE
+   c 974 COUNT-ID 0 T=
+   s" ROLLBACK leaves a connecting connection open" T-LABEL
+   CONNINFO$ s" " CONNECT-START {: p :}
+   p ROLLBACK
+   p PG:LIVE? dup TTRUE if p PG:CLOSE then
+   c ;
+
+
 1 TYPED-BUFFER REOPENED PG:connection
 
 : REOPEN-BODY ( PG:connection -- PG:connection )
@@ -1892,6 +1909,49 @@ TASK:MIN-STACK TASK:TASK SILENT-WORKER
    lis TCP4:CLOSE-LISTENER STATUS-ERRNO 0 T= ;
 
 
+64 constant STARTUP-CAP
+STARTUP-CAP BUFFER: STARTUP-BYTES
+
+: READ-PEER ( TCP4:connection ^u8 n -- ) {: peer bytes len:n :}
+   peer bytes len TCP4:TRANSFER-BYTES TCP4:READ-EXACT MATCH TCP4:read-result
+      data OF drop ENDOF
+      closed OF drop E-EXEC throw ENDOF
+      failed OF TCP4:ERRNO>N drop E-EXEC throw ENDOF
+   ;MATCH ;
+
+: ROLLBACK-HELD ( -- )
+   LISTENER-CONNINFO$ s" " CONNECT MATCH PG:connect-result
+      connected OF dup 0 EXIT-CONN ! ROLLBACK ENDOF
+      rejected OF drop E-CONNECT throw ENDOF
+   ;MATCH
+   0 TASK:RETURN ;
+
+\ ROLLBACK sends its bytes only after its entry tests, so a halt after the first
+\ byte arrives lands in its wait.
+: ROLLBACK-HALT-CASES ( -- )
+   s" a halt while ROLLBACK waits closes its connection" T-LABEL
+   FILL-PEER
+   \ ReadyForQuery's status T puts the session inside a transaction.
+   $54 PEER-BYTES 14 + c!
+   LISTENER {: lis :}
+   ['] ROLLBACK-HELD EXIT-WORKER TASK:ACTIVATE
+   lis ACCEPT-PEER {: peer :}
+   lis TCP4:CLOSE-LISTENER STATUS-ERRNO 0 T=
+   peer STARTUP-BYTES 4 READ-PEER
+   STARTUP-BYTES BE:U32@ 4 - {: rest:n :}
+   rest STARTUP-CAP > if E-EXEC throw then
+   peer STARTUP-BYTES rest READ-PEER
+   peer PEER-BYTES STARTUP-LEN >str PEER-WRITE
+   peer STARTUP-BYTES 1 READ-PEER
+   EXIT-WORKER TASK:HALT
+   EXIT-WORKER TASK:JOIN MATCH result
+      ok OF drop E-EXEC throw ENDOF
+      err OF E-TASK-NO-RESULT T= ENDOF
+   ;MATCH
+   EXIT-LIVE @ TFALSE
+   peer TCP4:CLOSE STATUS-ERRNO 0 T= ;
+
+
 \ CLOSE frees an unscoped token's slot at once, so the next query takes it and
 \ only the generation tells the stale token from the live result there. A CLEAR
 \ that returned would have cleared that live result.
@@ -2294,6 +2354,7 @@ PW-RIGHT!
    ANSWER-CASES
    SOFT-FAIL-CASES
    OWN-END-CASES
+   PLAIN-ROLLBACK-CASES
    LEFT-BODY-CASES
    UNIQUE-CASES
    BAD-COLUMN-CASES
@@ -2315,6 +2376,7 @@ PW-RIGHT!
    CANCEL-CASES
    UNREAD-CASES
    TX-HALT-CASES
+   ROLLBACK-HALT-CASES
    LOST-CONNECTION-CASES
    DEADLINE-CASES
    NOTIFY-CASES
