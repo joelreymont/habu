@@ -48,8 +48,9 @@
 \ table. An OPTIONAL whose group's solutions are a union's, each branch
 \ binding always a variable the bindings so far bind always, joins
 \ branch by branch: the FROM becomes a UNION ALL, under a materialized
-\ CTE of the bindings so far, of each branch joined to it, the FILTERs
-\ in each join, and of its rows meeting no branch, a NOT EXISTS each.
+\ CTE of the bindings so far, each row numbered, of a materialized CTE of
+\ each branch joined to it, the FILTERs in each join, and of its rows
+\ whose number that CTE does not carry, so each branch is read once.
 \ Each join meets the variables both sides bind always by a strict `=`,
 \ which PostgreSQL can hash or merge; a LEFT JOIN's ON meets a variable a
 \ branch leaves unbound by `IS NULL OR`, which it tests row by row,
@@ -2334,8 +2335,8 @@ STRUCTURE pruning DERIVE addr
    shape 0< if v s" NULL::jsonb" +SQL
    else v plan shape SHAPE@ SHAPE-IN @ s" NULL::jsonb" +CALL then ;
 
-\ Appends `SELECT columns FROM ... WHERE ...`, the relation's solutions.
-: +SELECT ( ^plan ^rel ^relation -- )
+\ Appends `SELECT columns`, the relation's bindings.
+: +SELECT-LIST ( ^plan ^rel ^relation -- )
    {: plan out:^ r:^ :}
    r RELATION-BINDINGS @ {: bs:^ :}
    out s" SELECT" +SQL
@@ -2343,7 +2344,19 @@ STRUCTURE pruning DERIVE addr
       i 0<> if out s" ," +SQL then
       bs i VEC:AT {: b:^ :}
       plan out b b BINDING-SHAPE @ +COLUMN
-   loop out r +FROM-WHERE ;
+   loop ;
+
+\ Appends `SELECT columns FROM ... WHERE ...`, the relation's solutions.
+: +SELECT ( ^plan ^rel ^relation -- )
+   {: plan out:^ r:^ :} plan out r +SELECT-LIST out r +FROM-WHERE ;
+
+\ The same with x, their row number, as a last column rn. No variable's
+\ column takes the name rn.
+: +NUMBERED ( ^plan ^rel ^relation str -- )
+   {: plan out:^ r:^ x:str :}
+   plan out r +SELECT-LIST
+   r RELATION-BINDINGS @ VEC:COUNT 0<> if out s" ," +SQL then
+   out s"  " +SQL out x +SQL out s"  AS rn" +SQL out r +FROM-WHERE ;
 
 \ Binds var to what the union's column of form shape holds in branch b:
 \ b's value in that form, NULL where b binds none.
@@ -2417,15 +2430,19 @@ STRUCTURE pruning DERIVE addr
    copied b BINDING-SQL @ REL-COPIES ! ;
 
 \ Appends the derived table under a new alias to from and answers its
-\ columns as bindings there.
-: +TABLE ( ^plan ^rel ^VEC:vector<binding> ^rel
-      -- ^VEC:vector<binding> )
+\ columns as bindings there, and the alias.
+: +TABLE-ALIAS ( ^plan ^rel ^VEC:vector<binding> ^rel
+      -- ^VEC:vector<binding> str )
    {: plan t:^ cols:^ from:^ :}
    plan t from +AS {: alias:str :}
    plan cols VEC:COUNT NEW-BINDINGS {: occs:^ :}
    cols VEC:COUNT 0 ?do
       plan occs VEC:PUSH alias cols i VEC:AT SET-COLUMN
-   loop occs ;
+   loop occs alias ;
+
+: +TABLE ( ^plan ^rel ^VEC:vector<binding> ^rel
+      -- ^VEC:vector<binding> )
+   +TABLE-ALIAS drop ;
 
 \ b's variable may be missing on a row: no WHERE condition tests it.
 : MAY-MISS ( ^binding -- )
@@ -3373,47 +3390,66 @@ STRUCTURE pruning DERIVE addr
    plan scope b RELATION-BINDINGS @ where false MEET-ALL
    plan scope it where +OPTIONAL-FILTERS ;
 
-\ Branch b joined to the outer rows, CTE name of columns cols.
+\ Branch b joined to the outer rows, CTE name of columns cols, and the
+\ alias the CTE takes there.
 : JOINED-BRANCH ( ^plan ^item ^relation str ^VEC:vector<binding>
-      -- ^relation )
+      -- ^relation str )
    {: plan it:^ b:^ name:str cols:^ :}
    plan NEW-SQL {: from:^ :} plan NEW-SQL {: where:^ :}
-   plan plan TEXTS name TEXT-REL cols from +TABLE {: scope:^ :}
+   plan plan TEXTS name TEXT-REL cols from +TABLE-ALIAS {: scope:^ c:str :}
    plan it b scope from where +MET-BRANCH
+   plan from where scope RELATION-OF c ;
+
+\ The outer rows, CTE name of columns cols, that meet no branch: those
+\ whose row number rn no row of CTE met carries.
+: UNMET ( ^plan str str ^VEC:vector<binding> -- ^relation )
+   {: plan name:str met:str cols:^ :}
+   plan NEW-SQL {: from:^ :} plan NEW-SQL {: where:^ :}
+   plan plan TEXTS name TEXT-REL cols from +TABLE-ALIAS {: scope:^ c:str :}
+   plan NEXT-ALIAS {: m:str :}
+   where s" NOT EXISTS (SELECT 1 FROM " +SQL where met +SQL
+   where s"  AS " +SQL where m +SQL where s"  WHERE " +SQL
+   where m +SQL where s" .rn = " +SQL where c +SQL where s" .rn)" +SQL
    plan from where scope RELATION-OF ;
 
-\ The outer rows, CTE name of columns cols, that meet no branch: a NOT
-\ EXISTS of each branch's rows met with them.
-: UNMET ( ^plan ^item str ^VEC:vector<binding> -- ^relation )
-   {: plan it:^ name:str cols:^ :}
-   plan NEW-SQL {: from:^ :} plan NEW-SQL {: where:^ :}
-   plan plan TEXTS name TEXT-REL cols from +TABLE {: scope:^ :}
-   it ITEM-BRANCHES @ {: bs:^ :}
-   bs VEC:COUNT 0 ?do
-      plan plan NEW-SQL plan NEW-SQL plan scope COPY-SCOPE RELATION-OF
-      {: m:^ :}
-      plan it bs i VEC:AT m RELATION-BINDINGS @ m RELATION-FROM @
-         m RELATION-WHERE @ +MET-BRANCH
-      where s"  AND " +SEP where s" NOT EXISTS (SELECT 1" +SQL
-      where m +FROM-WHERE where s" )" +SQL
-   loop plan from where scope RELATION-OF ;
-
 \ LeftJoin of a union, branch by branch: r becomes `(WITH c AS
-\ MATERIALIZED (r) <each branch joined to c> UNION ALL <c's UNMET rows>)`.
+\ MATERIALIZED (r, numbered rn), m AS MATERIALIZED (<each branch joined to
+\ c, with c's rn>) <m's rows> UNION ALL <c's UNMET rows>)`. A branch
+\ stays joined to c: as a CTE of its own it would lose c's join pushed
+\ into it.
 : BY-BRANCH ( ^plan ^item ^relation -- )
    {: plan it:^ r:^ :}
-   plan r SUBSELECT {: t:^ cols:^ :}
-   plan NEXT-ALIAS {: name:str :}
+   plan NEW-SQL {: t:^ :}
+   t s" (" +TEXT plan t r s" row_number() OVER ()" +NUMBERED t s" )" +TEXT
+   r RELATION-BINDINGS @ {: cols:^ :}
+   plan NEXT-ALIAS {: name:str :} plan NEXT-ALIAS {: met:str :}
    plan AL 0 [type] relation VEC:NEW {: arms:^ :}
+   plan AL 0 [type] str VEC:NEW {: nums:^ :}
    it ITEM-BRANCHES @ {: bs:^ :}
    bs VEC:COUNT 0 ?do
-      plan arms plan it bs i VEC:AT name cols JOINED-BRANCH +RELATION
+      plan it bs i VEC:AT name cols JOINED-BRANCH {: a:^ c:str :}
+      plan arms a +RELATION
+      plan TREE c s" .rn" JOIN$ nums VEC:PUSH !
    loop
-   plan arms plan it name cols UNMET +RELATION
+   plan name met cols UNMET {: un:^ :}
+   plan arms un +RELATION
    plan arms COLUMNS {: ucols:^ :}
+   plan NEW-SQL {: mb:^ :}
+   mb s" (" +TEXT
+   bs VEC:COUNT 0 ?do
+      i 0<> if mb s"  UNION ALL " +TEXT then
+      plan mb plan arms i VEC:AT ucols PRESENTED nums i VEC:AT @ +NUMBERED
+   loop mb s" )" +TEXT
+   plan NEW-SQL {: mf:^ :}
+   plan plan TEXTS met TEXT-REL ucols mf +TABLE {: mcols:^ :}
+   plan AL 0 [type] relation VEC:NEW {: outs:^ :}
+   plan outs plan mf plan NEW-SQL mcols RELATION-OF +RELATION
+   plan outs un +RELATION
+   plan AL NEW-CTES {: ws:^ :}
+   plan AL ws name true t +CTE plan AL ws met true mb +CTE
    plan NEW-SQL {: u:^ :}
-   plan AL name true t NEW-CTE u REL-WITH !
-   plan u arms ucols +UNION-ALL
+   ws CTES-FIRST @ u REL-WITH !
+   plan u outs ucols +UNION-ALL
    plan NEW-SQL {: out:^ :}
    out s" (" +TEXT out u +REL out s" )" +TEXT
    plan NEW-SQL {: from:^ :}
