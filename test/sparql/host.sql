@@ -18,6 +18,8 @@ CREATE TABLE sparql_test.fact (s bigint NOT NULL, p bigint NOT NULL, pid bigint 
     o bigint NOT NULL);
 CREATE TABLE sparql_test.typed (s bigint NOT NULL, o_id bigint, o_text text, o_num numeric,
     o_kind bigint, CHECK (num_nonnulls(o_id, o_text, o_num, o_kind) <= 1));
+CREATE TABLE sparql_test.held (id bigint PRIMARY KEY, s bigint NOT NULL, p bigint NOT NULL,
+    pid bigint NOT NULL, o_num numeric, o_text text, alt bigint, CHECK (num_nonnulls(o_num, o_text) <= 1));
 
 CREATE FUNCTION sparql_test.id(term jsonb) RETURNS bigint
 LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
@@ -143,7 +145,9 @@ $$;
 -- 50, 51, 52, 26 the chain 60, 61, 62, 30 weight, 31 count, 70 and 71 the
 -- facts among 40-43, keyed 700 and 701 for 70 and 710 for 71, 80 the typed
 -- objects of 40-43, a node, a label, a weight and a class the graph holds
--- already, and a row of 43's with none. The named
+-- already, and a row of 43's with none; 81 a number, 82 a text, 83 both and
+-- 84 neither declared, the predicates of statements 801-808 about 40-43,
+-- keyed 810, 820, 830 and 831, and 840. The named
 -- graphs are urn:test:notes and urn:test:7, a node's IRI, so an id column
 -- can hold its name.
 INSERT INTO sparql_test.node VALUES
@@ -158,3 +162,6 @@ INSERT INTO sparql_test.mark VALUES (1,7),(2,8);
 INSERT INTO sparql_test.fact VALUES (40,70,700,41),(42,70,701,43),(43,71,710,40);
 INSERT INTO sparql_test.typed VALUES (40,1,NULL,NULL,NULL),(41,NULL,'a',NULL,NULL),
     (42,NULL,NULL,0.25,NULL),(43,NULL,NULL,NULL,10),(43,NULL,NULL,NULL,NULL);
+INSERT INTO sparql_test.held (id, s, p, pid, o_num, o_text) VALUES (801,40,81,810,3,NULL),(802,41,81,810,4.5,NULL),
+    (803,40,82,820,NULL,'b'),(804,41,82,820,NULL,'a'),(805,40,83,830,7,NULL),
+    (806,41,83,831,NULL,'c'),(807,42,84,840,2,NULL),(808,43,84,840,NULL,'d');

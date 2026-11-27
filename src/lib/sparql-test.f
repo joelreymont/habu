@@ -1095,16 +1095,21 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    a TEXT-VEC {: out:^ :}
    sql a EDGE-SOURCES $ out RUN-TEXT TTRUE out ;
 
-: TYPED-IN ( str bool str ^ARENA:arena -- )
-   {: q:str generic:bool call:str a:^ :}
-   TYPED-SQL a EDGE-STORE {: typed:^ :}
-   UNTYPED-SQL a EDGE-STORE {: plain:^ :}
+\ The query answers alike on both descriptions; the text call is in the
+\ second's statement, and in the first's exactly when generic.
+: ALIKE-ON ( str bool str ^VEC:vector<u8> ^VEC:vector<u8> ^ARENA:arena -- )
+   {: q:str generic:bool call:str typed:^ plain:^ a:^ :}
    q typed a ANSWER-ON {: tsql:^ tdoc:^ :}
    q plain a ANSWER-ON {: psql:^ pdoc:^ :}
    tsql $ call STR:CONTAINS? generic xor TFALSE
    psql $ call STR:CONTAINS? TTRUE
    tdoc $ pdoc $ a false SAME? dup TTRUE
    0= if tdoc $ type cr pdoc $ type cr then ;
+
+: TYPED-IN ( str bool str ^ARENA:arena -- )
+   {: q:str generic:bool call:str a:^ :}
+   q generic call TYPED-SQL a EDGE-STORE UNTYPED-SQL a EDGE-STORE
+   a ALIKE-ON ;
 
 \ The query answers alike on EDGE-SOURCES with and without the shapes'
 \ `type`; with it, its statement holds the generic call, named up to its
@@ -1221,6 +1226,117 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    true EQUAL-CALL TYPED
    s" SELECT ?s ?x ?y WHERE { ?s t:97 ?x . ?s t:96 ?y FILTER(?x < ?y) }"
    true RELATION-CALL TYPED ;
+
+\ A `cols` entry on held, with its `only` on pid when only.
+: +HELD-COL ( str str str bool ^VEC:vector<u8> -- )
+   {: col:str shape:str set:str only:bool out:^ :}
+   s" {'col':'" out VEC:APPEND col out VEC:APPEND
+   s" ','shape':'" out VEC:APPEND shape out VEC:APPEND
+   s" '" out VEC:APPEND
+   only if
+      s" ,'only':{'col':'pid','set':'" out VEC:APPEND
+      set out VEC:APPEND s" '}" out VEC:APPEND
+   then s" }" out VEC:APPEND ;
+
+: +HELD-VALUE ( bool ^VEC:vector<u8> -- )
+   {: only:bool out:^ :}
+   s" {'cols':[" out VEC:APPEND
+   s" o_num" s" number" s" numbers" only out +HELD-COL
+   s" ," out VEC:APPEND
+   s" o_text" s" string" s" texts" only out +HELD-COL
+   s" ]}" out VEC:APPEND ;
+
+: HELD-FROM ( -- str ) s" {'from':'sparql_test.held','graph':null," ;
+
+\ held's subject, its `only` on pid listing urn:test:84 alone; alt is
+\ NULL in every row.
+: +HELD-SUBJECT ( ^VEC:vector<u8> -- )
+   {: out:^ :}
+   s" 's':{'cols':[" out VEC:APPEND
+   s" s" s" thing" s" subjects" true out +HELD-COL
+   s" ," out VEC:APPEND
+   s" alt" s" thing" s" " false out +HELD-COL
+   s" ]},'p':" out VEC:APPEND ;
+
+: HELD-P ( -- str )
+   s" {'col':'p','shape':'id','key':{'col':'pid','set':'predicates'}}" ;
+
+\ A source on held whose subject is the statement and predicate
+\ rdf:name, up to its object.
+: +HELD-OF ( str ^VEC:vector<u8> -- )
+   {: name:str out:^ :}
+   HELD-FROM out VEC:APPEND
+   s" 's':{'col':'id','shape':'id','unique':true},'p':{'term':{'type':'uri','value':'http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   out VEC:APPEND name out VEC:APPEND s" '}},'o':" out VEC:APPEND ;
+
+\ sparql_test.held's direct, predicate and object sources, the value's
+\ entries with their `only` when only, the direct subject +HELD-SUBJECT's
+\ when subj, else column s alone.
+: HELD-SOURCES ( bool bool ^ARENA:arena -- ^VEC:vector<u8> )
+   {: only:bool subj:bool a:^ :}
+   a TEXT-VEC {: out:^ :}
+   s" [" out VEC:APPEND HELD-FROM out VEC:APPEND
+   subj if out +HELD-SUBJECT
+   else s" 's':{'col':'s','shape':'thing'},'p':" out VEC:APPEND then
+   HELD-P out VEC:APPEND s" ,'o':" out VEC:APPEND
+   only out +HELD-VALUE s" }," out VEC:APPEND
+   s" predicate" out +HELD-OF HELD-P out VEC:APPEND s" }," out VEC:APPEND
+   s" object" out +HELD-OF only out +HELD-VALUE s" }]" out VEC:APPEND
+   out $ a UNQUOTE ;
+
+\ The store's description with its first source, the nodes' labels,
+\ and sources $1, and held's key sets.
+: HELD-SQL ( -- str )
+   s" select jsonb_set(jsonb_set(jsonb_set(jsonb_set(jsonb_set(s,'{sources}',jsonb_path_query_array(s,'$.sources[0]')||$1::jsonb),'{keys,predicates,values}',(s#>'{keys,predicates,values}')||jsonb_build_object('urn:test:81','{810}','urn:test:82','{820}','urn:test:83','{830,831}','urn:test:84','{840}')),'{keys,numbers}',jsonb_build_object('type','bigint[]','values',jsonb_build_object('urn:test:81','{810}','urn:test:83','{830}'))),'{keys,texts}',jsonb_build_object('type','bigint[]','values',jsonb_build_object('urn:test:82','{820}','urn:test:83','{831}'))),'{keys,subjects}',jsonb_build_object('type','bigint[]','values',jsonb_build_object('urn:test:84','{840}')))::text from sparql_test.store(1048576) s" ;
+
+: HELD-STORE ( bool bool ^ARENA:arena -- ^VEC:vector<u8> )
+   {: only:bool subj:bool a:^ :}
+   a TEXT-VEC {: out:^ :}
+   HELD-SQL only subj a HELD-SOURCES $ out RUN-TEXT TTRUE out ;
+
+: ONLY-IN ( str bool str bool ^ARENA:arena -- )
+   {: q:str generic:bool call:str subj:bool a:^ :}
+   q generic call true subj a HELD-STORE false subj a HELD-STORE
+   a ALIKE-ON ;
+
+\ The query answers alike on held with and without the value's `only`;
+\ call is in the statement without it, and in the one with it exactly
+\ when generic. The direct subject is column s alone.
+: ONLY ( str bool str -- ) false [: ONLY-IN ;] ARENA:WITH ;
+
+\ ONLY with the direct subject +HELD-SUBJECT's.
+: SUBJECT-ONLY ( str bool str -- ) true [: ONLY-IN ;] ARENA:WITH ;
+
+: ONLY-SAME-IN ( str ^ARENA:arena -- )
+   {: q:str a:^ :}
+   q true false a HELD-STORE a ANSWER-ON {: osql:^ odoc:^ :}
+   q false false a HELD-STORE a ANSWER-ON {: psql:^ pdoc:^ :}
+   osql $ psql $ T$=
+   odoc $ pdoc $ a false SAME? TTRUE ;
+
+\ The query's statement on held is the same with and without the value's
+\ `only`, the direct subject column s alone.
+: ONLY-SAME ( str -- ) [: ONLY-SAME-IN ;] ARENA:WITH ;
+
+\ A constant predicate one `only` set lists binds the value to that set's
+\ column, in one triple or one unique row; listed by two or none, to all.
+\ The subject's `only` leaves the value's columns alone, and a subject
+\ that is not unique pins no row.
+: ONLY-COLUMNS ( -- )
+   s" sparql.aggregate(" {: call:str :}
+   s" SELECT ?s (SUM(?w) AS ?t) (MIN(?w) AS ?lo) WHERE { ?s t:81 ?w } GROUP BY ?s"
+   false call ONLY
+   s" SELECT ?s (MIN(?w) AS ?lo) (MAX(?w) AS ?hi) WHERE { ?s t:82 ?w } GROUP BY ?s"
+   false call ONLY
+   s" PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> SELECT (SUM(?w) AS ?t) WHERE { ?f rdf:predicate t:81 ; rdf:object ?w }"
+   false call ONLY
+   s" SELECT ?s ?w WHERE { ?s rdfs:label ?l OPTIONAL { ?s t:81 ?w } }"
+   false s" o_text" ONLY
+   s" SELECT (MIN(?w) AS ?lo) WHERE { ?s t:83 ?w }" true call ONLY
+   s" SELECT (MIN(?w) AS ?lo) WHERE { ?s t:84 ?w }" true call ONLY
+   s" SELECT ?s ?w WHERE { ?s t:84 ?w }" true s" o_text" SUBJECT-ONLY
+   s" SELECT ?s ?p ?w WHERE { ?s ?p ?w }" ONLY-SAME
+   s" SELECT ?s ?p ?w WHERE { ?s t:81 3 . ?s ?p ?w }" ONLY-SAME ;
 
 \ A union grouped branch by branch answers as the whole union does when a
 \ branch has an error or no solution. STRLEN of an IRI is an error.
@@ -1405,8 +1521,8 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    NULL-TESTS SUBJECT-ROWS FILTERS FILTER-EQUALITIES GRAPHS NAMED-GRAPHS OPTIONALS
    UNIONS MINUSES FILTER-EXISTS
    SUBSTITUTIONS MANY CONSTANTS WIDE FORMS
-   PROJECTIONS GROUPING AGGREGATES TYPED-AGGREGATES TYPED-FILTERS
-   BRANCH-GROUPING ORDERS DISTINCTS
+   PROJECTIONS GROUPING AGGREGATES TYPED-AGGREGATES ONLY-COLUMNS
+   TYPED-FILTERS BRANCH-GROUPING ORDERS DISTINCTS
    SUBQUERIES
    BINDS CHAINS UUIDS VOLATILE-BINDS DATA-BLOCKS PATHS ;
 

@@ -161,7 +161,19 @@ package SPARQL
    s" a column of cols has no notnull" T-LABEL
    s\" {\"from\": \"f\", \"graph\": null, \"s\": {\"cols\": [{\"col\": \"c\", \"shape\": \"id\", \"notnull\": true}, 1]}}"
    s" 1:151: expected no `notnull` in a column of `cols`, found `true`; remove `notnull`: a column of `cols` is NULL where another holds the value"
-   arena SOURCE-REJECTS ;
+   arena SOURCE-REJECTS
+   s" a column slot has no only" T-LABEL
+   s\" {\"from\": \"f\", \"graph\": null, \"s\": {\"col\": \"c\", \"shape\": \"id\", \"only\": 1}}"
+   s" 1:138: expected no `only` outside a column of `cols`, found `1`; remove `only`: it belongs on a column of `cols`"
+   arena SOURCE-REJECTS
+   s" cols has no only beside it" T-LABEL
+   s\" {\"from\": \"f\", \"graph\": null, \"s\": {\"cols\": [], \"only\": 1}}"
+   s" 1:123: expected no `only` beside `cols`, found `1`; remove `only`: it belongs on a column of `cols`"
+   arena SOURCE-REJECTS
+   s" a column's only names a declared key set" T-LABEL
+   s\" {\"bytes\": 1, \"shapes\": {\"id\": {\"in\": \"i\", \"out\": \"o\"}}, \"keys\": {\"k\": {\"type\": \"t\", \"values\": {}}}, \"sources\": [{\"from\": \"f\", \"graph\": null, \"s\": {\"cols\": [{\"col\": \"a\", \"shape\": \"id\", \"only\": {\"col\": \"k\", \"set\": \"no\"}}, {\"col\": \"b\", \"shape\": \"id\"}]}}]}"
+   s\" 1:213: expected the name of a key set in `keys`, found `\"no\"`; declare the key set in `keys` or name a declared one"
+   arena READ-REJECTS ;
 
 : TEST-NOTNULL ( ^ARENA:arena -- ) {: arena :}
    s" a column's notnull is read" T-LABEL

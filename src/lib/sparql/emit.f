@@ -17,17 +17,22 @@
 \ every other joined item binding it always (one shape, or a part and its
 \ root; a shape and a term it holds; two terms that are one), to a
 \ fixpoint; a joined item left with none makes the group empty, with no
-\ SQL. A pattern's candidates group by the description source they were
-\ read from: one group is that source's FROM item, several a UNION ALL of
-\ one branch per group, and where a group's candidates read several
-\ columns at a slot, a variable binds their COALESCE and a constant is
-\ held by one of them. A pattern of one such group whose subject slot is
-\ a unique column reads the row an earlier pattern of its subject reads
-\ from that source's FROM item by that column. A nested group, and a GRAPH
-\ of a named graph's IRI, with no OPTIONAL, MINUS, BIND or FILTER directly
-\ in it adds its items to its parent's, join being associative; any other
-\ is a derived table. A chain of UNIONs is one UNION ALL derived table of
-\ its groups that are not
+\ SQL. Before shape inference a joined triple loses each candidate whose
+\ `cols` entry has `only` {k, N} once an IRI i is pinned in column k of
+\ its row, N does not list i and another entry's `only` on k of the slot
+\ lists it: the triple's own constant at a slot keyed on k pins it, and so
+\ does that of another joined triple of its subject whose every candidate
+\ reads the row by the same unique subject slot. A pattern's candidates
+\ group by the description source they were read from: one group is that
+\ source's FROM item, several a UNION ALL of one branch per group, and
+\ where a group's candidates read several columns at a slot, a variable
+\ binds their COALESCE and a constant is held by one of them. A pattern of
+\ one such group whose subject slot is a unique column reads the row an
+\ earlier pattern of its subject reads from that source's FROM item by
+\ that column. A nested group, and a GRAPH of a named graph's IRI, with no
+\ OPTIONAL, MINUS, BIND or FILTER directly in it adds its items to its
+\ parent's, join being associative; any other is a derived table. A chain
+\ of UNIONs is one UNION ALL derived table of its groups that are not
 \ statically empty. A union's column is native where every branch binding
 \ it has a shape of one root, the root's where they differ, NULL where a
 \ branch does not bind it. A subquery is a derived table of its
@@ -250,6 +255,22 @@ STRUCTURE item DERIVE addr
    FIELD graph str  \ the active graph's term
    FIELD union bool  \ whether UNION? holds of it once pruned
    FIELD branches ^VEC:vector<relation>  \ a union's, else empty
+;STRUCTURE
+
+\ An IRI a joined triple puts in the row `row` reads by a unique
+\ subject slot, in the column `row`'s slot is keyed on.
+STRUCTURE pin DERIVE addr
+   FIELD row ^source
+   FIELD slot n
+   FIELD iri n
+;STRUCTURE
+
+\ A subject node's pins; the verdict at k*3+j says whether they leave
+\ record k's slot j's `only` entry empty: 0 undecided, 1 no, 2 yes.
+STRUCTURE pinned DERIVE addr
+   FIELD subject n
+   FIELD pins ^VEC:vector<pin>
+   FIELD verdicts ^VEC:vector<u8>
 ;STRUCTURE
 
 \ An aggregate call node and its SQL: the aggregate inside the grouped
@@ -807,7 +828,7 @@ defer EXISTS-SQL ( ^plan n -- )
 \ The column's shape and no term, or KNOWN and the term's text.
 : SLOT-KIND ( slot -- n str )
    MATCH slot
-      column OF {: c:str shape:n k u:bool nn:bool :} shape s" " ENDOF
+      column OF {: c:str shape:n k o u:bool nn:bool :} shape s" " ENDOF
       term OF {: t:str :} KNOWN t ENDOF
    ;MATCH ;
 
@@ -815,7 +836,7 @@ defer EXISTS-SQL ( ^plan n -- )
 : SLOT-SQL ( ^plan slot str -- str )
    {: plan sl alias:str :}
    sl MATCH slot
-      column OF {: c:str shape:n k u:bool nn:bool :}
+      column OF {: c:str shape:n k o u:bool nn:bool :}
          plan NEW-SQL {: v:^ :}
          v alias +SQL v s" ." +SQL v c +SQL v SQL$
       ENDOF
@@ -839,7 +860,7 @@ defer EXISTS-SQL ( ^plan n -- )
 : OUTSIDE? ( ^plan n slot -- bool )
    {: plan list:n sl :}
    sl MATCH slot
-      column OF 2drop 2drop drop true ENDOF
+      column OF 2drop 2drop drop drop true ENDOF
       term OF {: t:str :} plan list t LISTED? 0= ENDOF
    ;MATCH ;
 
@@ -877,7 +898,7 @@ defer EXISTS-SQL ( ^plan n -- )
       plan plan TREE node NODE-A@ sl OUTSIDE? exit
    then
    sl MATCH slot
-      column OF {: c:str shape:n k u:bool nn:bool :}
+      column OF {: c:str shape:n k o u:bool nn:bool :}
          plan shape plan node NODE-KNOWN HOLDS?
          k MATCH nullable
             none OF ENDOF
@@ -1333,7 +1354,7 @@ STRUCTURE pruning DERIVE addr
 \ The column slot's key, none for a term slot.
 : SLOT-KEY ( slot -- nullable<key> )
    MATCH slot
-      column OF {: c:str shape:n k u:bool nn:bool :} k ENDOF
+      column OF {: c:str shape:n k o u:bool nn:bool :} k ENDOF
       term OF drop NULLABLE:NONE ENDOF
    ;MATCH ;
 
@@ -1394,7 +1415,7 @@ STRUCTURE pruning DERIVE addr
 
 : SLOT-COL ( slot -- str )
    MATCH slot
-      column OF {: c:str shape:n k u:bool nn:bool :} c ENDOF
+      column OF {: c:str shape:n k o u:bool nn:bool :} c ENDOF
       term OF drop s" " ENDOF
    ;MATCH ;
 
@@ -1515,7 +1536,7 @@ STRUCTURE pruning DERIVE addr
 
 : SLOT-UNIQUE? ( slot -- bool )
    MATCH slot
-      column OF {: c:str shape:n k u:bool nn:bool :} u ENDOF
+      column OF {: c:str shape:n k o u:bool nn:bool :} u ENDOF
       term OF drop false ENDOF
    ;MATCH ;
 
@@ -1530,7 +1551,7 @@ STRUCTURE pruning DERIVE addr
    {: plan a:n b:n :}
    plan TREE a VARIABLE? {: var:bool :}
    plan TREE b VARIABLE? var xor if false exit then
-   var if plan a VAR plan b VAR = exit then
+   var if plan a VAR-NAME plan b VAR-NAME STR:= exit then
    plan a TERM-JSON plan b TERM-JSON STR:= ;
 
 \ Whether the row is the source's by its subject slot for the node.
@@ -1551,6 +1572,262 @@ STRUCTURE pruning DERIVE addr
    rows VEC:COUNT 0 ?do
       plan rows i VEC:AT node src ROW-OF? if i unloop exit then
    loop -1 ;
+
+\ The column slot's `only`, none for a term slot.
+: SLOT-ONLY ( slot -- nullable<key> )
+   MATCH slot
+      column OF {: c:str shape:n k o u:bool nn:bool :} o ENDOF
+      term OF drop NULLABLE:NONE ENDOF
+   ;MATCH ;
+
+\ Whether the slot is a column keyed on column k.
+: KEYED-ON? ( slot str -- bool )
+   {: sl k:str :}
+   sl SLOT-KEY MATCH nullable
+      none OF false ENDOF
+      some OF {: key:^ :} key KEY-COL @ k STR:= ENDOF
+   ;MATCH ;
+
+\ Whether the slot's `only` is on column k and lists the node.
+: ONLY-LISTS? ( ^plan slot str n -- bool )
+   {: plan sl k:str node:n :}
+   sl SLOT-ONLY MATCH nullable
+      none OF false ENDOF
+      some OF {: o:^ :}
+         o KEY-COL @ k STR:= plan node o LISTED-KEY? and
+      ENDOF
+   ;MATCH ;
+
+\ The slots the description source's slot j reads to.
+: ORIGIN-SLOTS ( ^plan n n -- ^VEC:vector<alternative> )
+   {: plan origin:n j:n :}
+   plan PLAN-STORE @ STORE-ORIGINS @ origin VEC:AT {: org:^ :}
+   j 0= if org ORIGIN-S @ exit then
+   j 1 = if org ORIGIN-P @ exit then
+   org ORIGIN-O @ ;
+
+\ Whether one of the slots the description source's slot j reads to has
+\ an `only` on column k that lists the node.
+: ORIGIN-LISTS? ( ^plan n n str n -- bool )
+   {: plan origin:n j:n k:str node:n :}
+   plan origin j ORIGIN-SLOTS {: alts:^ :}
+   alts VEC:COUNT 0 ?do
+      plan alts i NTH-SLOT k node ONLY-LISTS? if true unloop exit then
+   loop false ;
+
+\ Whether the node, pinned on r's row, leaves r's entry o at slot j empty.
+: EXCLUDES? ( ^plan ^source n ^key n -- bool )
+   {: plan r:^ j:n o:^ node:n :}
+   plan TREE node NODE-K N-IRI <> if false exit then
+   plan node o LISTED-KEY? if false exit then
+   plan r SOURCE-ORIGIN @ j o KEY-COL @ node ORIGIN-LISTS? ;
+
+\ Whether the triple pins, at a slot of r keyed on o's column, an IRI
+\ that leaves r's entry o at slot j empty.
+: OWN-PIN? ( ^plan n ^source n ^key -- bool )
+   {: plan triple:n r:^ j:n o:^ :}
+   3 0 do
+      r i SLOT@ o KEY-COL @ KEYED-ON? if
+         plan r j o plan TREE triple i PART EXCLUDES?
+         if true unloop exit then
+      then
+   loop false ;
+
+\ Whether record ra reads r's row through a unique subject slot, with
+\ slot m keyed on column k.
+: ROW-SLOT? ( ^source ^source n str -- bool )
+   {: ra:^ r:^ m:n k:str :}
+   ra SOURCE-FROM @ r SOURCE-FROM @ STR:= 0= if false exit then
+   ra SOURCE-S @ r SOURCE-S @ SAME-SLOT?
+   ra SOURCE-S @ SLOT-UNIQUE? and
+   ra m SLOT@ k KEYED-ON? and ;
+
+\ Whether every live choice of the item reads r's row, slot m keyed on
+\ column k.
+: SHARES-ROW? ( ^plan ^item ^source n str -- bool )
+   {: plan a:^ r:^ m:n k:str :}
+   a ITEM-CHOICES @ {: cs:^ :}
+   cs VEC:COUNT 0 ?do
+      cs i VEC:AT {: c:^ :}
+      c CHOICE-ALIVE @ if
+         plan c CHOICE-SOURCE @ SOURCE@ r m k ROW-SLOT? 0= if
+            false unloop exit
+         then
+      then
+   loop true ;
+
+: JOINED-TRIPLE? ( ^item -- bool )
+   {: it:^ :} it ITEM-MODE @ 0= it ITEM-NODE @ 0<> and ;
+
+\ The source of the item's first live choice, else -1.
+: FIRST-LIVE ( ^item -- n )
+   ITEM-CHOICES @ {: cs:^ :}
+   cs VEC:COUNT 0 ?do
+      cs i VEC:AT {: c:^ :}
+      c CHOICE-ALIVE @ if c CHOICE-SOURCE @ unloop exit then
+   loop -1 ;
+
+: PUSH-PIN ( ^VEC:vector<pin> ^source n n -- )
+   {: pins:^ ra:^ m:n iri:n :}
+   pins VEC:PUSH {: p:^ :}
+   ra p PIN-ROW !  m p PIN-SLOT !  iri p PIN-IRI ! ;
+
+\ Whether a pin has the IRI and reads ra's row by a slot keyed on
+\ column k.
+: SAME-PIN? ( ^plan ^VEC:vector<pin> ^source str n -- bool )
+   {: plan pins:^ ra:^ k:str iri:n :}
+   pins VEC:COUNT 0 ?do
+      pins i VEC:AT {: p:^ :}
+      plan p PIN-IRI @ iri SAME-NODE?
+      p PIN-ROW @ ra p PIN-SLOT @ k ROW-SLOT? and
+      if true unloop exit then
+   loop false ;
+
+\ The subject node's `pinned`, none when it has no pins.
+: FIND-PINNED ( ^plan ^VEC:vector<pinned> n -- nullable<pinned> )
+   {: plan pinned:^ subj:n :}
+   pinned VEC:COUNT 0 ?do
+      pinned i VEC:AT {: g:^ :}
+      plan g PINNED-SUBJECT @ subj SAME-NODE? if
+         g NULLABLE:SOME unloop exit
+      then
+   loop NULLABLE:NONE ;
+
+\ A new `pinned` of the subject node, no pins and every verdict 0.
+: NEW-PINNED ( ^plan ^VEC:vector<pinned> n -- ^pinned )
+   {: plan pinned:^ subj:n :}
+   pinned VEC:PUSH {: g:^ :}
+   subj g PINNED-SUBJECT !
+   plan AL 0 [type] pin VEC:NEW g PINNED-PINS !
+   plan PLAN-STORE @ STORE-SOURCES @ VEC:COUNT 3 * {: n:n :}
+   plan AL n [type] u8 VEC:NEW g PINNED-VERDICTS !
+   g ;
+
+\ The subject node's `pinned`, made when none.
+: PINNED-FOR ( ^plan ^VEC:vector<pinned> n -- ^pinned )
+   {: plan pinned:^ subj:n :}
+   plan pinned subj FIND-PINNED MATCH nullable
+      none OF plan pinned subj NEW-PINNED ENDOF
+      some OF ENDOF
+   ;MATCH ;
+
+\ Pushes the pin into the subject's pins unless an equal pin, one that
+\ kills exactly the choices this one would, is there.
+: ADD-PIN ( ^plan ^VEC:vector<pinned> n ^source n str n -- )
+   {: plan pinned:^ subj:n ra:^ m:n k:str iri:n :}
+   plan pinned subj PINNED-FOR PINNED-PINS @ {: pins:^ :}
+   plan pins ra k iri SAME-PIN? 0= if pins ra m iri PUSH-PIN then ;
+
+\ Pins the IRI at slot m of triple a among its subject's pins when every
+\ live choice of a reads ra's row, slot m keyed on its column there.
+: +PIN ( ^plan ^VEC:vector<pinned> ^item ^source n -- )
+   {: plan pinned:^ a:^ ra:^ m:n :}
+   plan TREE {: state :}
+   state a ITEM-NODE @ m PART {: iri:n :}
+   state iri NODE-K N-IRI <> if exit then
+   state a ITEM-NODE @ 0 PART {: subj:n :}
+   ra m SLOT@ SLOT-KEY MATCH nullable
+      none OF ENDOF
+      some OF {: key:^ :}
+         plan a ra m key KEY-COL @ SHARES-ROW? if
+            plan pinned subj ra m key KEY-COL @ iri ADD-PIN
+         then
+      ENDOF
+   ;MATCH ;
+
+\ Pins the triple's IRIs through the record of its first live choice.
+: +PINS ( ^plan ^VEC:vector<pinned> ^item -- )
+   {: plan pinned:^ a:^ :}
+   a FIRST-LIVE {: k:n :}
+   k 0< if exit then
+   plan k SOURCE@ {: ra:^ :}
+   3 0 do plan pinned a ra i +PIN loop ;
+
+\ The pins of the joined triples, one `pinned` per subject.
+: PINS ( ^plan ^VEC:vector<item> -- ^VEC:vector<pinned> )
+   {: plan items:^ :}
+   plan AL 0 [type] pinned VEC:NEW {: pinned:^ :}
+   items VEC:COUNT 0 ?do
+      items i VEC:AT {: a:^ :}
+      a JOINED-TRIPLE? if plan pinned a +PINS then
+   loop pinned ;
+
+\ Whether the pin puts in r's row an IRI that leaves r's entry o at
+\ slot j empty.
+: PIN-EXCLUDES? ( ^plan ^pin ^source n ^key -- bool )
+   {: plan p:^ r:^ j:n o:^ :}
+   p PIN-ROW @ r p PIN-SLOT @ o KEY-COL @ ROW-SLOT? 0= if
+      false exit
+   then
+   plan r j o p PIN-IRI @ EXCLUDES? ;
+
+\ Whether one of the pins leaves r's entry o at slot j empty.
+: PINS-EXCLUDE? ( ^plan ^pinned ^source n ^key -- bool )
+   {: plan g:^ r:^ j:n o:^ :}
+   g PINNED-PINS @ {: pins:^ :}
+   pins VEC:COUNT 0 ?do
+      plan pins i VEC:AT r j o PIN-EXCLUDES?
+      if true unloop exit then
+   loop false ;
+
+\ Whether the subject's pins leave record k's entry o at slot j empty,
+\ decided at the first call and kept.
+: VERDICT? ( ^plan ^pinned n n ^key -- bool )
+   {: plan g:^ k:n j:n o:^ :}
+   g PINNED-VERDICTS @ k 3 * j + VEC:AT {: v:^ :}
+   v c@ 0= if
+      plan g plan k SOURCE@ j o PINS-EXCLUDE? if 2 else 1 then v c!
+   then
+   v c@ 2 = ;
+
+\ Whether item b's own constant, or one of its subject's pins g,
+\ leaves record k's entry o at slot j empty.
+: PINNED-OUT? ( ^plan nullable<pinned> ^item n n ^key -- bool )
+   {: plan g b:^ k:n j:n o:^ :}
+   plan b ITEM-NODE @ plan k SOURCE@ j o OWN-PIN? if true exit then
+   g MATCH nullable
+      none OF false ENDOF
+      some OF {: p:^ :} plan p k j o VERDICT? ENDOF
+   ;MATCH ;
+
+\ Whether item b's own constants or its subject's pins g
+\ leave an `only` entry of record k, b's, empty.
+: UNFILLED? ( ^plan nullable<pinned> ^item n -- bool )
+   {: plan g b:^ k:n :}
+   plan k SOURCE@ {: r:^ :}
+   3 0 do
+      i {: j:n :}
+      r j SLOT@ SLOT-ONLY MATCH nullable
+         none OF false ENDOF
+         some OF {: o:^ :} plan g b k j o PINNED-OUT? ENDOF
+      ;MATCH
+      if true unloop exit then
+   loop false ;
+
+\ Kills each live choice of b its own constants or the pins of its
+\ subject leave empty.
+: DROP-CHOICES ( ^plan ^VEC:vector<pinned> ^item -- )
+   {: plan pinned:^ b:^ :}
+   b FIRST-LIVE 0< if exit then
+   plan TREE b ITEM-NODE @ 0 PART {: subj:n :}
+   plan pinned subj FIND-PINNED {: g :}
+   b ITEM-CHOICES @ {: cs:^ :}
+   cs VEC:COUNT 0 ?do
+      cs i VEC:AT {: c:^ :}
+      c CHOICE-ALIVE @ if
+         plan g b c CHOICE-SOURCE @ UNFILLED?
+         if false c CHOICE-ALIVE ! then
+      then
+   loop ;
+
+\ Kills the choices an `only` leaves empty, by pins taken before any kill.
+: DROP-UNFILLED ( ^plan ^VEC:vector<item> -- )
+   {: plan items:^ :}
+   plan items PINS {: pinned:^ :}
+   items VEC:COUNT 0 ?do
+      items i VEC:AT {: b:^ :}
+      b JOINED-TRIPLE? if plan pinned b DROP-CHOICES then
+   loop ;
 
 \ Keeps the row the records read under the alias for the subject node
 \ when their subject slot is unique.
@@ -3556,6 +3833,7 @@ STRUCTURE walk DERIVE addr
    plan AL 0 [type] item VEC:NEW {: items:^ :}
    plan AL 0 [type] n VEC:NEW {: filters:^ :}
    plan group items filters ITEMS
+   plan items DROP-UNFILLED
    plan items PRUNE
    plan NEW-RELATION {: r:^ :}
    items DEAD? r RELATION-EMPTY !
