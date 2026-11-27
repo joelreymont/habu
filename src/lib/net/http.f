@@ -235,18 +235,21 @@ private
    true ;
 
 
-\ Reads the validated head and selects its first route, whose explicit cap or
-\ the final server default bounds the body. A body framing the head alone
-\ rejects is answered here, before any handler runs; the body itself is read
-\ only when the handler asks (BODY$). A stop raised while the connection is
-\ quiet before a request's first byte closes it.
+\ The socket is read before it is polled: a parked connection is queued only
+\ once readable.
 : READ-REQUEST ( TCP4:connection n n -- parse-result )
    {: conn:TCP4:connection idx:n ms:n :}
    idx ms READ-DEADLINE {: deadline:n :}
    idx SLOT-RESET
    idx COMPACT
    idx IN-U@ 0= if
-      conn deadline AWAIT-REQUEST 0= if CLOSED exit then
+      conn idx deadline READ-FIRST
+      MATCH first-read
+         taken OF ENDOF
+         empty OF conn deadline AWAIT-REQUEST 0= if CLOSED exit then ENDOF
+         closed OF CLOSED exit ENDOF
+         failed OF FAULTED exit ENDOF
+      ;MATCH
    then
    conn idx deadline READ-HEAD {: head:parse-result :}
    head COMPLETE? 0= if head exit then

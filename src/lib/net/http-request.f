@@ -225,6 +225,11 @@ private
    conn idx READ-INTO ;
 
 
+\ The read did not wait, so no AIO wait has served a pending TASK:HALT.
+: COUNT-READ ( NUM:byte-len n -- ) {: got:NUM:byte-len idx:n :}
+   got BLEN>N idx TOOK TASK:HALT-DUE? if TASK:PAUSE then ;
+
+
 \ One transfer into the slot's window; the caller proves there is room for it.
 \ Its deadlines and late budget: the file's header.
 : FILL ( TCP4:connection n n -- fill-outcome ) {: conn:TCP4:connection idx:n deadline:n :}
@@ -233,12 +238,26 @@ private
    conn idx READ-SPAN TCP4:TRY-READ
    MATCH TCP4:try-read-result
       data OF
-         BLEN>N idx TOOK TASK:HALT-DUE? if TASK:PAUSE then
+         idx COUNT-READ
          construct fill-outcome filled
       ENDOF
       closed OF drop construct fill-outcome ended ENDOF
       empty OF conn idx deadline WAIT-FILL ENDOF
       failed OF drop construct fill-outcome broken ENDOF
+   ;MATCH ;
+
+
+ENUM first-read taken empty closed failed ;ENUM
+
+\ One read into a window the caller proves empty.
+: READ-FIRST ( TCP4:connection n n -- first-read ) {: conn:TCP4:connection idx:n deadline:n :}
+   mono-ns deadline >= if construct first-read empty exit then
+   conn idx READ-SPAN TCP4:TRY-READ
+   MATCH TCP4:try-read-result
+      data OF idx COUNT-READ construct first-read taken ENDOF
+      closed OF drop construct first-read closed ENDOF
+      empty OF construct first-read empty ENDOF
+      failed OF drop construct first-read failed ENDOF
    ;MATCH ;
 
 
