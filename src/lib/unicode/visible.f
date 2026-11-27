@@ -7,26 +7,17 @@
 
 require src/lib/span.f
 require src/lib/vector.f
-require src/lib/sort.f
 require src/lib/utf8-scalar.f
+require src/lib/unicode/table.f
 require src/lib/unicode/visible-data.f
 
 package UNICODE-VISIBLE
 
-private
-
-: ENTRY ( ^n n -- ^n )
-   {: table:^ idx:n :}
-   table idx 2 * cells + ;
-
 public
 
 \ Unicode General_Category Cc, Cf, Zl or Zp; false outside the scalars.
-: HIDDEN? ( n -- bool ) {: cp:n :}
-   HIDDEN-RANGES {: ranges:^ count:n :}
-   0 count [: ranges swap ENTRY @ cp <= ;] SORT:PARTITION-POINT {: at:n :}
-   at 0= if false exit then
-   cp ranges at 1- ENTRY cell+ @ <= ;
+: HIDDEN? ( n -- bool )
+   HIDDEN-RANGES UNICODE-TABLE:IN-RANGES? ;
 
 private
 

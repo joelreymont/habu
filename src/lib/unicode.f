@@ -12,8 +12,8 @@
 \ Every word walks a span's mapped scalars with NEXT and allocates nothing.
 \ STORAGE CLASS. PROCESS-WIDE read-only tables; any task may call.
 
-require src/lib/sort.f
 require src/lib/unicode/class.f
+require src/lib/unicode/table.f
 require src/lib/unicode/case-data.f
 require src/lib/utf8-scalar.f
 require src/lib/string.f
@@ -70,37 +70,17 @@ $1FFFFF constant TARGET-MASK
       CONTINUATION-TAG =
    while 1- repeat ;
 
-: ENTRY ( ^n n -- ^n )
-   {: table:^ idx:n :}
-   table idx 2 * cells + ;
-
-\ The last of a table's sorted two-cell entries whose first cell is at
-\ most cp, and whether there is one.
-: AT-MOST ( n ^n n -- ^n bool )
-   {: cp:n table:^ count:n :}
-   0 count [: table swap ENTRY @ cp <= ;] SORT:PARTITION-POINT
-   {: at:n :}
-   at 0= if table false exit then
-   table at 1- ENTRY true ;
-
-: IN-RANGES? ( n ^n n -- bool )
-   {: cp:n ranges:^ count:n :}
-   cp ranges count AT-MOST 0= if drop false exit then
-   cell+ @ cp >= ;
-
 : CASED? ( n -- bool )
-   UNICODE-CASE-DATA:CASED-RANGES IN-RANGES? ;
+   UNICODE-CASE-DATA:CASED-RANGES UNICODE-TABLE:IN-RANGES? ;
 
 : IGNORABLE? ( n -- bool )
-   UNICODE-CASE-DATA:CASE-IGNORABLE-RANGES IN-RANGES? ;
+   UNICODE-CASE-DATA:CASE-IGNORABLE-RANGES
+   UNICODE-TABLE:IN-RANGES? ;
 
 \ A mapping table's packed targets for cp, else cp itself.
 : MAPPING ( n ^n n -- n )
    {: cp:n table:^ count:n :}
-   cp table count AT-MOST 0= if drop cp exit then
-   {: entry:^ :}
-   entry @ cp <> if cp exit then
-   entry cell+ @ ;
+   cp table count UNICODE-TABLE:PAIR 0= if drop cp then ;
 
 \ Whether the first scalar before a cursor that is not Case_Ignorable is
 \ Cased; false at the start.
