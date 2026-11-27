@@ -51,6 +51,13 @@ private
    s" select jsonb_set(jsonb_set(jsonb_set(jsonb_set(s,'{shapes,machine}',jsonb_build_object('within','thing')),'{shapes,tool}',jsonb_build_object('within','thing')),'{sources,2,s,shape}',to_jsonb('machine'::text)),'{sources,2,o,shape}',to_jsonb('tool'::text))::text from sparql_test.store($1::bigint) s"
    s" 1048576" a DESCRIBED ;
 
+\ The store's description with a shape `term` that holds any term, a
+\ blank node included.
+: BLANK-STORE ( ^ARENA:arena -- ^VEC:vector<u8> )
+   {: a:^ :}
+   s" select jsonb_set(s,'{shapes,term}',jsonb_build_object('in','sparql_test.id','out','sparql_test.id_term'))::text from sparql_test.store($1::bigint) s"
+   s" 1048576" a DESCRIBED ;
+
 : PREFIXES ( -- str )
    s" PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#> PREFIX t: <urn:test:> " ;
 
@@ -161,6 +168,16 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
 \ The query answers the expected document and its statement never names
 \ gone.
 : WITHOUT ( str str str -- ) [: WITHOUT-IN ;] ARENA:WITH ;
+
+: BLANK-IN ( str str str ^ARENA:arena -- )
+   {: q:str keep:str w:str a:^ :}
+   q a BLANK-STORE a ANSWER-ON {: sql:^ doc:^ :}
+   sql $ keep STR:CONTAINS? TTRUE
+   doc $ w a UNQUOTE $ a false SAME? TTRUE ;
+
+\ On BLANK-STORE the query answers the expected document and its
+\ statement names keep.
+: BLANK ( str str str -- ) [: BLANK-IN ;] ARENA:WITH ;
 
 : SAME-STATEMENT-IN ( str str ^ARENA:arena -- )
    {: q:str r:str a:^ :}
@@ -809,6 +826,12 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    s"  IS NULL OR "
    s" {'head':{'vars':['s','l']},'results':{'bindings':[{'s':{'type':'uri','value':'urn:test:3'},'l':{'type':'literal','value':'Lathe'}},{'s':{'type':'uri','value':'urn:test:4'},'l':{'type':'literal','value':'Mill'}},{'s':{'type':'uri','value':'urn:test:5'},'l':{'type':'literal','value':'Lathe'}}]}}"
    WITHOUT
+   \ Where a shape may hold a blank node, whose STR is NULL, it meets ?k as
+   \ maybe unbound.
+   s" SELECT ?s ?l WHERE { ?s t:20 ?o BIND(STR(?o) AS ?k) OPTIONAL { ?x rdfs:label ?l BIND(STR(?x) AS ?k) } }"
+   s"  IS NULL OR "
+   s" {'head':{'vars':['s','l']},'results':{'bindings':[{'s':{'type':'uri','value':'urn:test:3'},'l':{'type':'literal','value':'Lathe'}},{'s':{'type':'uri','value':'urn:test:4'},'l':{'type':'literal','value':'Mill'}},{'s':{'type':'uri','value':'urn:test:5'},'l':{'type':'literal','value':'Lathe'}}]}}"
+   BLANK
    \ IF(BOUND(?o), ?o, ?s) is always bound: 1 is next to 2, 2 to none.
    s" SELECT ?s ?l WHERE { ?s a t:10 OPTIONAL { ?s t:21 ?o } BIND(IF(BOUND(?o), ?o, ?s) AS ?k) OPTIONAL { ?k rdfs:label ?l } }"
    s"  IS NULL OR "
@@ -1048,6 +1071,27 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
 
 \ A chain of BINDs each reading the one before it twice.
 : CHAINS ( -- ) [: CHAINS-IN ;] ARENA:WITH ;
+
+\ Appends `?s <urn:zen:evidence> ?oK`, then for K under d an OPTIONAL over
+\ the union of the same from K+1 and `?s <urn:zen:assertion> ?xK`.
+: +LEVEL ( ^VEC:vector<u8> n n -- )
+   {: q:^ k:n d:n :}
+   q s" ?s <urn:zen:evidence> ?o" k +N
+   k d = if exit then
+   s"  OPTIONAL { { " q VEC:APPEND q k 1+ d RECURSE
+   q s"  } UNION { ?s <urn:zen:assertion> ?x" k +N s"  } }" q VEC:APPEND ;
+
+: LEVELS-IN ( ^ARENA:arena -- )
+   {: a:^ :}
+   a TEXT-VEC {: q:^ :}
+   s" SELECT * WHERE { " q VEC:APPEND q 0 12 +LEVEL s"  }" q VEC:APPEND
+   s" 12 levels of OPTIONAL over a union" T-LABEL
+   q $ s" 1048576" a STORE a COMPILED {: sql:^ ok:bool :}
+   ok TTRUE sql $ STR:LEN 60000 < TTRUE ;
+
+\ An OPTIONAL over a union whose branch holds the next reads each branch
+\ once: the statement does not double per level.
+: LEVELS ( -- ) [: LEVELS-IN ;] ARENA:WITH ;
 
 \ The query counts ?n 2.
 : TWO ( str -- )
@@ -1810,7 +1854,7 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    ONLY-COLUMNS
    TYPED-FILTERS BRANCH-GROUPING ORDERS DISTINCTS STAR-COUNTS
    SUBQUERIES
-   BINDS CHAINS UUIDS VOLATILE-BINDS FENCES DATA-BLOCKS PATHS ;
+   BINDS CHAINS LEVELS UUIDS VOLATILE-BINDS FENCES DATA-BLOCKS PATHS ;
 
 T-RESET
 s" sparql-test" ' SESSION MAIN

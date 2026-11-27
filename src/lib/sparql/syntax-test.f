@@ -1605,6 +1605,9 @@ DOTTED-AUTHORITY
    s" SELECT * WHERE { ?s ?p ?o } ORDER FOO"
    s\" 1:35: expected BY, found `FOO`; replace it with BY\n1 | SELECT * WHERE { ?s ?p ?o } ORDER FOO\n                                      ^"
       2 REJECTS-FIXES
+   s" SELECT * WHERE { ?s ?p ?o } ORDER ?s"
+   s\" 1:35: expected BY, found `?s`; write BY here\n1 | SELECT * WHERE { ?s ?p ?o } ORDER ?s\n                                      ^"
+      REJECTS
    s" SELECT * WHERE { ?s ?p ?o } ORDER BY FOO"
    s\" 1:38: expected a variable or expression to order by, found `FOO`; replace it with the variables to order by\n1 | SELECT * WHERE { ?s ?p ?o } ORDER BY FOO\n                                         ^"
       REJECTS
