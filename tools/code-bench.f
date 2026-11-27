@@ -2,7 +2,9 @@
 \ Run: bin/hb --load tools/code-bench.f -- <source-file>
 \ Per benchmark: `B <name> <run1> ... <run15> <median>` in microseconds of thread
 \ CPU, then `R <name> <value>`, its result over the whole output. Every round
-\ must compute run 0's value. Subtract `harness`, the bare timing loop.
+\ must compute run 0's value. `harness` is a benchmark of its own, a million
+\ iterations of a store, not the clock's cost: subtracting it erases the shorter
+\ kernels.
 
 require src/lib/time-cpu.f
 require src/lib/array.f
