@@ -1058,6 +1058,15 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    s"  IS NULL OR "
    s" {'head':{'vars':['o','l']},'results':{'bindings':[{'o':{'type':'uri','value':'urn:test:1'},'l':{'type':'literal','value':'Spindle'}},{'o':{'type':'uri','value':'urn:test:2'},'l':{'type':'literal','value':'Bolt'}}]}}"
    WITHOUT
+   \ A COALESCE with a constant argument is always bound.
+   s" SELECT ?x WHERE { t:1 rdfs:label ?o BIND(COALESCE(?o, '') AS ?k) ?x rdfs:label ?k }"
+   s"  IS NULL OR "
+   s" {'head':{'vars':['x']},'results':{'bindings':[{'x':{'type':'uri','value':'urn:test:1'}}]}}"
+   WITHOUT
+   s" SELECT ?x WHERE { { SELECT ?k WHERE { t:1 rdfs:label ?o } GROUP BY (COALESCE(?o, '') AS ?k) } ?x rdfs:label ?k }"
+   s"  IS NULL OR "
+   s" {'head':{'vars':['x']},'results':{'bindings':[{'x':{'type':'uri','value':'urn:test:1'}}]}}"
+   WITHOUT
    \ An OPTIONAL binds ?w; t:1's group leaves ?m unbound.
    s" SELECT ?o ?l WHERE { { SELECT ?o (MIN(?w) AS ?m) WHERE { ?s t:20 ?o OPTIONAL { ?s t:22 ?w } } GROUP BY ?o } ?m rdfs:label ?l ; a t:11 }"
    s"  IS NULL OR "

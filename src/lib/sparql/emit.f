@@ -3224,9 +3224,31 @@ STRUCTURE pruning DERIVE addr
       as i VEC:AT AGGREGATE-NODE @ call = if i unloop exit then
    loop -1 ;
 
-\ Whether the expression is an aggregate that is always bound.
-: SURE? ( ^plan n -- bool )
-   {: plan e:n :}
+\ Whether the node is a variable r binds always.
+: BOUND? ( ^plan ^relation n -- bool )
+   {: plan r:^ node:n :}
+   plan TREE node VARIABLE? 0= if false exit then
+   r RELATION-BINDINGS @ plan node VAR FIND-VAR {: k:n :}
+   k 0< if false exit then
+   r RELATION-BINDINGS @ k VEC:AT BINDING-ALWAYS @ ;
+
+\ Whether expression e over r's bindings always has a value: a constant,
+\ a variable r binds always, a COALESCE with an argument that does, or an
+\ aggregate that is always bound.
+: SURE? ( ^plan ^relation n -- bool )
+   {: plan r:^ e:n :}
+   plan TREE {: state :}
+   state e CONSTANT? if true exit then
+   plan r e BOUND? if true exit then
+   state e NODE-K N-CALL = if
+      state e s" COALESCE" CALL-IS? if
+         state e NODE-A@ begin dup 0<> while
+            {: each:n :}
+            plan r state each NODE-A@ RECURSE if true exit then
+            state each NODE-B@
+         repeat drop
+      then
+   then
    plan e FIND-AGGREGATE {: k:n :}
    k 0< if false exit then
    plan PLAN-AGGREGATES @ k VEC:AT AGGREGATE-ALWAYS @ ;
@@ -3291,7 +3313,7 @@ STRUCTURE pruning DERIVE addr
    state value VOLATILE? x SQL-LEN x COPIES + MOST-COPIED > or
    if plan r var x +EVALUATED else plan r var x +COPIED then
    r RELATION-BINDINGS @ LAST {: b:^ :}
-   plan value SURE? b BINDING-ALWAYS !
+   plan r value SURE? b BINDING-ALWAYS !
    plan b r RELATION-WHERE @ +OUTER ;
 
 : FOLD ( ^plan ^item ^relation -- )
@@ -3323,14 +3345,6 @@ STRUCTURE walk DERIVE addr
    FIELD kind n  \ the seeds' form
    FIELD ctes ^ctes
 ;STRUCTURE
-
-\ Whether the node is a variable r binds always.
-: BOUND? ( ^plan ^relation n -- bool )
-   {: plan r:^ node:n :}
-   plan TREE node VARIABLE? 0= if false exit then
-   r RELATION-BINDINGS @ plan node VAR FIND-VAR {: k:n :}
-   k 0< if false exit then
-   r RELATION-BINDINGS @ k VEC:AT BINDING-ALWAYS @ ;
 
 : SEED! ( ^walk n n bool bool -- )
    {: w:^ seed:n far:n inverse:bool rest:bool :}
@@ -4436,7 +4450,7 @@ STRUCTURE walk DERIVE addr
       plan state e NODE-B@ VAR {: var:n :}
       gs var GENERIC plan r state e NODE-A@ EXPRESSION-SQL
       s" " BIND
-      false gs LAST BINDING-ALWAYS ! exit
+      plan r state e NODE-A@ SURE? gs LAST BINDING-ALWAYS ! exit
    then
    state e NODE-K N-VAR <> if
       keys s" ," +SEP keys plan r e EXPRESSION-SQL +REL exit
