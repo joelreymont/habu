@@ -266,9 +266,16 @@ private
       state s" the end of the query" state END-FIX REJECT
    then ;
 
+\ Only reading shares terms, so the term interns' slots live in a work
+\ frame cut once the query is read.
 : PARSE ( str ^ARENA:arena -- ^syntax )
    SYNTAX-NEW {: state :}
+   state SYNTAX-WORK @ {: work:^ :}
+   work ARENA:MARK {: mark:n :}
    state READ-QUERY
+   work mark ARENA:CUT
+   state SYNTAX-INTERNS {: table:^ :}
+   NULL-PTR table INTERNS-SLOTS !  0 table INTERNS-COUNT !
    state state SYNTAX-ROOT @ QUERY-SCOPE drop state ;
 
 : INSTALL-PARSER ( -- )

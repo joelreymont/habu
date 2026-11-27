@@ -662,7 +662,7 @@ STRUCTURE syntax DERIVE addr
       {: state :}
    arena state SYNTAX-ARENA !
    arena ARENA:NEW-IN state SYNTAX-WORK !
-   state SYNTAX-INTERNS arena INTERNS-INIT
+   state SYNTAX-INTERNS state SYNTAX-WORK @ INTERNS-INIT
    state SYNTAX-NAMES arena INTERNS-INIT
    text state SYNTAX-SOURCE !
    text state SYNTAX-ORIGINAL !
