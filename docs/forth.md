@@ -2128,7 +2128,8 @@ answers alike.
   that made it fail, `( ^u8 n n -- )`: the calling task keeps a copy of the
   span, replacing its earlier one, so the span may be scratch.
   `REASON:TEXT$ ( n -- ^u8 n )` answers that text when the task's last
-  `REASON:THROW` threw code n, else empty; `src/lib/reason.f` states the
+  `REASON:THROW` threw code n, else empty, and a throw of it nothing catches
+  shows the text as its record's `reason` note; `src/lib/reason.f` states the
   contract a thrower and a catch keep. A library writes such a text in parts
   between `REASON:OPEN` and `REASON:STOP ( n -- )`, which throws it: `AT`,
   `EXPECTED`, `FOUND` and `FIX` write the place and the separators of

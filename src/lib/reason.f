@@ -12,9 +12,10 @@
 \ REASON's part words and pure reads run between them, since an OPEN there
 \ would clear the text being written.
 \ STORAGE CLASS. TASK-LOCAL: per task one code cell, two vector cells, the
-\ last text and the next, and a hide count, in the REASON-ABI band
-\ (src/habu/layout.f); a vector is made on its first use and TASK releases
-\ both as each activation ends; the main task's vectors last the process.
+\ last text and the next, a hide count, and the last text's address and
+\ length cells, in the REASON-ABI band (src/habu/layout.f); a vector is made
+\ on its first use and TASK releases both as each activation ends; the main
+\ task's vectors last the process.
 
 require src/habu/layout.f
 require src/core/exit-status.f
@@ -30,8 +31,12 @@ EXPORT BOOT:data-base
 \ The band states each cell's width in bytes; a narrower one would let the
 \ last cell's store reach the next band.
 : BAND-AGREE ( -- )
-   REASON-ABI:NEXT-OFF REASON-ABI:TEXT-OFF -  CELL <>
-   REASON-ABI:END REASON-ABI:HIDE-OFF -  CELL <>  or if
+   REASON-ABI:TEXT-OFF REASON-ABI:CODE-OFF -  CELL <>
+   REASON-ABI:NEXT-OFF REASON-ABI:TEXT-OFF -  CELL <>  or
+   REASON-ABI:HIDE-OFF REASON-ABI:NEXT-OFF -  CELL <>  or
+   REASON-ABI:TEXT-A-OFF REASON-ABI:HIDE-OFF -  CELL <>  or
+   REASON-ABI:TEXT-U-OFF REASON-ABI:TEXT-A-OFF -  CELL <>  or
+   REASON-ABI:END REASON-ABI:TEXT-U-OFF -  CELL <>  or if
       s" reason: a cell differs from the REASON-ABI band's widths"
       EXIT-STATUS:INTERNAL die
    then ;
@@ -43,6 +48,15 @@ BAND-AGREE
 
 : HIDE-COUNT ( -- ^n )
    data-base REASON-ABI:HIDE-OFF + ;
+
+\ The last text's address and length, valid while LAST-CODE is nonzero.
+CAST: >BYTES-CELL ( ^n -- ^^u8 )
+
+: TEXT-A ( -- ^^u8 )
+   data-base REASON-ABI:TEXT-A-OFF + >BYTES-CELL ;
+
+: TEXT-U ( -- ^n )
+   data-base REASON-ABI:TEXT-U-OFF + ;
 
 \ The band's text cells hold a vector's address.
 CAST: >TEXT-CELL ( ^n -- ^^VEC:vector<u8> )
@@ -80,7 +94,7 @@ public
 \ empty; valid until the task's next REASON:THROW or REASON:STOP.
 : TEXT$ ( n -- str ) {: code:n :}
    code 0=  LAST-CODE @ code <>  or if s" " exit then
-   LAST-TEXT VEC:BYTES ;
+   TEXT-A @ TEXT-U @ >str ;
 
 \ Throws code n with the span kept as the calling task's text, replacing any
 \ earlier one. The span is appended after the old text, then moved to the
@@ -94,6 +108,8 @@ public
    t VEC:BYTES STR:DATA {: p:^ :}
    p k + p s STR:LEN BYTE-COPY
    t s STR:LEN VEC:RESIZE
+   t VEC:BYTES {: b:str :}
+   b STR:DATA TEXT-A !  b STR:LEN TEXT-U !
    code LAST-CODE !
    code throw ;
 

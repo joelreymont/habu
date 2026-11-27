@@ -487,26 +487,47 @@ variable RUN-FILE-U
    pu s" build-time exit action ran" OUT-HAS? TFALSE
    RUN-FILE$ FS:EXISTS? TFALSE ;
 
-\ A MAIN that throws the record its TMPDIR gives, else its own code's.
+\ A MAIN that throws the record its TMPDIR gives, else its own code with a
+\ stated reason; with BUILT_PLAIN set, it catches another code's REASON:THROW
+\ and throws its own code plainly.
 : RECORD-TEXT ( -- )
    0 TEXT-U !
    S\" require src/lib/fs-mutate.f\n" TEXT+
+   S\" require src/lib/reason.f\n" TEXT+
    S\" -100001 s\q the program's own failure\q\n" TEXT+
    S\" ERROR:CODE E-BUILT-CASE\n" TEXT+
+   S\" -100002 s\q another failure\q\n" TEXT+
+   S\" ERROR:CODE E-OTHER-CASE\n" TEXT+
    S\" : MAIN ( -- ) s\q built\q FS:MKTEMP-DIR drop\n" TEXT+
-   S\"    E-BUILT-CASE throw ;\n" TEXT+ ;
+   S\"    s\q BUILT_PLAIN\q GETENV STR:LEN 0<> if\n" TEXT+
+   S\"       [: s\q another reason\q E-OTHER-CASE REASON:THROW ;] catch drop\n" TEXT+
+   S\"       E-BUILT-CASE throw then\n" TEXT+
+   S\"    s\q the stated reason\q E-BUILT-CASE REASON:THROW ;\n" TEXT+ ;
 
 \ The built program under a TMPDIR that is a directory ends with the record of
-\ E-BUILT-CASE, once, and status 85.
+\ E-BUILT-CASE and its stated reason, once, and status 85.
 : EXPECT-CASE-RECORD ( -- )
    PROC-ARGV-ENV-RESET
    s" TMPDIR" ROOT$ PROC-ENV+
    TREE$ RUN-PATH {: qu:n qe:n qrc:n :}
    qu qe qrc EXIT-STATUS:UNCAUGHT EXPECT-RC
    0 TEXT-U !
-   S\" error[E-BUILT-CASE]: the program's own failure\n  = code: -100001\n" TEXT+
+   S\" error[E-BUILT-CASE]: the program's own failure\n" TEXT+
+   S\"   = reason: the stated reason\n  = code: -100001\n" TEXT+
    ERR qe >str TEXT$ STR:COUNT-SUB 1 T=
    qe s" uncaught throw" ERR-HAS? TFALSE ;
+
+\ With BUILT_PLAIN set, the record of E-BUILT-CASE has no reason note: the
+\ task's last REASON:THROW threw another code.
+: EXPECT-PLAIN-RECORD ( -- )
+   PROC-ARGV-ENV-RESET
+   s" TMPDIR" ROOT$ PROC-ENV+
+   s" BUILT_PLAIN" s" 1" PROC-ENV+
+   TREE$ RUN-PATH {: qu:n qe:n qrc:n :}
+   qu qe qrc EXIT-STATUS:UNCAUGHT EXPECT-RC
+   0 TEXT-U !
+   S\" error[E-BUILT-CASE]: the program's own failure\n  = code: -100001\n" TEXT+
+   ERR qe >str TEXT$ STR:COUNT-SUB 1 T= ;
 
 \ A built program ends an uncaught throw with one record and status 85, no
 \ kernel line: the record its throw carried, else its code's declaration.
@@ -528,8 +549,10 @@ variable RUN-FILE-U
    S\" \n  = help: point TMPDIR at an existing directory, or unset it to use /tmp\n" TEXT+
    ERR pe >str TEXT$ STR:COUNT-SUB 1 T=
    pe s" uncaught throw" ERR-HAS? TFALSE
-   s" a built program prints the record of a code its throw carries none for" T-LABEL
-   EXPECT-CASE-RECORD ;
+   s" a built program's record of a code its throw carries none for shows the stated reason" T-LABEL
+   EXPECT-CASE-RECORD
+   s" it shows no reason when the task's last REASON:THROW gave another code" T-LABEL
+   EXPECT-PLAIN-RECORD ;
 
 variable AWAY-KERNELS
 

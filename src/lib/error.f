@@ -880,10 +880,24 @@ private
 7204 s" a type declaration's payload names a type not yet declared: declare that type before it" false MINTED TYPE-DECL:E-TDECL-UNRESOLVED
 -9880 s" a number given to an enum's `TAG>` is none of its tags: pass a tag the enum declares" false MINTED TYPE-DECL:E-ENUM-TAG
 
+\ ERROR loads below REASON, so it reads REASON's band; its TEXT-A cell holds
+\ an address.
+CAST: >BYTES-CELL ( ^n -- ^^u8 )
+
+\ The `reason` note of a record of code c: the text the task's last
+\ REASON:THROW gave, when that threw c.
+: REASON-NOTE ( n -- )
+   {: c:n :}
+   c 0=  data-base REASON-ABI:CODE-OFF + @ c <>  or if exit then
+   data-base REASON-ABI:TEXT-A-OFF + >BYTES-CELL @
+   data-base REASON-ABI:TEXT-U-OFF + @ >str {: t:str :}
+   t STR:LEN 0= if exit then
+   s" reason" REJECTION:NOTE  t REJECTION:EMIT-STR ;
+
 public
 
-\ The code note and the help of an OPEN record of code c; E-THROW-ZERO's has
-\ no code note.
+\ The reason note, the code note and the help of an OPEN record of code c;
+\ E-THROW-ZERO's has the help alone.
 : HELP ( n -- )
    {: c:n :}
    c E-THROW-ZERO = if
@@ -891,6 +905,7 @@ public
       s" throw a computed code only when it is nonzero: `rc 0<> if rc throw then`"
       REJECTION:EMIT-STR exit
    then
+   c REASON-NOTE
    s" code" REJECTION:NOTE  c REJECTION:EMIT-N
    REJECTION:HELP
    s" catch the code where the program can go on, or remove its cause"

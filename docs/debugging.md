@@ -38,7 +38,8 @@ code from 1 to 255 is the exit status and prints nothing: `42 throw` exits 42.
 In a source the engine runs (a file, `--load`, stdin, a `require`d file, a REPL
 line) any other code prints one record and exits 85: `error[NAME]`, NAME being
 the code's name in `src/lib/error.f` (`E-THROW` for a code with none), with a
-`code` note, at the word that threw it in the innermost text it left. A program
+`reason` note when the task's last `REASON:THROW` threw that code, a `code`
+note, at the word that threw it in the innermost text it left. A program
 that catches the code and throws it again moves the record to its own throw,
 unless the code carried its record and the program throws it on in the body
 that caught it (docs/forth.md "A caught code thrown in its own body throws

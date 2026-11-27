@@ -1047,13 +1047,15 @@ $A000 constant S-IFLNK
 \ builds for Wasm, where src/lib/task.f does not.
 package REASON-ABI
 public
-4 cells constant BYTES
+6 cells constant BYTES
 FS-ABI:END constant START
 START BYTES + constant END
 START constant CODE-OFF
 CODE-OFF 8 + constant TEXT-OFF
 TEXT-OFF 8 + constant NEXT-OFF
 NEXT-OFF 8 + constant HIDE-OFF
+HIDE-OFF 8 + constant TEXT-A-OFF
+TEXT-A-OFF 8 + constant TEXT-U-OFF
 ;package
 
 \ FS-MUT-ABI, src/lib/fs-mutate.f's per-call path scratch, is the last band: the
