@@ -1,11 +1,11 @@
-\ inotify.f - change notices for watched directories, through Linux's
-\ inotify. WATCH answers the watch descriptor the kernel names a directory by,
-\ the same one when the directory is watched again; EACH hands each pending
-\ event's descriptor and mask to a quotation, skipping its name. IN-IGNORED
-\ marks a watch the kernel dropped, after UNWATCH or when its directory went;
-\ IN-Q-OVERFLOW, on descriptor -1, marks events the kernel lost. OPEN and
-\ WATCH leave a failed call's errno as FS:ERRNO; a failed read in EACH is
-\ E-INOTIFY with the errno as FS:ERRNO, logged with its text.
+\ inotify.f - change notices for watched files and directories, through
+\ Linux's inotify. WATCH answers the watch descriptor the kernel names a file
+\ or directory by, the same one when it is watched again; EACH hands each
+\ pending event's descriptor and mask to a quotation, skipping its name.
+\ IN-IGNORED marks a watch the kernel dropped, after UNWATCH or when what it
+\ watched went; IN-Q-OVERFLOW, on descriptor -1, marks events the kernel lost.
+\ OPEN and WATCH leave a failed call's errno as FS:ERRNO; a failed read in
+\ EACH is E-INOTIFY with the errno as FS:ERRNO, logged with its text.
 \ STORAGE CLASS. SCOPE-OWNED: EACH's read buffer, one MEM:WITH-BYTES scope per
 \ call, released when it returns or throws, so tasks may read at once.
 \ TASK-LOCAL: WATCH's path, in fs.f's band. CALLER-OWNED: every instance,
@@ -116,16 +116,17 @@ public
    rc 0 < if FFI:ERRNO FS:CAUSE! OPTION:NONE exit then
    0 FS:CAUSE! rc >FD OPTION:SOME ;
 
-\ Adds the directory the second descriptor holds to the instance's watches and
-\ answers its watch descriptor; under IN-ONLYDIR anything else is ENOTDIR.
+\ Adds the file or directory the second descriptor holds to the instance's
+\ watches and answers its watch descriptor; under IN-ONLYDIR anything but a
+\ directory is ENOTDIR.
 : WATCH ( fd fd n -- option<n> )
-   {: inst:fd dir:fd mask:n :}
-   inst FD>N dir FS:FD-LINKZ mask ADD-CALL {: wd:n :}
+   {: inst:fd target:fd mask:n :}
+   inst FD>N target FS:FD-LINKZ mask ADD-CALL {: wd:n :}
    wd 0 < if FFI:ERRNO FS:CAUSE! OPTION:NONE exit then
    0 FS:CAUSE! wd OPTION:SOME ;
 
 \ Drops a watch. A failure only sets FS:ERRNO: the kernel already dropped a
-\ watch whose directory went.
+\ watch whose file or directory went.
 : UNWATCH ( fd n -- )
    {: inst:fd wd:n :}
    inst FD>N wd RM-CALL 0 < if FFI:ERRNO FS:CAUSE! exit then
