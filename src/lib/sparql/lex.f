@@ -1,4 +1,5 @@
-\ Tokens retain spans in the arena-owned, codepoint-decoded query.
+\ Tokens retain spans in the codepoint-decoded query: the query as given
+\ when it holds no \u or \U escape, else an arena copy.
 \ String and local-name escapes are decoded later, when reading terms.
 
 require src/lib/sparql/syntax.f
@@ -139,16 +140,27 @@ private
          REJECT-BYTE
    then point state SYNTAX-POSITION @ ;
 
-\ SPARQL 1.1 section 19.2 precedes the grammar, even in comments.
-\ Read only original input; an emitted backslash is never rescanned. Each
-\ escape's end is recorded, so a rejection places itself in the original.
-: CODEPOINT-ESCAPES ( ^syntax -- )
+\ Past each code point before the first \u or \U escape; false at the end.
+: TO-ESCAPE? ( ^syntax -- bool )
    {: state :}
-   state SYNTAX-ARENA @ ARENA:ALLOCATOR {: alloc :}
-   alloc state SYNTAX-SOURCE @ str> nip ALLOC:BYTES drop
+   begin state PEEK -1 <> while
+      state ESCAPE-DIGITS 0<> if true exit then
+      state SCALAR nip state SYNTAX-POSITION !
+   repeat false ;
+
+\ Decodes from the first escape, at the position, into a copy holding the
+\ bytes before it. Read only original input; an emitted backslash is never
+\ rescanned. Each escape's end is recorded, so a rejection places itself in
+\ the original.
+: DECODE-ESCAPES ( ^syntax -- )
+   {: state :}
+   state SYNTAX-SOURCE @ str> {: text size:n :}
+   state SYNTAX-ARENA @ ARENA:ALLOCATOR size ALLOC:BYTES drop
       {: out :}
-   alloc 0 [type] escape VEC:NEW {: shifts :}
-   0 begin state PEEK -1 <> while
+   state SYNTAX-POSITION @ {: start:n :}
+   text out start BYTE-COPY
+   state SYNTAX-ESCAPES @ {: shifts :}
+   start begin state PEEK -1 <> while
       {: used:n :}
       state ESCAPE-DIGITS 0<> {: escape:bool :}
       state ESCAPED-SCALAR {: point:n next:n :}
@@ -158,8 +170,12 @@ private
          wrote pair ESCAPE-DECODED ! next pair ESCAPE-ORIGINAL !
       then
       next state SYNTAX-POSITION ! wrote
-   repeat out swap >str state SYNTAX-SOURCE !
-   shifts state SYNTAX-ESCAPES !
+   repeat out swap >str state SYNTAX-SOURCE ! ;
+
+\ SPARQL 1.1 section 19.2 precedes the grammar, even in comments.
+: CODEPOINT-ESCAPES ( ^syntax -- )
+   {: state :}
+   state TO-ESCAPE? if state DECODE-ESCAPES then
    0 state SYNTAX-POSITION ! ;
 
 : SKIP-COMMENT ( ^syntax -- )
