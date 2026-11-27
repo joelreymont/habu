@@ -4536,15 +4536,34 @@ STRUCTURE walk DERIVE addr
    plan NEW-SQL {: v:^ :}
    v plan k SHAPE@ SHAPE-OUT @ e +APPLY v ;
 
+\ Whether seen holds var; adds it if not.
+: SEEN? ( ^VEC:vector<n> n -- bool )
+   {: seen:^ var:n :}
+   seen VEC:COUNT 0 ?do
+      seen i VEC:AT @ var = if true unloop exit then
+   loop var seen VEC:PUSH ! false ;
+
+\ Whether m is an ORDER BY condition other than one of a variable seen
+\ holds; its variable joins seen.
+: NEW-KEY? ( ^plan ^VEC:vector<n> n -- bool )
+   {: plan seen:^ m:n :}
+   plan TREE {: state :}
+   state m NODE-K N-ORDER <> if false exit then
+   state m NODE-A@ {: e:n :}
+   state e NODE-K N-VAR <> if true exit then
+   seen plan e VAR SEEN? 0= ;
+
 \ The keys of list n's ORDER BY conditions over r, `,`-joined, each
-\ `sparql.order(term)` and DESC where written.
+\ `sparql.order(term)` and DESC where written. A variable an earlier key
+\ sorts by adds none: rows that tie on that key hold one value for it.
 : CONDITION-KEYS ( ^plan ^relation n -- ^rel )
    {: plan r:^ list:n :}
    plan TREE {: state :}
    plan NEW-SQL {: v:^ :}
+   plan AL 0 [type] n VEC:NEW {: seen:^ :}
    list begin dup 0<> while
       {: each:n :} state each NODE-A@ {: m:n :}
-      state m NODE-K N-ORDER = if
+      plan seen m NEW-KEY? if
          v s" ," +SEP v s" sparql.order(" +SQL
          v plan r state m NODE-A@ EXPRESSION-SQL +REL v s" )" +SQL
          state m NODE-FLAGS@ F-DESC and 0<> if

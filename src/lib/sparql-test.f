@@ -162,6 +162,16 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
 \ gone.
 : WITHOUT ( str str str -- ) [: WITHOUT-IN ;] ARENA:WITH ;
 
+: SAME-STATEMENT-IN ( str str ^ARENA:arena -- )
+   {: q:str r:str a:^ :}
+   s" 1048576" a STORE {: store:^ :}
+   q a PREFIXED $ store a COMPILED TTRUE {: x:^ :}
+   r a PREFIXED $ store a COMPILED TTRUE {: y:^ :}
+   x $ y $ STR:= TTRUE ;
+
+\ The two queries compile to the same statement.
+: SAME-STATEMENT ( str str -- ) [: SAME-STATEMENT-IN ;] ARENA:WITH ;
+
 \ The query answers no rows and its statement never names gone.
 : DEAD ( str str -- )
    s" {'head':{'vars':['l']},'results':{'bindings':[]}}" WITHOUT ;
@@ -1547,7 +1557,11 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    ORDERED
    s" SELECT ?l WHERE { ?s a t:12 . ?s rdfs:label ?l } ORDER BY ?l"
    s" {'head':{'vars':['l']},'results':{'bindings':[{'l':{'type':'literal','value':'B'}},{'l':{'type':'literal','value':'a'}},{'l':{'type':'literal','value':'b'}},{'l':{'type':'literal','value':'é'}}]}}"
-   ORDERED ;
+   ORDERED
+   \ A variable an earlier key sorts by adds no key.
+   s" SELECT ?k ?l WHERE { ?s a ?k ; rdfs:label ?l } ORDER BY ?k ?l DESC(?k) ?l"
+   s" SELECT ?k ?l WHERE { ?s a ?k ; rdfs:label ?l } ORDER BY ?k ?l"
+   SAME-STATEMENT ;
 
 : DISTINCTS ( -- )
    s" SELECT DISTINCT ?o WHERE { ?s t:20 ?o }"
