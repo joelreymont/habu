@@ -10,7 +10,8 @@
 \ names, aud, iss, exp and nbf, claim strings, CLAIM-HOLDS? on string, scope,
 \ number and absent claims and an array holding nested values and an escape,
 \ CLAIM$ after the admitted request, CLAIM$ and CLAIM-HOLDS? in a task it
-\ spawns, the refetch window, a cached kid answered while a fetch is in
+\ spawns, TOKEN$ in an admitted and a rejected request and outside one, CLAIM$,
+\ CLAIM-HOLDS? and TOKEN$ after CALLER?'s 403, the refetch window, a cached kid answered while a fetch is in
 \ flight, an unknown kid and an empty set waiting for that fetch, a fetched
 \ key set repeating a member rejected while the cached one stays, APP!'s
 \ rejections, CALLER-KEY outside a request, and CALLER?, PERSON? and
@@ -96,7 +97,8 @@ variable PORT
 \ or SET-THREE (4).
 variable MODE
 variable HITS                       \ /keys requests served
-variable CLAIMED                    \ a claim was answered after CALLER?'s 403
+variable CLAIMED                    \ a claim or token was answered after CALLER?'s 403
+variable TOKEN-HELD                 \ TOKEN$ answered true in a request ADMIT? rejected
 variable EARLY-CODE                 \ what ADMIT? threw before ISSUER!
 variable FETCHED-BY                 \ a mono-ns after the last fetch returned
 variable DUE                        \ when that fetch's window has passed, a mono-ns
@@ -189,6 +191,14 @@ TASK:MIN-STACK TASK:TASK CLAIMER
    {: asked:HTTP:request answer:HTTP:response :}
    asked answer BEARER:ADMIT? if answer [: CLAIMS-BODY ;] HTTP:JSON! then ;
 
+: TOKEN-ROUTE ( HTTP:request HTTP:response -- )
+   {: asked:HTTP:request answer:HTTP:response :}
+   asked answer BEARER:ADMIT? 0= if
+      BEARER:TOKEN$ nip bool>n TOKEN-HELD atomic! exit
+   then
+   BEARER:TOKEN$ {: t:str has:bool :}
+   has if answer t HTTP:BODY! else answer s" none" HTTP:BODY! then ;
+
 : PLAIN-ROUTE ( HTTP:request HTTP:response -- )
    nip [: AZP-BODY ;] HTTP:JSON! ;
 
@@ -236,7 +246,8 @@ TASK:MIN-STACK TASK:TASK CLAIMER
 
 : CLAIMED! ( -- )
    s" azp" BEARER:CLAIM$ nip
-   s" azp" s" app-2" BEARER:CLAIM-HOLDS? or bool>n CLAIMED atomic! ;
+   s" azp" s" app-2" BEARER:CLAIM-HOLDS? or
+   BEARER:TOKEN$ nip or bool>n CLAIMED atomic! ;
 
 : CALLER-ROUTE ( HTTP:request HTTP:response -- )
    {: asked:HTTP:request answer:HTTP:response :}
@@ -557,6 +568,16 @@ TASK:MIN-STACK TASK:TASK CLAIMER
    s" CLAIM$ and CLAIM-HOLDS? in a task the admitted request spawns answer false" T-LABEL
    KID-A CURRENT MINT s" /spawn" OPEN BEARING FINISH s" false" ANSWERED ;
 
+: PRESENTED-TOKEN ( -- )
+   s" TOKEN$ answers the admitted request's token as presented" T-LABEL
+   KID-A CURRENT MINT s" /token" OPEN BEARING FINISH TOKEN$ ANSWERED
+   s" TOKEN$ in a request ADMIT? rejects answers false" T-LABEL
+   1 TOKEN-HELD atomic!
+   FLIP s" /token" OPEN BEARING FINISH INVALID
+   TOKEN-HELD atomic@ 0 T=
+   s" TOKEN$ outside a request answers false and an empty string" T-LABEL
+   BEARER:TOKEN$ TFALSE STR:LEN 0 T= ;
+
 : SENT ( CURL:handle ^VEC:vector<u8> -- n )
    {: h:CURL:handle v:^ :}
    h v TAKEN h CURL:CLEANUP ;
@@ -680,7 +701,7 @@ TASK:MIN-STACK TASK:TASK CLAIMER
    1 CLAIMED atomic!
    S\" ,\"azp\":\"app-2\",\"appid\":\"app-1\",\"oid\":\"o-1\",\"tid\":\"t-1\"}" CALL
    FORBIDDEN
-   s" CLAIM$ and CLAIM-HOLDS? after a 403 answer false" T-LABEL
+   s" CLAIM$, CLAIM-HOLDS? and TOKEN$ after a 403 answer false" T-LABEL
    CLAIMED atomic@ 0 T=
    s" an empty oid or tid is forbidden" T-LABEL
    S\" ,\"azp\":\"app-2\",\"oid\":\"\",\"tid\":\"t-1\",\"scp\":\"any\"}" CALL FORBIDDEN
@@ -803,6 +824,7 @@ TASK:MIN-STACK TASK:TASK CLAIMER
    s" GET" s" /claims" [: GUARDED-ROUTE ;] HTTP:ROUTE
    s" GET" s" /caller" [: CALLER-ROUTE ;] HTTP:ROUTE
    s" GET" s" /plain" [: PLAIN-ROUTE ;] HTTP:ROUTE
+   s" GET" s" /token" [: TOKEN-ROUTE ;] HTTP:ROUTE
    s" GET" s" /spawn" [: SPAWN-ROUTE ;] HTTP:ROUTE
    s" GET" s" /roles" [: ROLES-ROUTE ;] HTTP:ROUTE
    s" GET" s" /keys" [: KEYS-ROUTE ;] HTTP:ROUTE
@@ -846,7 +868,8 @@ TASK:MIN-STACK TASK:TASK CLAIMER
    APP-CASES
    PORT @ SERVE-ON
    UNAVAILABLE ADMITTED UNKNOWN-KID NO-TOKEN MALFORMED SIGNATURES AUDIENCES
-   TIMES STRINGS HOLDINGS STALE-CLAIM SPAWNED-CLAIM WINDOW
+   TIMES STRINGS HOLDINGS STALE-CLAIM SPAWNED-CLAIM PRESENTED-TOKEN
+   WINDOW
    CALLERS
    HTTP:STOP
    URL-CASES

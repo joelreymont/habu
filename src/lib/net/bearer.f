@@ -3,9 +3,10 @@
 \ signed RS256 with a key of its JWK Set, whose iss and aud name that issuer
 \ and this server, and whose exp and nbf hold (RFC 7515, 7517, 7519). The host
 \ states the issuer with ISSUER! before HTTP:START, guards a route with
-\ `req res BEARER:ADMIT? if ... then` and reads the caller's claims with CLAIM$
-\ and CLAIM-HOLDS?. CALLER? guards a route for a person whose token holds the
-\ stated scope or an app APP! lists; PERSON? and CALLER-KEY say which it is.
+\ `req res BEARER:ADMIT? if ... then`, reads the caller's claims with CLAIM$
+\ and CLAIM-HOLDS? and its token with TOKEN$. CALLER? guards a route for a
+\ person whose token holds the stated scope or an app APP! lists; PERSON? and
+\ CALLER-KEY say which it is.
 \ METADATA! names this server's protected-resource metadata
 \ (RFC 9728 5.1) and the scope its tokens need (RFC 6750 3) in each 401
 \ challenge, and RESOURCE-METADATA answers that metadata's GET (RFC 9728 3),
@@ -938,6 +939,12 @@ public
    {: name:str :}
    ANSWERING? 0= if s" " false exit then
    CLAIMS@ name NOTE$ ;
+
+\ The bearer token of the admitted request this worker answers, as presented;
+\ false outside one. The answer is borrowed from the request while it lives.
+: TOKEN$ ( -- str bool )
+   ANSWERING? 0= if s" " false exit then
+   SLOT PRESENTED @ SPAN:$ true ;
 
 \ Whether a claim of the admitted request this worker answers holds the
 \ name: a string claim as one of its space-separated words (RFC 6749 3.3
