@@ -69,7 +69,7 @@ public
 : BRANCH+ ( n n n -- n ) {: at:n to:n hole:n :}
    NBR @ {: k:n :}
    k 1 + BR-AT-RESERVE  k 1 + BR-TO-RESERVE  k 1 + BR-LEN-RESERVE
-   at k BR-AT !  to k BR-TO !  0 k BR-LEN !
+   at k BR-AT !  to k BR-TO !  0 k BR-LEN ARENA-CELL!
    k 1 + NBR !
    at hole + k INS+
    k ;

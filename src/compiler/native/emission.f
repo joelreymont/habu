@@ -187,7 +187,7 @@ ADDR-CODE constant ADDR-KIND-MAX
    off k CALL-OFF-BUF !
    kind k CALL-KIND-BUF !
    target k CALL-TGT-BUF !
-   impl k CALL-IMPL-BUF !
+   impl k CALL-IMPL-BUF ARENA-CELL!
    loc k CALL-LOC-BUF !
    k 1+ N-CALLS ! ;
 

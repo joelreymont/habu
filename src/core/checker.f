@@ -12227,7 +12227,7 @@ CHX-RESET
 
 : IDX-HEADS-CLEAR ( n -- ) {: tbl:n :}
    0 begin dup SYM-CAP < while
-      0 over tbl IDX-HEAD!
+      0 over tbl HIDX-CELL ARENA-CELL!
       1 +
    repeat drop ;
 
