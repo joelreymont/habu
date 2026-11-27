@@ -36,6 +36,7 @@ require src/lib/process.f
 require src/lib/process-command.f
 require src/lib/json/write.f
 require src/lib/json/value.f
+require src/lib/reason.f
 
 \ Test-image hooks: TEST-PREOPEN initializes START-READY first, so the real
 \ startup initializer rejects after the job queue has opened.
@@ -2876,6 +2877,23 @@ variable REJECTED-CODE
    HTTP:RUNNING? TFALSE ;
 
 
+: SAID ( str -- ) HTTP:E-WORKERS REASON:TEXT$ swap T$= ;
+
+\ A worker count outside 1 to MAX-WORKERS and an idle deadline under 1 ms are
+\ each rejected before anything opens, with the setting, its value and the fix.
+: SETTINGS-CASE ( -- )
+   [: LOOPBACK 0 0 IDLE-MS SERVE-ON ;] HTTP:E-WORKERS TTHROWSQ
+   s" HTTP:START's workers 0: expected 1 to 8; give how many request workers to run"
+   SAID
+   [: LOOPBACK 0 HTTP:MAX-WORKERS 1+ IDLE-MS SERVE-ON ;] HTTP:E-WORKERS TTHROWSQ
+   s" HTTP:START's workers 9: expected 1 to 8; give how many request workers to run"
+   SAID
+   [: LOOPBACK 0 ONE-WORKER 0 SERVE-ON ;] HTTP:E-WORKERS TTHROWSQ
+   s" HTTP:START's idle 0 ms: expected at least 1 ms; give how long a connection may stay silent, 1 ms or more"
+   SAID
+   HTTP:RUNNING? TFALSE ;
+
+
 40 constant BIG-DIRS
 80 constant LONG-NAMES
 $78 constant LONG-NAME-BYTES
@@ -3463,6 +3481,7 @@ $1388 constant SERVED-MS          \ a dial's deadline: far past the listener's p
    RES @ RES-CAP VEC:RESERVE
    NO-LOOP-CASE
    AIO:START
+   SETTINGS-CASE
    MAKE-STATIC
    INSTALL-ROUTES
    LATER-ROUTE

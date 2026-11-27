@@ -26,6 +26,7 @@ require src/lib/net/http-request.f
 require src/lib/net/http-response.f
 require src/lib/net/http-router.f
 require src/lib/time.f
+require src/lib/reason.f
 require src/lib/byte-buffer.f
 
 package HTTP
@@ -1429,6 +1430,17 @@ STRUCTURE config DERIVE addr
 ;STRUCTURE
 
 
+private
+
+\ Opens a reason `HTTP:START's <name> <value><unit>: expected `.
+: START-SETTING ( str n str -- ) {: name:str value:n unit:str :}
+   REASON:OPEN s" HTTP:START's " REASON:APPEND name REASON:APPEND
+   s"  " REASON:APPEND value FMT:INT$ REASON:APPEND unit REASON:APPEND
+   s" : " REASON:APPEND REASON:EXPECTED ;
+
+public
+
+
 \ Every hook and route is registered before START: a running server makes each
 \ hook and route word E-STATE, and a worker reads the route table unordered,
 \ while a word reaches a running task only through a channel that orders
@@ -1445,9 +1457,18 @@ STRUCTURE config DERIVE addr
    cfg HTTP-CONFIG:IDLE @ MS>N {: idle:n :}
    RUNNING @ 0 <> if E-STATE throw then
    AIO:RUNNING? 0= if E-AIO-STATE throw then
-   workers 1 < if E-WORKERS throw then
-   workers MAX-WORKERS > if E-WORKERS throw then
-   idle 1 < if E-WORKERS throw then
+   workers 1 < workers MAX-WORKERS > or if
+      s" workers" workers s" " START-SETTING
+      s" 1 to " REASON:APPEND MAX-WORKERS FMT:INT$ REASON:APPEND
+      REASON:FIX s" give how many request workers to run" REASON:APPEND
+      E-WORKERS REASON:STOP
+   then
+   idle 1 < if
+      s" idle" idle s"  ms" START-SETTING s" at least 1 ms" REASON:APPEND
+      REASON:FIX
+      s" give how long a connection may stay silent, 1 ms or more" REASON:APPEND
+      E-WORKERS REASON:STOP
+   then
    idle IDLE-MS !
    workers WORKER-COUNT !
    0 STOPPING !

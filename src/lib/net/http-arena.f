@@ -217,8 +217,6 @@ private
 \ an open that failed part way had taken: a header never opened is zero, which
 \ is a disposed one, and a vector never made is NULL.
 : ARENA-OPEN ( n -- ) {: workers:n :}
-   workers 1 < if E-WORKERS throw then
-   workers MAX-WORKERS > if E-WORKERS throw then
    workers 0 ?do
       SPAN-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN i CARVE
       0 i SEQ !
