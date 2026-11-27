@@ -8,10 +8,12 @@ require src/lib/fmt.f
 require src/lib/task.f
 require src/lib/fs.f
 require src/lib/ffi-abi.f
+require src/lib/heap.f
+require src/lib/vector.f
 
 package FS-ANCHORED-TEST
 
-16 SPAN-BUFFER: OUT
+TYPED-VARIABLE BUF ^VEC:vector<u8>
 create TMP FS:PATHZ-CAP allot
 variable TMP-U
 variable ANCHOR
@@ -75,11 +77,19 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    HB-TARGET-MACOS? if s" /dev/fd" else s" /proc/self/fd" then
    [: FD-ENTRY ;] FS-LIST:EACH
    OPEN-FDS @ ;
-: READ$ ( fd str -- n ) OUT FS:READ-FILE-AT ;
+: NEW-BYTES ( -- ^VEC:vector<u8> ) HEAP:ALLOCATOR 0 [type] u8 VEC:NEW ;
+\ BUF emptied, then holding the file; answers its count.
+: READ$ ( fd str -- n ) {: fd:fd path:str :}
+   BUF @ 0 VEC:RESIZE
+   fd path BUF @ FS:READ-FILE-AT
+   BUF @ VEC:COUNT ;
+\ BUF holding kept, ready for a read to append to.
+: KEPT ( -- ^VEC:vector<u8> )
+   BUF @ 0 VEC:RESIZE  s" kept" BUF @ VEC:APPEND  BUF @ ;
 : READ-CHECK ( fd str str -- )
    {: fd:fd path:str want:str :}
    fd path READ$ want STR:LEN T=
-   OUT want STR:LEN SPAN:TAKE SPAN:$ want T$= ;
+   BUF @ VEC:BYTES want T$= ;
 
 : READ-CHECK-CLOSE ( fd str str -- )
    {: fd:fd path:str want:str :}
@@ -91,6 +101,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    made FS:>PATHZ TMP FS:PATHZ-CAP SPAN:MAKE realpath {: actual:n :}
    actual 0 > TTRUE
    actual TMP-U !
+   NEW-BYTES BUF !
    ROOT FS:MAKE-DIR OUTSIDE FS:MAKE-DIR CHILD FS:MAKE-DIR DEEP FS:MAKE-DIR DOT-DIR FS:MAKE-DIR
    FILE s" original" FS:WRITE-ALL
    DEEP-FILE s" deep" FS:WRITE-ALL
@@ -107,11 +118,12 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    ROOT FS:OPEN-DIR {: root:fd :}
    root s" child" FS:OPEN-DIR-AT {: child:fd :}
    child s" file" s" original" READ-CHECK
-   child s" file" OUT 8 SPAN:TAKE FS:READ-FILE-AT 8 T=
-   OUT 8 SPAN:TAKE SPAN:$ s" original" T$=
+   BUF @ 0 VEC:RESIZE
+   child s" file" BUF @ FS:READ-FILE-AT
+   BUF @ VEC:BYTES s" original" T$=
    root s" child/deep/file" s" deep" READ-CHECK
    root s" child/.cache/a..b" s" dotted" READ-CHECK
-   root s" replacement" OUT 0 SPAN:TAKE FS:READ-FILE-AT 0 T=
+   root s" replacement" READ$ 0 T=
    child FS:CLOSE-DIR root FS:CLOSE-DIR
    ROOT FS:OPEN-DIR {: again:fd :}
    again s" child/file" s" original" READ-CHECK
@@ -133,8 +145,9 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    [: ANCHOR @ >FD s" child" STR:DATA -1 >str READ$ drop ;] E-FS-PATH TTHROWSQ
    [: ANCHOR @ >FD s\" bad\zname" READ$ drop ;] E-FFI-NUL TTHROWSQ
    [: ANCHOR @ >FD LONG PATH-CAP 1 + >str READ$ drop ;] E-FS-PATH TTHROWSQ
-   [: ANCHOR @ >FD s" child/file" OUT 7 SPAN:TAKE FS:READ-FILE-AT drop ;] E-FS-CAPACITY TTHROWSQ
-   [: ANCHOR @ >FD s" child/file" OUT 0 SPAN:TAKE FS:READ-FILE-AT drop ;] E-FS-CAPACITY TTHROWSQ
+   s" a read appends after the bytes the vector holds" T-LABEL
+   root s" child/file" KEPT FS:READ-FILE-AT
+   BUF @ VEC:BYTES s" keptoriginal" T$=
    FS:ERRNO 0 T=
    root s" child/file" s" original" READ-CHECK
    root s" child/.." FS:TRY-OPEN-DIR-AT FS:EINVAL NONE-WITH
@@ -158,6 +171,9 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    CHILD MOVED FS:RENAME-FILE
    OUTSIDE CHILD FS:MAKE-SYMLINK
    [: ANCHOR @ >FD s" child/file" READ$ drop ;] E-FS-OPEN TTHROWSQ
+   s" a failed read leaves the vector's count as it was" T-LABEL
+   [: ANCHOR @ >FD s" child/file" KEPT FS:READ-FILE-AT ;] E-FS-OPEN TTHROWSQ
+   BUF @ VEC:COUNT 4 T=
    child s" file" s" original" READ-CHECK
    child FS:CLOSE-DIR
    CHILD FS:REMOVE-FILE
@@ -206,9 +222,6 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
       root s" child/deep/absent" FS:TRY-OPEN-DIR-AT FS:ENOENT NONE-WITH
       s" a none from TRY-OPEN-DIR-AT closes its traversal" T-LABEL
       FD-COUNT before 1+ T=
-      [: ANCHOR @ >FD s" child/file" OUT 7 SPAN:TAKE FS:READ-FILE-AT drop ;] E-FS-CAPACITY TTHROWSQ
-      s" capacity rejection closes file descriptor" T-LABEL
-      FD-COUNT before 1+ T=
       root FS:CLOSE-DIR
       s" closing anchor restores descriptor inventory" T-LABEL
       FD-COUNT before T=
@@ -218,25 +231,26 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
 
 \ Two tasks walking at once each get a work area: a shared one makes a task
 \ read the other's file, throw, or close a descriptor the other holds.
-16 SPAN-BUFFER: OUT-A
-16 SPAN-BUFFER: OUT-B
+TYPED-VARIABLE OUT-A ^VEC:vector<u8>
+TYPED-VARIABLE OUT-B ^VEC:vector<u8>
 variable PAR-READY
 variable PAR-BAD
 2000 constant PAR-ITERS
 TASK:MIN-STACK TASK:TASK PAR-A
 TASK:MIN-STACK TASK:TASK PAR-B
 
-: PAR-ROUND ( str SPAN:span<u8> str -- ) {: p:str buf want:str :}
-   ANCHOR @ >FD p buf FS:READ-FILE-AT {: got:n :}
-   got want STR:LEN = if buf want STR:LEN SPAN:TAKE SPAN:$ want STR:= if exit then then
+: PAR-ROUND ( str ^VEC:vector<u8> str -- ) {: p:str buf:^ want:str :}
+   buf 0 VEC:RESIZE
+   ANCHOR @ >FD p buf FS:READ-FILE-AT
+   buf VEC:BYTES want STR:= if exit then
    1 PAR-BAD atomic-add drop ;
-: PAR-WORK ( str SPAN:span<u8> str -- ) {: p:str buf want:str :}
+: PAR-WORK ( str ^VEC:vector<u8> str -- ) {: p:str buf:^ want:str :}
    1 PAR-READY atomic-add drop
    begin PAR-READY atomic@ 2 < while TASK:PAUSE repeat
    PAR-ITERS 0 do p buf want PAR-ROUND loop
    0 TASK:RETURN ;
-: PAR-WORK-A ( -- ) s" child/file" OUT-A s" original" PAR-WORK ;
-: PAR-WORK-B ( -- ) s" child/deep/file" OUT-B s" deep" PAR-WORK ;
+: PAR-WORK-A ( -- ) s" child/file" OUT-A @ s" original" PAR-WORK ;
+: PAR-WORK-B ( -- ) s" child/deep/file" OUT-B @ s" deep" PAR-WORK ;
 : PAR-JOIN ( ^n -- )
    TASK:JOIN MATCH result
       ok OF 0 T= ENDOF
@@ -247,10 +261,12 @@ TASK:MIN-STACK TASK:TASK PAR-B
    ROOT FS:OPEN-DIR {: root:fd :}
    root FD>N ANCHOR !
    0 PAR-BAD !  0 PAR-READY !
+   NEW-BYTES OUT-A !  NEW-BYTES OUT-B !
    ['] PAR-WORK-A PAR-A TASK:ACTIVATE
    ['] PAR-WORK-B PAR-B TASK:ACTIVATE
    s" each walking task finishes" T-LABEL
    PAR-A PAR-JOIN PAR-B PAR-JOIN
+   OUT-A @ VEC:DELETE  OUT-B @ VEC:DELETE
    s" each walking task reads its own file" T-LABEL
    PAR-BAD @ 0 T=
    root FS:CLOSE-DIR
@@ -505,6 +521,6 @@ public
    T-RESET SETUP
    [: BASIC BAD-PATHS REPLACED TYPES ERRORS LEAKS PARALLEL
       SEARCH-ONLY NAMED FOLLOWS ;]
-   [: TMP$ FS:REMOVE-TREE ;] finally
+   [: BUF @ VEC:DELETE TMP$ FS:REMOVE-TREE ;] finally
    T-REPORT s" fs-anchored-test: ok" type cr ;
 ;package

@@ -18,20 +18,19 @@ require src/lib/task.f
 require src/lib/ffi-abi.f
 require src/lib/span.f
 require src/lib/string.f
+require src/lib/vector.f
 
 package FS
 private
 
 0 constant A-CUR-CELL
 1 constant A-NEXT-CELL
-2 constant A-RESULT-CELL
-3 cells constant A-PATH-OFF
+2 cells constant A-PATH-OFF
 \ libc struct stat has cell alignment, independently of the byte path's length.
 A-PATH-OFF PATHZ-CAP + CELL 1- + CELL negate and constant A-STAT-OFF
-A-STAT-OFF STAT-CAP + constant A-PROBE-OFF
-A-PROBE-OFF 1 + constant A-WORK-BYTES
-\ The work area: the descriptor cells cleanup closes, the path snapshot, the
-\ stat buffer and the probe byte.
+A-STAT-OFF STAT-CAP + constant A-WORK-BYTES
+\ The work area: the descriptor cells cleanup closes, the path snapshot and the
+\ stat buffer.
 A-WORK-BYTES TASK:+USERS A-WORK-ROW u8
 4 constant A-INTERRUPTED
 
@@ -47,12 +46,11 @@ FUNCTION: A-CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 : A-NEXT! ( n ^u8 -- ) A-NEXT-CELL A-SLOT ! ;
 : A-PATH-BUF ( ^u8 -- ^u8 ) A-PATH-OFF + ;
 : A-STAT-BUF ( ^u8 -- ^u8 ) A-STAT-OFF + ;
-: A-PROBE-BUF ( ^u8 -- ^u8 ) A-PROBE-OFF + ;
 
 \ No walk calls another, so one area per task serves every walk it makes.
 : A-WORK ( -- ^u8 )
    0 A-WORK-ROW {: work:^ :}
-   -1 work A-CUR! -1 work A-NEXT! 0 work A-RESULT-CELL A-SLOT !
+   -1 work A-CUR! -1 work A-NEXT!
    work ;
 
 \ close(2) can have retired a descriptor even on failure. Clear its slot first.
@@ -208,28 +206,35 @@ FUNCTION: A-CLOSE-CALL close ( n -- i32 ) ;FUNCTION
       got 0 >= if got exit then
       FFI:ERRNO dup A-INTERRUPTED = if drop else CAUSE! E-FS-IO throw then
    again ;
-: A-READ-CONTENT ( ^u8 SPAN:span<u8> -- n ) {: work:^ dst :}
-   dst SPAN:$ {: out:str :}
-   out STR:DATA {: output:^ :}
-   out STR:LEN {: cap:n :}
-   0 begin dup cap < while
+\ The bytes read into the room until it fills or read answers 0, and whether
+\ read answered 0.
+: A-READ-FILL ( ^u8 str -- n bool ) {: work:^ room:str :}
+   0 begin dup room STR:LEN < while
       {: done:n :}
-      work output done + cap done - A-READ-STEP {: got:n :}
-      got 0= if done exit then
-      got cap done - > if E-FS-IO throw then
+      work room STR:DATA done + room STR:LEN done - A-READ-STEP {: got:n :}
+      got 0= if done true exit then
+      got room STR:LEN done - > if E-FS-IO throw then
       done got +
-   repeat drop
-   work work A-PROBE-BUF 1 A-READ-STEP {: extra:n :}
-   extra 0 > if E-FS-CAPACITY throw then
-   cap ;
-: A-READ-RUN ( fd str SPAN:span<u8> ^u8 -- fd str SPAN:span<u8> ^u8 )
-   {: anchor:fd src:str dst work:^ :}
+   repeat false ;
+\ The first room is fstat's size and a byte for EOF's probe. A file grown since
+\ fills it; each next room is all the read has taken, so the rooms double.
+: A-READ-CONTENT ( ^u8 ^VEC:vector<u8> -- ) {: work:^ v:^ :}
+   v VEC:COUNT {: base:n :}
+   work A-STAT-BUF LIBC-SIZE@ 1 + begin
+      {: room:n :}
+      v VEC:COUNT {: at:n :}
+      work v room VEC:EXTEND SPAN:$ A-READ-FILL {: got:n ended:bool :}
+      ended if v at got + VEC:RESIZE exit then
+      v VEC:COUNT base -
+   again ;
+: A-READ-RUN ( fd str ^VEC:vector<u8> ^u8 -- fd str ^VEC:vector<u8> ^u8 )
+   {: anchor:fd src:str v:^ work:^ :}
    src work A-SNAPSHOT {: path:^ :}
    path src STR:LEN >str false A-VALIDATE {: start:n :}
    path src STR:LEN >str start work anchor FD>N true A-WALK
    work A-REGULAR
-   work dst A-READ-CONTENT work A-RESULT-CELL A-SLOT !
-   anchor src dst work ;
+   work v A-READ-CONTENT
+   anchor src v work ;
 
 \ openat's flags for OPEN-DIR-FOLLOW, without O_NOFOLLOW. Darwin: O_SEARCH
 \ (O_EXEC $40000000 with O_DIRECTORY)|O_CLOEXEC, xnu bsd/sys/fcntl.h. Linux:
@@ -279,20 +284,23 @@ public
    code 0= if 0 CAUSE! opened >FD OPTION:SOME exit then
    code cause A-DIR-CAUSE CAUSE!
    OPTION:NONE ;
-\ Reads the descriptor fstat found regular (else E-FS-STAT), probing one byte
-\ past a full span (excess is E-FS-CAPACITY); the span is unspecified after a
-\ throw.
-: READ-FILE-AT ( fd str SPAN:span<u8> -- n )
-   {: anchor:fd src:str dst :}
+\ Appends the regular file the walk reaches to the vector, read until read
+\ answers 0. A file not regular is E-FS-STAT, a failed open or read E-FS-OPEN or
+\ E-FS-IO with its errno in FS:ERRNO, a vector that cannot grow its own code;
+\ after a throw the vector holds what it held before.
+: READ-FILE-AT ( fd str ^VEC:vector<u8> -- )
+   {: anchor:fd src:str v:^ :}
    COMPILE-READS:MISS
    0 CAUSE!
+   v VEC:COUNT {: old:n :}
    A-WORK {: work:^ :}
-   anchor src dst work [: A-READ-RUN ;] catch {: code:n :}
+   anchor src v work [: A-READ-RUN ;] catch {: code:n :}
    drop drop drop drop
    ERRNO {: cause:n :}
-   work A-RESULT-CELL A-SLOT @ {: got:n :}
-   work code cause A-FINISH
-   got ;
+   work code cause A-SETTLE {: failed:n why:n :}
+   failed 0<> if v old VEC:RESIZE then
+   why CAUSE!
+   failed 0<> if failed throw then ;
 : CLOSE-DIR ( fd -- )
    0 CAUSE!
    FD>N A-CLOSE-CALL 0<> if E-FS-IO ERRNO-FAIL then ;

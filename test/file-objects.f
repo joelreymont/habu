@@ -1938,11 +1938,13 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 : WRITE-ANCHORED ( -- )
    L$ s" anchored" NEST-DIR FS:JOIN-PATH NEST-DIR-U !  NEST-DIR NEST-DIR-U @ >str FS:MAKE-DIR
    s" 1" WRITE-DATA
-   s\" require src/lib/fs-anchored.f\npackage FILE-OBJECTS-ANCHORED\n1 SPAN-BUFFER: B\n" SRC+
+   s\" require src/lib/fs-anchored.f\nrequire src/lib/heap.f\nrequire src/lib/vector.f\n" SRC+
+   s\" package FILE-OBJECTS-ANCHORED\n" SRC+
    s\" : READ-D ( -- n ) s\" " SRC+
    NEST-DIR NEST-DIR-U @ >str FS:>PATHZ NEST-PATH PATH-CAP SPAN:MAKE realpath {: real:n :}
    NEST-PATH real >str SRC+
-   s\" \" FS:OPEN-DIR {: d:fd :} d s\" d.txt\" B FS:READ-FILE-AT d FS:CLOSE-DIR ;\n" SRC+
+   s\" \" FS:OPEN-DIR {: d:fd :} HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: v:^ :}\n" SRC+
+   s\"   d s\" d.txt\" v FS:READ-FILE-AT d FS:CLOSE-DIR v VEC:COUNT v VEC:DELETE ;\n" SRC+
    s\" public READ-D constant K ;package\n" SRC+  s" f.f" NEST-WRITE
    s" f.f" REQUIRE+  s\" : MAIN ( -- ) FILE-OBJECTS-ANCHORED:K . ;\n" SRC+  s" main.f" NEST-WRITE ;
 
