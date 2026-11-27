@@ -348,6 +348,29 @@ STRUCTURE node-test DERIVE addr
    FIELD test ^rel
 ;STRUCTURE
 
+\ A walk's triple, the end it starts from (seed) and the end it reaches
+\ (far); its CTEs are named name and a letter.
+STRUCTURE walk DERIVE addr
+   FIELD node n
+   FIELD seed n
+   FIELD far n
+   FIELD inverse bool
+   FIELD rest bool
+   FIELD op str
+   FIELD operand n
+   FIELD name str
+   FIELD pairs ^rel  \ the steps' table
+   FIELD once bool  \ pairs is a CTE
+   FIELD start n  \ the form of the steps' first end
+   FIELD end n  \ the form of the steps' second end
+   FIELD rooted bool  \ the steps hold an, the start's columns of the end's root
+   FIELD held bool  \ the seed is a given term only an may hold
+   FIELD kind n  \ the seeds' form
+   FIELD ctes ^ctes
+   FIELD shared bool  \ its CTEs are the statement's
+   FIELD graph str  \ a shared walk's active graph
+;STRUCTURE
+
 \ An expression is written to out and reads the bindings in scope and the
 \ aggregates.
 STRUCTURE plan DERIVE addr
@@ -370,6 +393,9 @@ STRUCTURE plan DERIVE addr
    FIELD constant known-term  \ NODE-KNOWN's, refilled by each call
    FIELD sets ^VEC:vector<node-set>  \ the node CTEs written, one per graph
    FIELD tests ^VEC:vector<node-test>  \ built, one per graph and key kind
+   \ The shared walks written, none equal to another: a walk read several
+   \ times, or on each outer row of a subquery, is computed once.
+   FIELD walks ^VEC:vector<^walk>
    FIELD texts ^texts  \ the statement's copied text
    FIELD writer ^JSON:writer
    \ While CONNECT orders a run, the variables each solution has.
@@ -3787,27 +3813,6 @@ STRUCTURE pruning DERIVE addr
    then
    plan it r JOIN-STEP ;
 
-\ A walk's triple, the end it starts from (seed) and the end it reaches
-\ (far); its CTEs are named name and a letter.
-STRUCTURE walk DERIVE addr
-   FIELD node n
-   FIELD seed n
-   FIELD far n
-   FIELD inverse bool
-   FIELD rest bool
-   FIELD op str
-   FIELD operand n
-   FIELD name str
-   FIELD pairs ^rel  \ the steps' table
-   FIELD once bool  \ pairs is a CTE
-   FIELD start n  \ the form of the steps' first end
-   FIELD end n  \ the form of the steps' second end
-   FIELD rooted bool  \ the steps hold an, the start's columns of the end's root
-   FIELD held bool  \ the seed is a given term only an may hold
-   FIELD kind n  \ the seeds' form
-   FIELD ctes ^ctes
-;STRUCTURE
-
 : SEED! ( ^walk n n bool bool -- )
    {: w:^ seed:n far:n inverse:bool rest:bool :}
    seed w WALK-SEED ! far w WALK-FAR !
@@ -3840,7 +3845,6 @@ STRUCTURE walk DERIVE addr
    state path TEXT$ w WALK-OP !
    state path NODE-A@ w WALK-OPERAND !
    plan NEXT-ALIAS w WALK-NAME !
-   plan AL NEW-CTES w WALK-CTES !
    state triple NODE-A@ {: s:n :} state triple NODE-C@ {: o:n :}
    plan s GIVEN? if w s o false false SEED! w exit then
    plan o GIVEN? if w o s true false SEED! w exit then
@@ -3899,16 +3903,19 @@ STRUCTURE walk DERIVE addr
       state node NODE-A@
    again ;
 
-\ The steps' table, one rel each use holds as a child: the query, or,
-\ when the operand has a walk in it, CTE nameP of it. A lookup cannot
-\ reach into that walk, so each step would walk it again, and its text,
-\ written for each use, would grow exponentially with nesting.
+\ Sets the steps' query as the walk's pairs, until PAIRS-CTE.
 : PAIRS! ( ^plan ^walk ^rel -- )
    {: plan w:^ t:^ :}
    plan TREE w WALK-OPERAND @ WALKED? w WALK-ONCE !
-   w WALK-ONCE @ 0= if t w WALK-PAIRS ! exit then
+   t w WALK-PAIRS ! ;
+
+\ Makes the walk's pairs CTE nameP when its operand has a walk in it, which
+\ each step would otherwise walk again, its text growing exponentially.
+: PAIRS-CTE ( ^plan ^walk -- )
+   {: plan w:^ :}
+   w WALK-ONCE @ 0= if exit then
    plan w s" p" WALK-CTE-NAME {: n:str :}
-   plan AL plan PLAN-CTES @ n true t +CTE
+   plan AL plan PLAN-CTES @ n true w WALK-PAIRS @ +CTE
    plan TEXTS n TEXT-REL w WALK-PAIRS ! ;
 
 \ The columns of the end's root that b, a binding of the steps' start,
@@ -4360,7 +4367,7 @@ STRUCTURE walk DERIVE addr
       plan w plan w s" s" WALK-CTE-NAME plan kind s" k" VALUE
          plan kind s" k" VALUE form v +PART drop
    then
-   w WALK-REST @ 0= if w v RECURSIVE! then
+   w WALK-REST @ w WALK-SHARED @ or 0= if w v RECURSIVE! then
    plan v PARENS cols ;
 
 \ r, reading nameR joined with the walk, becomes one derived table under
@@ -4374,15 +4381,70 @@ STRUCTURE walk DERIVE addr
    plan NEW-SQL {: from:^ :}
    from plan NEW-SQL plan out cols from +TABLE r INIT-RELATION ;
 
+\ Whether the walk reads no outer binding: it has no rest and an empty
+\ substitution, so its seed is a constant or not given.
+: SHAREABLE? ( ^plan ^walk -- bool )
+   {: plan w:^ :}
+   w WALK-REST @ if false exit then
+   plan PLAN-OUTER @ BINDS-ANY? 0= ;
+
+\ Whether paths a and b are one path: one operator over equal operands, or
+\ one term, which the query holds once.
+: SAME-PATH? ( ^syntax n n -- bool )
+   {: state a:n b:n :}
+   a b = if true exit then
+   a 0= b 0= or if false exit then
+   state a NODE-K {: k:n :}
+   state b NODE-K k <> if false exit then
+   k N-PATH = if
+      state a TEXT$ state b TEXT$ STR:= 0= if false exit then
+   else k N-LIST <> if false exit then then
+   state state a NODE-A@ state b NODE-A@ RECURSE 0= if false exit then
+   state state a NODE-B@ state b NODE-B@ RECURSE ;
+
+\ Whether shared walks a and b write one nameP, nameS and nameW, names
+\ aside: one walk from one seed, a constant or none, in one graph.
+: SAME-WALK? ( ^plan ^walk ^walk -- bool )
+   {: plan a:^ b:^ :}
+   plan TREE {: state :}
+   a WALK-OP @ b WALK-OP @ STR:= 0= if false exit then
+   a WALK-INVERSE @ b WALK-INVERSE @ xor if false exit then
+   a WALK-GRAPH @ b WALK-GRAPH @ STR:= 0= if false exit then
+   a WALK-SEED @ {: x:n :} b WALK-SEED @ {: y:n :}
+   x y = state x VARIABLE? state y VARIABLE? and or 0= if false exit then
+   state a WALK-OPERAND @ b WALK-OPERAND @ SAME-PATH? ;
+
+\ Whether the shared walk is equal to one written before; if so, it takes
+\ that one's CTE names and the forms its answer reads.
+: SHARE ( ^plan ^walk -- bool )
+   {: plan w:^ :}
+   plan PLAN-GRAPH @ w WALK-GRAPH !
+   plan PLAN-WALKS @ {: ws:^ :}
+   ws VEC:COUNT 0 ?do
+      ws i VEC:AT @ {: e:^ :}
+      plan e w SAME-WALK? if
+         e WALK-NAME @ w WALK-NAME ! e WALK-KIND @ w WALK-KIND !
+         e WALK-START @ w WALK-START ! e WALK-END @ w WALK-END !
+         true unloop exit
+      then
+   loop false ;
+
 \ Joins to r the walk at index at in items, of a run ending before index to,
 \ its ends meeting the substitution; r then drops the variables SETTLED by it.
 : WALK-STEP ( ^plan ^VEC:vector<item> n n ^relation -- )
    {: plan items:^ at:n to:n r:^ :}
    plan items at VEC:AT ITEM-NODE @ r NEW-WALK {: w:^ :}
-   plan w STEPS
-   w WALK-REST @ if plan w r REST then
-   plan items at to w r SEEDS
-   plan w WALK-CTE
+   plan w SHAREABLE? w WALK-SHARED !
+   w WALK-SHARED @ if plan PLAN-CTES @ else plan AL NEW-CTES then
+      w WALK-CTES !
+   w WALK-SHARED @ if plan w SHARE else false then 0= if
+      plan w STEPS
+      plan w PAIRS-CTE
+      w WALK-REST @ if plan w r REST then
+      plan items at to w r SEEDS
+      plan w WALK-CTE
+      w WALK-SHARED @ if w plan PLAN-WALKS @ VEC:PUSH ! then
+   then
    plan w ANSWER {: t:^ cols:^ :}
    plan t cols SUBSTITUTED {: a:^ :}
    r RELATION-FROM @ {: from:^ :}
@@ -5641,7 +5703,8 @@ STRUCTURE walk DERIVE addr
    loop v s" )" +SQL
    plan AL s" t0" false v NEW-CTE ;
 
-\ The statement: t0 and the plan's CTEs, then the query's text.
+\ The statement: t0 and the plan's CTEs, then the query's text; its WITH
+\ is recursive when a shared walk wrote CTEs there.
 : STATEMENT ( ^plan -- ^rel )
    {: plan :}
    plan TREE {: state :}
@@ -5652,6 +5715,7 @@ STRUCTURE walk DERIVE addr
    else plan query r ASK-SQL then {: t:^ :}
    plan +TYPES {: t0:^ :}
    plan PLAN-CTES @ CTES-FIRST @ t0 CTE-NEXT !
+   plan PLAN-WALKS @ VEC:COUNT 0<> if true t REL-RECURSIVE ! then
    t0 t REL-WITH ! t ;
 
 \ Appends the query's statement to the vector, counted first so the arena
@@ -5674,6 +5738,7 @@ STRUCTURE walk DERIVE addr
    strings state SYNTAX-ARENA @ INTERNS-INIT
    al 0 [type] node-set VEC:NEW plan PLAN-SETS !
    al 0 [type] node-test VEC:NEW plan PLAN-TESTS !
+   al 0 [type] ^walk VEC:NEW plan PLAN-WALKS !
    al 0 [type] bool VEC:NEW plan PLAN-BOUND !
    INDEXES plan PLAN-FRESH !
    al NEW-CURSORS plan PLAN-CURSORS !
