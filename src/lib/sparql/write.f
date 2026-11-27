@@ -50,8 +50,7 @@ STRUCTURE sink DERIVE addr
    p r REL-LAST @ = if NULL-PTR else p PIECE-NEXT @ then ;
 
 \ The rel's WITH and a space when it has CTEs, its pieces, each its text
-\ then its child, its open text; one word writes CTE bodies and child rels,
-\ since either may hold the other.
+\ then its child, and its open text; CTE bodies and children nest either way.
 : WRITE-REL ( ^sink ^rel -- )
    {: k:^ r:^ :}
    r REL-WITH @ begin dup NULL-PTR <> while
@@ -115,9 +114,8 @@ STRUCTURE sink DERIVE addr
 : STR-TAKE ( str n -- str )
    {: s:str k:n :} s STR:DATA k SPAN:MAKE SPAN:$ ;
 
-\ Where in its rel a cursor stands: its CTE's separator, name, AS or
-\ body, the space after the WITH, its piece's text or child, the open
-\ text.
+\ Where in its rel a cursor stands: its CTE's separator, name, AS or body,
+\ the space after the WITH, its piece's text or child, the open text.
 ENUM part sep name as body space text child open ;ENUM
 
 \ A rel a cursor is inside: the part it stands at, of the CTE or piece

@@ -2471,9 +2471,8 @@ STRUCTURE pruning DERIVE addr
    loop
    s 0 ?do list i VEC:AT scope i VEC:AT MOVE-BINDING loop ;
 
-\ Meets the optional list into r's bindings as MEET-ALL does. A list
-\ longer than the scope is consumed: r adopts it, the scope's bindings
-\ first and the list's others after them, as MEET-ALL would append them.
+\ Meets the optional list into r's bindings as MEET-ALL does; a list longer
+\ than the scope is consumed: r adopts it, the scope's bindings first.
 : ADOPT-ALL ( ^plan ^relation ^VEC:vector<binding> ^rel -- )
    {: plan r:^ list:^ where:^ :}
    r RELATION-BINDINGS @ {: scope:^ :}
@@ -2498,9 +2497,8 @@ STRUCTURE pruning DERIVE addr
       cols i VEC:AT {: c:^ :} plan c alias c SET-COLUMN
    loop plan r cols on ADOPT-ALL ;
 
-\ Joins the derived table into r, each column met into r's bindings
-\ through the plan's column binding, never rewritten in place: LATE reads
-\ the item's columns again. r then drops the variables SETTLED by it.
+\ Joins the derived table into r and drops the variables it SETTLED. Each
+\ column meets through the plan's column binding: the item's stay for LATE.
 : JOIN-TABLE ( ^plan ^rel ^VEC:vector<binding> ^relation -- )
    {: plan t:^ cols:^ r:^ :}
    r RELATION-BINDINGS @ {: scope:^ :}
@@ -3330,9 +3328,8 @@ STRUCTURE pruning DERIVE addr
    from s"  CROSS JOIN " +SEP
    plan it ITEM-TABLE @ it ITEM-COLUMNS @ r JOIN-TABLE ;
 
-\ Appends the OPTIONAL's table to r's FROM, its columns meeting r's
-\ bindings in on: a group as it is in parentheses, its WHERE in on, else
-\ a derived table.
+\ Appends the OPTIONAL's table to r's FROM, its columns meeting r's bindings
+\ in on: a group in parentheses, its WHERE in on, else a derived table.
 : +OPTIONAL-TABLE ( ^plan ^item ^relation ^rel -- )
    {: plan it:^ r:^ on:^ :}
    it ITEM-WHERE @ {: where:^ :}
@@ -3456,9 +3453,8 @@ STRUCTURE pruning DERIVE addr
    plan out ucols from +TABLE {: bound:^ :}
    from plan NEW-SQL bound r INIT-RELATION ;
 
-\ LeftJoin: P LEFT JOINs the FROM, ON P meeting the scope and P's
-\ FILTERs on the joined bindings, unless it joins BY-BRANCH. An empty
-\ FROM is one empty row.
+\ LeftJoin: P LEFT JOINs the FROM, ON P meeting the scope and P's FILTERs,
+\ unless it joins BY-BRANCH. An empty FROM is one empty row.
 : OPTIONAL-STEP ( ^plan ^item ^relation -- )
    {: plan it:^ r:^ :}
    it r RELATION-BINDINGS @ BY-BRANCH? if plan it r BY-BRANCH exit then
@@ -3589,12 +3585,8 @@ STRUCTURE pruning DERIVE addr
    state test s" BOUND" CALL-IS? 0= if -1 exit then
    plan state state test NODE-A@ NODE-A@ FOUND-VAR ;
 
-\ Whether expression e over r's bindings always has a value, variable
-\ given counted bound (-1 for none): a constant, a variable r binds
-\ always, a COALESCE with an argument that does, STR of one where the
-\ store holds no blank node, whose STR is NULL, IF(BOUND(?v), a, b)
-\ where b does and a does with ?v counted bound, or an aggregate that is
-\ always bound.
+\ Whether expression e over r's bindings always has a value, variable given
+\ counted bound (-1 for none); STR of a blank node is NULL.
 : SURE-GIVEN? ( ^plan ^relation n n -- bool )
    {: plan r:^ e:n given:n :}
    plan TREE {: state :}
@@ -3637,9 +3629,8 @@ STRUCTURE pruning DERIVE addr
    v s" (" +SQL v x +REL v s" )" +SQL
    r RELATION-BINDINGS @ var GENERIC v s" " BIND ;
 
-\ Node n's children, 0 for none: three walked on their own and the one the
-\ walk goes on to, a list's tail, else child a, a chain's long side. A term
-\ has no parts.
+\ Node n's children, 0 for none: three walked on their own, then the one the
+\ walk goes on to: a list's tail, else a chain's long side, child a.
 : NODE-PARTS ( ^syntax n -- n n n n )
    {: state node:n :}
    state node NODE-K {: kind:n :}
@@ -3949,10 +3940,8 @@ STRUCTURE walk DERIVE addr
       v s"  AS an" +SQL
    then v r +FROM-WHERE ;
 
-\ The walk's steps `(SELECT a, b[, an] ...)`, the operand from fresh a to b,
-\ b to a when inverse, and their forms; an is a's columns of native b's
-\ root. Where the steps are a union that holds an, each branch selects its
-\ own an, a UNION ALL.
+\ The walk's steps `(SELECT a, b[, an] ...)`, fresh a to b, b to a when
+\ inverse; an is a's columns of native b's root, each union branch its own.
 : STEPS ( ^plan ^walk -- )
    {: plan w:^ :}
    plan TREE {: state :}
@@ -3991,9 +3980,8 @@ STRUCTURE walk DERIVE addr
    from plan NEW-SQL plan plan TEXTS n TEXT-REL cols from +TABLE
    r INIT-RELATION ;
 
-\ Appends to the rel the given end's value as k, native where it has a
-\ shape; a KNOWN term stays one, so `*` and `?` answer it as their own
-\ end even where no shape's `in` takes it.
+\ Appends the given end's value as k, native where it has a shape. A KNOWN
+\ term stays one: `*` and `?` answer it even where no shape's `in` takes it.
 : GIVEN-SEEDS ( ^plan ^walk ^rel -- )
    {: plan w:^ v:^ :}
    plan w WALK-SEED @ GIVEN {: b:^ :}
@@ -4136,8 +4124,7 @@ STRUCTURE walk DERIVE addr
    plan state triple NODE-C@ var VAR-IS? or ;
 
 \ Whether an item of the walk's graph binds var to a node there: one before
-\ index at, or a joined triple before to, which the run joins too, so a
-\ solution whose var is no node there drops out.
+\ index at, or a joined triple before to, which the run joins too.
 : NODE? ( ^plan ^VEC:vector<item> n n n -- bool )
    {: plan items:^ var:n at:n to:n :}
    items at VEC:AT ITEM-GRAPH @ {: graph:str :}
@@ -4209,9 +4196,8 @@ STRUCTURE walk DERIVE addr
    else v plan start SHAPE@ SHAPE-IN @ s" p.b" +CALL then
    v s"  AS n" +SQL ;
 
-\ The condition that a step's pairs p start at at, the seed or the end:
-\ p.an = at, columns an index serves, where the steps hold an and at's
-\ shape is of the end's root, else p.a, a term built per pair, meets at.
+\ A step's pairs p start at at: `p.an = at`, which an index serves, where
+\ the steps hold an and at's shape is of the end's root, else p.a meets at.
 : STEP-FROM ( ^plan ^walk ^binding -- ^rel )
    {: plan w:^ at:^ :}
    w WALK-END @ {: end:n :}
@@ -4694,10 +4680,8 @@ STRUCTURE walk DERIVE addr
    {: plan it:^ r:^ :}
    it plan r BOUND-NOW SHARES? 0= ;
 
-\ Folds items from..to, a maximal run of joined items and walks, in
-\ connected order. Before a driver UNLINKED? holds of, each walk with
-\ an end r binds always folds: it seeds from r before the driver
-\ multiplies r's rows. LATE folds the unions and the walks left.
+\ Folds the run from..to in connected order. A walk with an end r binds
+\ always folds before a driver UNLINKED? holds of, which multiplies r's rows.
 : RUN ( ^plan ^VEC:vector<item> n n ^relation -- )
    {: plan items:^ from:n to:n r:^ :}
    plan items from to r CONNECT
@@ -4713,11 +4697,8 @@ STRUCTURE walk DERIVE addr
    loop {: folded:^ :}
    plan items from to folded r LATE ;
 
-\ The items folded run by run, a run's unions and walks after its other
-\ joined items, a walk with an end bound before a joined item sharing
-\ none of the variables bound: joins commute, and a union's keys read
-\ those other items; a left join, a minus and an Extend read the
-\ solutions so far.
+\ Folds the items run by run: joins commute; a left join, a minus and an
+\ Extend read the solutions so far, so each ends a run.
 : FOLD-ALL ( ^plan ^VEC:vector<item> ^relation ^VEC:vector<n>
       -- )
    {: plan items:^ r:^ filters:^ :}
@@ -4910,9 +4891,8 @@ STRUCTURE walk DERIVE addr
    state e NODE-K N-VAR <> if true exit then
    seen plan e VAR SEEN? 0= ;
 
-\ The keys of list n's ORDER BY conditions over r, `,`-joined, each
-\ `sparql.order(term)` and DESC where written. A variable an earlier key
-\ sorts by adds none: rows that tie on that key hold one value for it.
+\ List n's ORDER BY keys over r, `,`-joined. A variable an earlier key sorts
+\ by adds none: rows that tie on that key hold one value for it.
 : CONDITION-KEYS ( ^plan ^relation n -- ^rel )
    {: plan r:^ list:n :}
    plan TREE {: state :}
@@ -5601,10 +5581,8 @@ STRUCTURE walk DERIVE addr
    plan PLAN-CTES @ CTES-FIRST @ t0 CTE-NEXT !
    t0 t REL-WITH ! t ;
 
-\ Appends the parsed query's statement on the store to the vector and
-\ passes its parameters' texts in order, each valid until the quotation
-\ returns. The statement is counted, the vector reserved for it, and
-\ written there: the arena holds no copy.
+\ Appends the query's statement to the vector, counted first so the arena
+\ holds no copy; each parameter's text is valid until the quotation returns.
 : EMIT ( ^syntax ^store ^VEC:vector<u8> [ str -- ] -- )
    {: state store:^ sql:^ params :}
    state SYNTAX-ARENA @ ARENA:ALLOCATOR {: al:^ :}

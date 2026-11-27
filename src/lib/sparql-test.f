@@ -977,9 +977,8 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
 
 : CONSTANTS ( -- ) [: CONSTANTS-IN ;] ARENA:WITH ;
 
-\ A binding object of more variables than one PostgreSQL call takes, all
-\ bound, or all but the first unbound; a `*` fixes no order of its names.
-\ The node sources alone keep each pattern to one read.
+\ More variables than one call takes, all bound or all but the first not; a
+\ `*` fixes no order. The node sources alone keep each pattern to one read.
 : WIDE ( -- )
    s" ," s" " 51 51 [: WIDE-IN ;] ARENA:WITH
    s"  OPTIONAL { t:5 rdfs:label " s"  }" 101 1 [: WIDE-IN ;] ARENA:WITH ;
@@ -1089,9 +1088,8 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
       some OF IDX>N ENDOF
    ;MATCH ;
 
-\ `?s t:30 ?w`, a long BIND and the filters: the statement holds the
-\ test of `?w < 100` inside the BIND's CTE alone; the document, and
-\ where the CTE ends.
+\ `?s t:30 ?w`, a long BIND and the filters: `?w < 100` is tested inside
+\ the BIND's CTE alone; answers the statement, the document, the CTE's end.
 : FENCED ( str ^ARENA:arena -- ^VEC:vector<u8> ^VEC:vector<u8> n )
    {: filters:str a:^ :}
    a TEXT-VEC {: q:^ :}

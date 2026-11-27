@@ -195,9 +195,8 @@ STRUCTURE ctes DERIVE addr
 \ linking it as a text piece makes.
 : LONG? ( ^rel -- bool ) REL-LEN @ [type] piece width>n 2 * > ;
 
-\ Appends the child's text: a leaf's open text, with its copies, copied
-\ unless LONG?, else as a text piece of its bytes, which never move; any
-\ other rel as a piece, which nothing may append to afterwards.
+\ Appends the child's text: a leaf's open text copied, or linked when LONG?,
+\ with its copies; any other rel as a piece nothing may append to afterwards.
 : +SPLICE ( ^rel ^rel -- )
    {: r:^ c:^ :}
    c LEAF? 0= if r c +REL exit then

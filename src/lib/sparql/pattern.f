@@ -16,8 +16,8 @@ private
 \ A run's value is its last list cell.
 22 constant N-OBJECTS
 \ A collection's members: a their list, b rdf:first, c rdf:rest, d rdf:nil
-\ when the collection ends here. A member's list cell holds its blank
-\ node's serial in value and in d the next member's, 0 for rdf:nil.
+\ when the collection ends here. A member's list cell holds its blank node's
+\ serial in value and the next member's blank node in d, 0 for rdf:nil.
 23 constant N-COLLECTION
 defer PATH ( ^syntax n bool -- n )
 defer GRAPH-NODE ( ^syntax [ ^syntax -- bool ] -- n )
