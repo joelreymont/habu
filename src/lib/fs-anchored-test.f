@@ -201,6 +201,15 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" an entry that is not a regular file is none with errno 0" T-LABEL
    root s" child" FS:TRY-OPEN-FILE-AT 0 NONE-WITH
    root s" fifo" FS:TRY-OPEN-FILE-AT 0 NONE-WITH
+   s" OPEN-FILE-AT throws READ-FILE-AT's codes" T-LABEL
+   root s" child/file" FS:OPEN-FILE-AT {: f:fd :}
+   f SIZE 8 T=  f FS:CLOSE-DIR
+   [: root s" child/.." FS:OPEN-FILE-AT drop ;] E-FS-PATH TTHROWSQ
+   [: root s\" bad\zname" FS:OPEN-FILE-AT drop ;] E-FFI-NUL TTHROWSQ
+   [: root s" child" FS:OPEN-FILE-AT drop ;] E-FS-STAT TTHROWSQ
+   FS:ERRNO 0 T=
+   [: root s" child/missing" FS:OPEN-FILE-AT drop ;] E-FS-OPEN TTHROWSQ
+   FS:ERRNO FS:ENOENT T=
    root FS:CLOSE-DIR ;
 
 : ERRORS ( -- )

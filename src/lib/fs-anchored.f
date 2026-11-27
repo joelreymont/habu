@@ -313,8 +313,14 @@ public
    failed 0<> if v old VEC:RESIZE then
    why CAUSE!
    failed 0<> if failed throw then ;
-\ READ-FILE-AT's walk and regular check without the read: none where it throws,
-\ FS:ERRNO as it sets it (0 for an entry not regular) or EINVAL for a rejection.
+\ READ-FILE-AT's walk and regular check without the read, with its codes.
+: OPEN-FILE-AT ( fd str -- fd )
+   true A-OPEN-AT {: opened:n code:n cause:n :}
+   cause CAUSE!
+   code 0<> if code throw then
+   opened >FD ;
+\ OPEN-FILE-AT's walk: none where it throws, FS:ERRNO as it sets it (0 for an
+\ entry not regular) or EINVAL for a rejection.
 : TRY-OPEN-FILE-AT ( fd str -- option<fd> )
    true A-OPEN-AT {: opened:n code:n cause:n :}
    code 0= if 0 CAUSE! opened >FD OPTION:SOME exit then
