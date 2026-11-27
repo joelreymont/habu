@@ -187,6 +187,7 @@ require src/lib/sparql/expression.f
 require src/lib/sparql/validate.f
 require src/lib/sparql/statement.f
 require src/lib/sparql/write.f
+require src/lib/sparql/lex.f
 
 package SPARQL
 private
@@ -483,7 +484,7 @@ defer EXISTS-SQL ( ^plan n -- )
 \ Rejects the whole query: what it may have at most, and the fix.
 : TOO-MANY ( ^plan str str -- )
    {: plan most:str fix:str :}
-   plan TREE dup SYNTAX-TOKENS @ SEG-COUNT most fix REJECT-TOKEN ;
+   plan TREE dup SYNTAX-SOURCE @ str> nip most fix REJECT-TOKEN ;
 
 \ The text's parameter number k, added on its first use as a term or as a
 \ string. The text must live as long as the plan.

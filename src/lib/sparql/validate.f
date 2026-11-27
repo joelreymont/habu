@@ -11,6 +11,7 @@ require src/lib/map-core.f
 require src/lib/sparql/terms.f
 require src/lib/sparql/expression.f
 require src/lib/sparql/iri.f
+require src/lib/sparql/lex.f
 
 package SPARQL
 private

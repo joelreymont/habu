@@ -70,7 +70,7 @@ STRUCTURE node DERIVE addr
    FIELD c n
    FIELD d n
    FIELD value n
-   FIELD token n
+   FIELD token n  \ the decoded offset of the token it was read at
 ;STRUCTURE
 
 STRUCTURE token DERIVE addr
@@ -106,6 +106,8 @@ STRUCTURE interns DERIVE addr
    FIELD sip SIPHASH:state
 ;STRUCTURE
 
+\ The parser reads the tokens before, at and after the cursor, which is the
+\ current token's decoded offset; a token of kind 0 is the end.
 \ Prefixes, variables and blank node labels are MAP maps: a prefix to its
 \ IRI node, a variable's name to its number, from 1 in order of first use,
 \ a label to the group it was first used in. The declared base is the BASE
@@ -114,7 +116,9 @@ STRUCTURE interns DERIVE addr
 STRUCTURE syntax DERIVE addr
    FIELD arena ^ARENA:arena
    FIELD nodes ^segs<node>
-   FIELD tokens ^segs<token>
+   FIELD previous token
+   FIELD current token
+   FIELD next token
    FIELD source str
    FIELD original str
    FIELD escapes ^VEC:vector<escape>
@@ -226,23 +230,6 @@ STRUCTURE syntax DERIVE addr
    state line spot col 1- - spot SHOW-LINE
    E-QUERY REASON:STOP ;
 
-\ Rejects at token n, found its text; past the last token, at the end.
-: REJECT-TOKEN ( ^syntax n str str -- )
-   {: state index:n x:str f:str :}
-   state SYNTAX-SOURCE @ str> {: source length:n :}
-   state SYNTAX-TOKENS @ {: tokens :}
-   index tokens SEG-COUNT < if
-      tokens index SEG-AT {: token :}
-      token TOKEN-TEXT @ {: y:str :}
-      state y str> drop source - x y f REJECTED
-   then
-   state length x s" " f REJECTED ;
-
-\ Rejects at the parser's current token.
-: REJECT ( ^syntax str str -- )
-   {: state x:str f:str :}
-   state state SYNTAX-CURSOR @ x f REJECT-TOKEN ;
-
 \ Rejects at the lexer's position, found the character there.
 : REJECT-BYTE ( ^syntax str str -- )
    {: state x:str f:str :}
@@ -253,22 +240,8 @@ STRUCTURE syntax DERIVE addr
       {: wide:n :}
    state at x text at + wide >str f REJECTED ;
 
-: NEST ( ^syntax -- )
-   dup SYNTAX-NESTING @ 256 >= if
-      s" at most 256 nested groups or expressions"
-         s" nest fewer groups or expressions" REJECT
-   then
-   1 swap SYNTAX-NESTING +! ;
-
-: UNNEST ( ^syntax -- ) -1 swap SYNTAX-NESTING +! ;
-
 : NODE ( ^syntax n -- ^node )
    swap SYNTAX-NODES @ swap SEG-AT ;
-
-\ Rejects at the token node n was read at.
-: REJECT-NODE ( ^syntax n str str -- )
-   {: state index:n x:str f:str :}
-   state state index NODE NODE-TOKEN @ x f REJECT-TOKEN ;
 
 : TEXT$ ( ^syntax n -- str )
    NODE NODE-TEXT @ ;
@@ -287,7 +260,7 @@ STRUCTURE syntax DERIVE addr
    state SYNTAX-CURSOR @ node NODE-TOKEN ! index ;
 
 \ Only query forms carry this node: trailing VALUES, aggregates and projected
-\ names, read by validation and emission; the index of a projection's `*`
+\ names, read by validation and emission; the offset of a projection's `*`
 \ token places its rejection.
 : QUERY-INFO ( ^syntax n -- ^node )
    over swap NODE NODE-VALUE @ NODE ;
@@ -434,8 +407,6 @@ STRUCTURE syntax DERIVE addr
    arena ARENA:ALLOCATOR 0 [type] escape VEC:NEW
       state SYNTAX-ESCAPES !
    arena ARENA:ALLOCATOR [type] node SEG-NEW {: nodes:^ :}
-   nodes 1 SEG-ENSURE  nodes state SYNTAX-NODES !
-   arena ARENA:ALLOCATOR [type] token SEG-NEW
-      state SYNTAX-TOKENS ! state ;
+   nodes 1 SEG-ENSURE  nodes state SYNTAX-NODES ! state ;
 
 ;package

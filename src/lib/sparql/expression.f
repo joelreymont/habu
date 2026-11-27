@@ -105,7 +105,7 @@ defer ORDER-CONDITION ( ^syntax -- n )
 \ Rejects the `;` before the current token.
 : REJECT-SEMICOLON ( ^syntax -- )
    {: state :}
-   state state SYNTAX-CURSOR @ 1- s" )" s" remove the ;" REJECT-TOKEN ;
+   state state PREVIOUS-AT s" )" s" remove the ;" REJECT-TOKEN ;
 
 \ Rejects the current token in call n, which takes no clause.
 : NO-CLAUSES ( ^syntax n -- )
@@ -259,7 +259,7 @@ defer ORDER-CONDITION ( ^syntax -- n )
       name
    else text then {: called:str :}
    state N-CALL called TEXT-NODE {: call:n :}
-   state SYNTAX-CURSOR @ 1- state call NODE NODE-TOKEN !
+   state PREVIOUS-AT state call NODE NODE-TOKEN !
    state s" (" EXPECT$ state call CALL-ARGUMENTS
    state call CHECK-CALL call ;
 

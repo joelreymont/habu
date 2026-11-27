@@ -4,7 +4,6 @@
 require src/lib/sparql/lex.f
 require src/lib/sparql/iri.f
 require src/lib/sparql/syntax.f
-require src/lib/sparql/segs.f
 require src/lib/vector.f
 require src/lib/map-core.f
 require src/lib/map.f
@@ -15,20 +14,13 @@ package SPARQL
 private
 
 : END? ( ^syntax -- bool )
-   dup SYNTAX-CURSOR @ swap SYNTAX-TOKENS @ SEG-COUNT >= ;
-
-: TOKEN@ ( ^syntax -- ^token )
-   dup SYNTAX-TOKENS @ swap SYNTAX-CURSOR @ SEG-AT ;
+   SYNTAX-CURRENT TOKEN-KIND @ 0= ;
 
 : TOKEN$ ( ^syntax -- str )
-   dup END? if drop s" " exit then
-   TOKEN@ TOKEN-TEXT @ ;
+   SYNTAX-CURRENT TOKEN-TEXT @ ;
 
 : TOKEN-K ( ^syntax -- n )
-   dup END? if drop 0 else TOKEN@ TOKEN-KIND @ then ;
-
-: NEXT-TOKEN ( ^syntax -- )
-   1 swap SYNTAX-CURSOR +! ;
+   SYNTAX-CURRENT TOKEN-KIND @ ;
 
 : IS$ ( ^syntax str -- bool )
    {: state text:str :}
@@ -262,9 +254,7 @@ private
 : SIGNED-NUMBER? ( ^syntax -- bool )
    {: state :}
    state s" +" IS$ state s" -" IS$ or 0= if false exit then
-   state SYNTAX-CURSOR @ 1+ {: next:n :}
-   next state SYNTAX-TOKENS @ SEG-COUNT >= if false exit then
-   state SYNTAX-TOKENS @ next SEG-AT {: token :}
+   state SYNTAX-NEXT {: token :}
    token TOKEN-KIND @ T-INTEGER T-DOUBLE BETWEEN? 0= if
       false exit
    then

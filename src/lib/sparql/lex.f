@@ -1,9 +1,11 @@
 \ Tokens retain spans in the codepoint-decoded query: the query as given
 \ when it holds no \u or \U escape, else an arena copy.
 \ String and local-name escapes are decoded later, when reading terms.
+\ LEX reads the whole query once, so a lexer rejection precedes any parser
+\ one, and keeps no token; the parser then lexes each token again as it
+\ reads on. A token lexed from its start reads as in that first pass.
 
 require src/lib/sparql/syntax.f
-require src/lib/sparql/segs.f
 require src/lib/utf8-scalar.f
 require src/lib/vector.f
 
@@ -193,9 +195,9 @@ private
       then
    while repeat ;
 
-: TOKEN+ ( ^syntax n n -- )
+: TOKEN! ( ^syntax n n -- )
    {: state kind:n start:n :}
-   state SYNTAX-TOKENS @ SEG-PUSH {: token :}
+   state SYNTAX-NEXT {: token :}
    kind token TOKEN-KIND !
    state SYNTAX-SOURCE @ str> drop start +
    state SYNTAX-POSITION @ start - >str token TOKEN-TEXT ! ;
@@ -260,7 +262,7 @@ private
       else state STEP then
    repeat
    width state SYNTAX-POSITION +!
-   state T-STRING start TOKEN+ ;
+   state T-STRING start TOKEN! ;
 
 : IRI-BYTE? ( n -- bool )
    {: value:n :}
@@ -287,7 +289,7 @@ private
    state SYNTAX-POSITION @ {: start:n :}
    state STEP
    begin state PEEK 62 <> while state STEP repeat
-   state STEP state T-IRI start TOKEN+ ;
+   state STEP state T-IRI start TOKEN! ;
 
 : SCAN-DIGITS ( ^syntax -- )
    {: state :}
@@ -319,7 +321,7 @@ private
    state state SYNTAX-POSITION @ EXPONENT? if
       drop state SCAN-EXPONENT T-DOUBLE
    then
-   state swap start TOKEN+ ;
+   state swap start TOKEN! ;
 
 : SCAN-VARIABLE ( ^syntax -- )
    {: state :}
@@ -328,10 +330,10 @@ private
    begin state PEEK -1 <> while
       state SCALAR {: scalar:n next:n :}
       scalar VAR-CHAR? 0= if
-         state T-VAR start TOKEN+ exit
+         state T-VAR start TOKEN! exit
       then
       next state SYNTAX-POSITION !
-   repeat state T-VAR start TOKEN+ ;
+   repeat state T-VAR start TOKEN! ;
 
 \ Past a local name's escape, if one is here.
 : ESCAPE-STEP? ( ^syntax -- bool )
@@ -403,7 +405,7 @@ private
    then
    begin state NAME-STEP? while repeat
    state start TRIM-DOTS
-   state T-BNODE start TOKEN+ ;
+   state T-BNODE start TOKEN! ;
 
 : LOCAL-START? ( ^syntax -- bool )
    {: state :}
@@ -427,14 +429,14 @@ private
          REJECT-BYTE
    then
    state STEP state SCAN-LOCAL
-   state T-NAME start TOKEN+ ;
+   state T-NAME start TOKEN! ;
 
 : SCAN-WORD ( ^syntax n -- )
    {: state start:n :}
    state SYNTAX-SOURCE @ str> drop start +
    state SYNTAX-POSITION @ start - >str {: text:str :}
    state text END-WORD
-   state T-WORD start TOKEN+ ;
+   state T-WORD start TOKEN! ;
 
 : LABEL? ( ^syntax -- bool )
    {: state :}
@@ -475,7 +477,7 @@ private
       begin state PEEK dup LETTER? swap DIGIT? or while
          state STEP
       repeat
-   repeat state T-LANG start TOKEN+ ;
+   repeat state T-LANG start TOKEN! ;
 
 : TWO-PUNCT? ( n n -- bool )
    {: first:n second:n :}
@@ -491,7 +493,7 @@ private
    state SYNTAX-POSITION @ {: start:n :}
    state PEEK {: first:n :} state STEP
    first state PEEK TWO-PUNCT? if state STEP then
-   state T-PUNCT start TOKEN+ ;
+   state T-PUNCT start TOKEN! ;
 
 : LEX-ONE ( ^syntax -- )
    {: state :}
@@ -522,12 +524,75 @@ private
       some OF drop state SCAN-PUNCT ENDOF
    ;MATCH ;
 
+\ Lexes the token at the position, and the white space after it, as the
+\ next token; at the end, one of kind 0 and no text.
+: LEX-NEXT ( ^syntax -- )
+   {: state :}
+   state PEEK -1 = if
+      state 0 state SYNTAX-POSITION @ TOKEN! exit
+   then
+   state LEX-ONE state SKIP-WHITE ;
+
+\ Lexes on from decoded offset n, a token's start or the query's.
+: LEX-FROM ( ^syntax n -- )
+   {: state at:n :}
+   at state SYNTAX-POSITION !
+   0 state SYNTAX-WORD-END ! ;
+
+\ The token's decoded offset.
+: TOKEN-OFFSET ( ^syntax ^token -- n )
+   {: state token :}
+   token TOKEN-TEXT @ str> drop
+   state SYNTAX-SOURCE @ str> drop - ;
+
+: TOKEN-COPY ( ^token ^token -- )
+   {: from to :}
+   from TOKEN-KIND @ to TOKEN-KIND !
+   from TOKEN-TEXT @ to TOKEN-TEXT ! ;
+
+: NEXT-TOKEN ( ^syntax -- )
+   {: state :}
+   state SYNTAX-CURRENT state SYNTAX-PREVIOUS TOKEN-COPY
+   state SYNTAX-NEXT state SYNTAX-CURRENT TOKEN-COPY
+   state state SYNTAX-CURRENT TOKEN-OFFSET state SYNTAX-CURSOR !
+   state LEX-NEXT ;
+
+\ The decoded offset of the token before the current one.
+: PREVIOUS-AT ( ^syntax -- n )
+   dup SYNTAX-PREVIOUS TOKEN-OFFSET ;
+
 : LEX ( ^syntax -- )
    {: state :}
    state CODEPOINT-ESCAPES
    state SKIP-WHITE
-   begin state PEEK -1 <> while
-      state LEX-ONE state SKIP-WHITE
-   repeat ;
+   begin state PEEK -1 <> while state LEX-NEXT repeat
+   state 0 LEX-FROM state SKIP-WHITE
+   state LEX-NEXT state NEXT-TOKEN ;
+
+\ Rejects at the token at decoded offset n, found its text; at the query's
+\ length, at its end.
+: REJECT-TOKEN ( ^syntax n str str -- )
+   {: state at:n x:str f:str :}
+   state at LEX-FROM state LEX-NEXT
+   state at x state SYNTAX-NEXT TOKEN-TEXT @ f REJECTED ;
+
+\ Rejects at the parser's current token.
+: REJECT ( ^syntax str str -- )
+   {: state x:str f:str :}
+   state state SYNTAX-CURSOR @ x f REJECT-TOKEN ;
+
+: NEST ( ^syntax -- )
+   dup SYNTAX-NESTING @ 256 >= if
+      s" at most 256 nested groups or expressions"
+         s" nest fewer groups or expressions" REJECT
+   then
+   1 swap SYNTAX-NESTING +! ;
+
+: UNNEST ( ^syntax -- ) -1 swap SYNTAX-NESTING +! ;
+
+\ Rejects at the token node n was read at.
+: REJECT-NODE ( ^syntax n str str -- )
+   {: state index:n x:str f:str :}
+   state state index NODE NODE-TOKEN @ x f REJECT-TOKEN ;
 
 ;package

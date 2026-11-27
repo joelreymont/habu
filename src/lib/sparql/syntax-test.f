@@ -8,6 +8,7 @@
 require src/lib/test/assert.f
 require src/lib/sparql/parse.f
 require src/lib/sparql/syntax.f
+require src/lib/sparql/lex.f
 require src/lib/sparql/segs.f
 require src/lib/vector.f
 require src/lib/reason.f
@@ -635,10 +636,16 @@ REJECTIONS
    out s" }" 250 TIMES
    out 0 VEC:AT out VEC:COUNT >str arena PARSE ;
 
+\ The query's tokens, lexed again.
+: TOKENS ( ^syntax -- n )
+   {: state :}
+   state 0 LEX-FROM state SKIP-WHITE
+   0 begin state PEEK -1 <> while state LEX-NEXT 1+ repeat ;
+
 \ Rounded up.
 : NODES-PER-TOKEN ( ^syntax -- n )
    {: state :}
-   state SYNTAX-TOKENS @ SEG-COUNT {: tokens:n :}
+   state TOKENS {: tokens:n :}
    state SYNTAX-NODES @ SEG-COUNT tokens 1- + tokens / ;
 
 25000000 constant RESOLVED-MOST-BYTES
