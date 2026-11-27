@@ -371,13 +371,25 @@ private
    true ;
 
 
-\ name ":" OWS value OWS, with no space before the colon and no obsolete fold.
+\ RFC 9110 5.5: a recipient rejects a field value that holds a CR, an LF or a
+\ NUL, since a peer that ends a line at a bare LF reads a different request.
+: VALUE-BYTES-OK? ( n n n -- bool ) {: idx:n at:n len:n :}
+   len 0 ?do
+      idx at i + AT-BYTE {: byte:n :}
+      byte CR = byte LF = or byte 0= or if false unloop exit then
+   loop
+   true ;
+
+
+\ name ":" OWS value OWS, with no space before the colon, no obsolete fold, and
+\ no CR, LF or NUL in the value.
 : PARSE-HEADER ( n n n -- bool ) {: idx:n at:n end:n :}
    idx at AT-BYTE SP = idx at AT-BYTE TAB = or if false exit then
    idx at end at - COLON BYTE-INDEX {: mark:n :}
    mark 1 < if false exit then
    idx at mark TOKEN? 0= if false exit then
    idx at mark + 1+ end at - mark - 1- TRIM-OWS {: va:n vl:n :}
+   idx va vl VALUE-BYTES-OK? 0= if false exit then
    at mark va vl idx HEADER+
    true ;
 

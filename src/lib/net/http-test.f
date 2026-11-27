@@ -1510,6 +1510,18 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
    s" bad-request" TRANSCRIBE ;
 
 
+: CONTROL-VALUE-CASE ( -- )
+   s\" GET / HTTP/1.1\r\nHost: x\r\nX-Probe: a\nb\r\nConnection: close\r\n\r\n" RAW-ONE
+   s" HTTP/1.1 400 Bad Request" BEGINS? TTRUE
+   s" bad_request: " HAS? TTRUE
+   s\" GET / HTTP/1.1\r\nHost: x\r\nX-Probe: a\rb\r\nConnection: close\r\n\r\n" RAW-ONE
+   s" HTTP/1.1 400 Bad Request" BEGINS? TTRUE
+   s" bad_request: " HAS? TTRUE
+   s\" GET / HTTP/1.1\r\nHost: x\r\nX-Probe: a\zb\r\nConnection: close\r\n\r\n" RAW-ONE
+   s" HTTP/1.1 400 Bad Request" BEGINS? TTRUE
+   s" bad_request: " HAS? TTRUE ;
+
+
 : PING-LINE ( str -- )
    {: line:str :}
    REQ-RESET
@@ -3472,6 +3484,7 @@ $1388 constant SERVED-MS          \ a dial's deadline: far past the listener's p
    LONG-SEGMENT-CASE
    STATIC-CASES
    MALFORMED-CASE
+   CONTROL-VALUE-CASE
    HOST-CASE
    BIG-HEADER-CASE
    BIG-BODY-CASE
