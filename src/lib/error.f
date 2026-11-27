@@ -838,7 +838,7 @@ generates: FAULT ( -- n )
 -9411 s" a close status no endpoint may send: outside 1000..4999, reserved or unassigned" ERROR:CODE E-WS-CODE
 -9414 s" SEND-TEXT of bytes that are not UTF-8 (RFC 6455 section 5.6)" ERROR:CODE E-WS-TEXT
 -9415 s" ACCEPT or STOP outside a run or while START still starts it, a START while one starts or runs, a STOP while another STOP runs or on WS's own task" ERROR:CODE E-WS-STATE
--9417 s" a WS config's sockets below 1 or past the handle's 32-bit slot field" ERROR:CODE E-WS-LIMIT
+-9417 s" a WS config's sockets or calls below 1, or sockets times calls past the 32-bit slot field of a handle" ERROR:CODE E-WS-LIMIT
 -9604 s" the body binds other than its scan's count of locals" ERROR:FAULT E-T0-BINDS
 -9608 s" an operation over a width it cannot move" ERROR:FAULT E-T0-BUNDLE
 

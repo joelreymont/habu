@@ -3,12 +3,13 @@
 \ the only reader and writer of every socket, which waits on one AIO group: a
 \ readiness poll per socket and one on a wake pipe, none with a deadline, and
 \ one timer, due when the first socket is to give up, be pinged or be lost.
-\ Every handler call runs on a request worker (HTTP:SUBMIT), one at a time for
-\ each socket, and carries the value ACCEPT was given; `opened` comes first, so
-\ whatever the handler does there precedes every message. A peer gone without
+\ Every handler call runs on a request worker (HTTP:SUBMIT) and carries the
+\ value ACCEPT was given; `opened` comes first and alone, so whatever the
+\ handler does there precedes every message, and `closed` last. Between them a
+\ socket has at most the config's calls message calls out. A peer gone without
 \ a word is found by ping (config). STOP waits for handler calls at most
-\ GOODBYE-MS and STOP-MARGIN-MS: a call it leaves running retires its own slot
-\ as it ends, and START is E-WS-STATE until then.
+\ GOODBYE-MS and STOP-MARGIN-MS: the last call of a socket it leaves running
+\ retires the slot as it ends, and START is E-WS-STATE until then.
 \ STORAGE CLASS. PROCESS-WIDE tables indexed by socket slot.
 
 require src/lib/error.f
@@ -41,14 +42,17 @@ NEWTYPE socket
 \ last, once, that the socket has closed, unless a STOP passes its bound
 \ first (STOP), with its status: the close frame's, 1005 when it carried
 \ none, 1006 when the stream ended without one (section 7.1.5). A handler
-\ runs on a request worker (HTTP:SUBMIT) and may block; its socket's next
-\ call waits for it. Its throw is one LOG line, tag ws, `socket <handle>
-\ failed, throw <code> <name>: <text>`, name and text when the code is
-\ declared, and a throw on `opened` or a message also closes
-\ the socket under 1011. A peer that breaks the protocol fails the
-\ connection: 1002 for a frame the codec rejects or one out of order, 1007
-\ for text that is not UTF-8, 1009 for a message past MESSAGE-MAX. A ping is
-\ answered with a pong even once this end has sent its close.
+\ runs on a request worker (HTTP:SUBMIT) and may block. `opened` runs first
+\ and alone, and `closed` last, once every message call has ended; with the
+\ config's calls above 1 a socket's message calls may run on several workers
+\ at once and in any order, and with calls 1 each waits for the one before.
+\ Its throw is one LOG line, tag ws, `socket <handle> failed, throw <code>
+\ <name>: <text>`, name and text when the code is declared, and a throw on
+\ `opened` or a message also closes the socket under 1011. A peer that
+\ breaks the protocol fails the connection: 1002 for a frame the codec
+\ rejects or one out of order, 1007 for text that is not UTF-8, 1009 for a
+\ message past MESSAGE-MAX. A ping is answered with a pong even once this end
+\ has sent its close.
 ENUM message
    VARIANT opened ;VARIANT
    VARIANT text FIELD chars str ;VARIANT
@@ -74,13 +78,17 @@ $100000 constant MESSAGE-MAX
 \ An open socket from which no byte has arrived for ping ms is pinged, and
 \ lost under 1006 once pong ms more pass with none, counted from when the
 \ ping left the queue for the kernel. The count runs only while its read is
-\ armed: bytes sent while a handler call runs are not read until the call
-\ ends, so that time says nothing of the peer. Bytes written say nothing of
+\ armed: bytes sent while the socket has calls calls out are not read until
+\ one ends, so that time says nothing of the peer. Bytes written say nothing of
 \ it either, since a vanished peer's kernel buffer still takes them.
 \ stall is how many ms a peer may take no byte of a waiting queue, or leave
 \ this end's close unanswered, before its socket closes under 1006.
+\ calls bounds the message calls one socket has queued or running at once:
+\ WS reads nothing more of it until one ends, so TCP holds the peer back.
+\ Each costs a MESSAGE-MAX buffer of the socket's REGION-BYTES.
 STRUCTURE config DERIVE addr
    FIELD sockets n
+   FIELD calls n
    FIELD ping ms
    FIELD pong ms
    FIELD stall ms
@@ -93,6 +101,7 @@ CAST: SOCKET>N ( socket -- n )
 CAST: BLEN>N ( NUM:byte-len -- n )
 
 SCRATCH-VARIABLE CAP                        \ START's limit: the slots the tables hold
+SCRATCH-VARIABLE CALLS                      \ the run's calls: each slot's call rows
 
 \ The numbers the wake's wait and the timer's carry in WAITERS; a slot's wait
 \ carries its index.
@@ -107,17 +116,48 @@ SCRATCH-VARIABLE CAP                        \ START's limit: the slots the table
 4 constant PHASE-RESERVED         \ ACCEPT is filling the slot
 
 \ A slot's delivery, read and written only under LOCK, by ACCEPT, by WS's
-\ task, by STOP and by the request worker running the slot's handler call. A
-\ slot is handing while its call is queued or running. A socket is published
-\ queued, ACCEPT having queued its `opened` (OPEN-CALL); ready moves to queued
-\ as the task hands the handler a message or `closed` (HAND-OFF), queued to
-\ running as a worker starts the call (HAND), and running back to ready as it
-\ ends (CALL-ENDED), which pokes the task to parse on from IN-AT. The end of a
-\ `closed` call retires the slot instead, and STOP retires a slot whose call
-\ is still queued once it gives up on it (DROP-QUEUED).
-0 constant DELIVERY-READY         \ PARSE may run
-1 constant DELIVERY-QUEUED        \ a handler call is queued: nothing parsed, no read armed
-2 constant DELIVERY-RUNNING       \ that call runs on a worker, which holds the slot until it ends
+\ task, by STOP and by the request workers running the slot's calls. The
+\ socket is free (no socket); opening, its `opened` queued or running, with
+\ nothing parsed or read; taking(n), n message calls out (CALLS-OUT), its
+\ frames read and parsed while n < CALLS and the phase allows (READING?); or
+\ closing, its `closed` queued or running. Each slot has CALLS call rows, each
+\ free, queued or running, owning one MESSAGE-MAX buffer of the slot's region
+\ and holding the message its call is handed; `opened` and `closed` take row
+\ 0. Inputs: handed (task), started (worker), ended (worker; ok or failed),
+\ finish (task: status final and queue written, or given up), dropped (STOP
+\ gives up on a queued call), left (the task has left).
+\   free       ACCEPT     opening: `opened` queued before the task sees the
+\                         slot (OPEN-CALL)
+\   opening    started    row 0 queued -> running
+\   opening    ended      taking(0); failed also shuts under 1011; with the
+\                         task left: closed, free (LEFT-OFF)
+\   opening    dropped    free
+\   taking(n)  handed     n < CALLS: taking(n+1), the message reassembled in
+\                         a free row's buffer queued in that row; the next
+\                         message fills another free row (DELIVER)
+\   taking(n)  started    the row queued -> running; a row not queued
+\                         (dropped) runs nothing (STARTS?)
+\   taking(n)  ended      taking(n-1), the row free; failed shuts under 1011
+\                         while the other calls run on; with the task left
+\                         and n-1 = 0: closed, free (MESSAGE-ENDED)
+\   taking(n)  dropped    taking(n-1); at 0 with the task left: closed, free
+\   taking(0)  finish     closing (FINISH); with n > 0 finish waits, each end
+\                         poking the task
+\   taking(0)  left       closed, free (CLEANUP); any other state waits for
+\                         its calls' ends or STOP's drop
+\   closing    started    row 0 queued -> running
+\   closing    ended      free
+\   closing    dropped    free
+\ No other pairing arrives. A call's job names its row and the slot's
+\ retirement count (ROW-HANDLE): a dropped call is stale by its row's state,
+\ a retired socket's by the count.
+0 constant DELIVERY-FREE
+1 constant DELIVERY-OPENING
+2 constant DELIVERY-TAKING
+3 constant DELIVERY-CLOSING
+0 constant ROW-FREE
+1 constant ROW-QUEUED
+2 constant ROW-RUNNING
 
 \ Close statuses (section 7.4.1).
 1000 constant STATUS-NORMAL
@@ -130,7 +170,8 @@ SCRATCH-VARIABLE CAP                        \ START's limit: the slots the table
 1011 constant STATUS-INTERNAL
 
 \ The slot is the low 32 bits of a handle and the slot's retirement count the
-\ rest, so a limit past SLOT-MASK is E-WS-LIMIT and the count wraps at GEN-MASK.
+\ rest, and a call's job names its row the same way, so sockets past SLOT-MASK,
+\ or rows (sockets times calls), is E-WS-LIMIT; the count wraps at GEN-MASK.
 32 constant GEN-SHIFT
 $FFFFFFFF constant SLOT-MASK
 $FFFFFFFF constant GEN-MASK
@@ -153,15 +194,16 @@ $4000 constant RX-CAP             \ the most one read takes
 $1000 constant TX-CAP             \ a queue's first mapping
 $400000 constant QUEUE-MAX        \ unwritten bytes a socket's queue holds before a frame loses it
 
-\ One socket's mapping: the message being reassembled, a control frame's
-\ payload, the header being read, and the digest behind the accept value.
+\ One socket's mapping: a message buffer to each call row, then a tail of a
+\ control frame's payload, the header being read, and the digest behind the
+\ accept value; the offsets are the tail's.
 $80 constant CONTROL-CAP          \ 125 bytes, to the cell
 $10 constant HEAD-CAP             \ HEADER-MAX bytes, to the cell
-MESSAGE-MAX constant CONTROL-OFF
+0 constant CONTROL-OFF
 CONTROL-OFF CONTROL-CAP + constant HEAD-OFF
 HEAD-OFF HEAD-CAP + constant CTX-OFF
 CTX-OFF SHA1:CTX-BYTES + constant DIGEST-OFF
-DIGEST-OFF SHA1:DIGEST-BYTES + constant REGION-BYTES
+DIGEST-OFF SHA1:DIGEST-BYTES + constant TAIL-BYTES
 
 \ Where a spell's ping is: none yet; queued, with that many bytes of the
 \ queue, its own included, still to be written before it has left; or sent,
@@ -177,7 +219,7 @@ DYNAMIC-BUFFER LINK TCP4:connection
 \ running. Nothing moves a slot while any task may read one, since START is
 \ E-WS-STATE while a handler call holds one (CLAIM-START), and STOP never
 \ releases them: the next START keeps them or grows them under LOCK. A socket's
-\ message buffer and scratch are one mapping (REGION), its input and outgoing
+\ message buffers and scratch are one mapping (REGION), its input and outgoing
 \ queue two more; ACCEPT makes them and the task gives them back as the socket
 \ ends.
 DYNAMIC-BUFFER HANDLER [ socket n message -- ]
@@ -191,7 +233,7 @@ DYNAMIC-BUFFER OUT-AT n               \ its first byte not yet written
 DYNAMIC-BUFFER OUT-U n                \ its bytes queued
 DYNAMIC-BUFFER SINCE n                \ when the queue last moved, or was first filled
 DYNAMIC-BUFFER CLOSE-BY n             \ when a CLOSE gives up on the peer's answer
-DYNAMIC-BUFFER HEARD n                \ when the quiet spell began: bytes read or a call ended
+DYNAMIC-BUFFER HEARD n                \ when the quiet spell began: bytes read or read armed
 DYNAMIC-BUFFER PINGED pinging         \ where that spell's ping is
 DYNAMIC-BUFFER GEN n                  \ retirements
 DYNAMIC-BUFFER PHASE n
@@ -209,13 +251,19 @@ DYNAMIC-BUFFER PAY-U n                \ payload bytes of it read
 DYNAMIC-BUFFER FAILING n              \ the status a faulty frame closes under
 DYNAMIC-BUFFER MSG-U n                \ bytes of the message being reassembled
 DYNAMIC-BUFFER MSG-WIRE n             \ its opcode; 0 while there is none
-DYNAMIC-BUFFER DELIVERY n             \ DELIVERY-READY, DELIVERY-QUEUED or DELIVERY-RUNNING
-DYNAMIC-BUFFER PENDING message        \ what the handler call queued or running is handed
+DYNAMIC-BUFFER MSG-ROW n              \ the row whose buffer that message fills
+DYNAMIC-BUFFER DELIVERY n             \ DELIVERY-FREE, -OPENING, -TAKING or -CLOSING
+DYNAMIC-BUFFER CALLS-OUT n            \ message calls queued or running, while taking
+\ The row columns hold CALLS rows to each slot, the slot's first at its index
+\ times CALLS (ROW).
+DYNAMIC-BUFFER ROW-STATE n            \ ROW-FREE, ROW-QUEUED or ROW-RUNNING
+DYNAMIC-BUFFER ROW-MSG message        \ what the row's call is handed
 
-\ Every column holds n slots. A column that already holds them is left as it
-\ is; fresh pages are zero, a free slot (PHASE-NONE). A failed mapping throws
-\ with CAP unchanged.
-: TABLES-RESERVE ( n -- ) {: n:n :}
+\ Every slot column holds n slots and every row column that many rows. A
+\ column that already holds them is left as it is; fresh pages are zero, a
+\ free slot (PHASE-NONE) or row (ROW-FREE). A failed mapping throws with CAP
+\ unchanged.
+: TABLES-RESERVE ( n n -- ) {: n:n rows:n :}
    n LINK-RESERVE
    n HANDLER-RESERVE
    n HANDLER-ARG-RESERVE
@@ -246,8 +294,11 @@ DYNAMIC-BUFFER PENDING message        \ what the handler call queued or running 
    n FAILING-RESERVE
    n MSG-U-RESERVE
    n MSG-WIRE-RESERVE
+   n MSG-ROW-RESERVE
    n DELIVERY-RESERVE
-   n PENDING-RESERVE ;
+   n CALLS-OUT-RESERVE
+   rows ROW-STATE-RESERVE
+   rows ROW-MSG-RESERVE ;
 
 \ The handshake's scratch, a row to each HTTP worker that may run ACCEPT.
 HTTP:MAX-WORKERS TYPED-BUFFER KEY-AT ^u8 SCRATCH-ONLY \ Sec-WebSocket-Key as it was sent
@@ -257,9 +308,9 @@ create NONCE-ROWS NONCES-BYTES SCRATCH-ALLOT
 : NONCES ( -- SPAN:span<u8> ) NONCE-ROWS NONCES-BYTES SPAN:MAKE ;
 
 \ The handler call each request worker runs, for HAND-ENDED, which takes
-\ nothing: its slot, and whether it failed, as it has until the handler
+\ nothing: its row, and whether it failed, as it has until the handler
 \ returns with no throw, so a call a halt cuts short is a failed one.
-HTTP:MAX-WORKERS TYPED-BUFFER CALL-SLOT n SCRATCH-ONLY
+HTTP:MAX-WORKERS TYPED-BUFFER CALL-ROW n SCRATCH-ONLY
 HTTP:MAX-WORKERS TYPED-BUFFER CALL-FAILED bool SCRATCH-ONLY
 
 TASK:FACILITY LOCK
@@ -308,27 +359,50 @@ LOCK TASK:FACILITY-INIT
    h GEN-SHIFT rshift idx GEN @ = phase PHASE-NONE <> and phase PHASE-RESERVED <> and ;
 
 
+\ The slot's call row r.
+: ROW ( n n -- n ) {: idx:n r:n :}
+   idx CALLS @ * r + ;
+
+
+: ROW-SLOT ( n -- n )
+   CALLS @ / ;
+
+
+\ A call's job: the row in a handle's slot field, under its slot's count.
+: ROW-HANDLE ( n -- n ) {: row:n :}
+   row ROW-SLOT GEN @ GEN-SHIFT lshift row or ;
+
+
+: REGION-BYTES ( -- n )
+   CALLS @ MESSAGE-MAX * TAIL-BYTES + ;
+
+
 \ Each narrows a mapping. A slot with no mapping holds a span with no reach, so
 \ every narrowing of it throws instead of addressing a null base.
 
-: MSG-BUF ( n -- SPAN:span<u8> )
-   REGION @ MESSAGE-MAX SPAN:TAKE ;
+\ The buffer of the row the message being reassembled fills.
+: MSG-BUF ( n -- SPAN:span<u8> ) {: idx:n :}
+   idx REGION @ idx MSG-ROW @ MESSAGE-MAX * MESSAGE-MAX SPAN:SUB ;
+
+
+: TAIL ( n -- SPAN:span<u8> )
+   REGION @ CALLS @ MESSAGE-MAX * SPAN:SKIP ;
 
 
 : CONTROL-BUF ( n -- SPAN:span<u8> )
-   REGION @ CONTROL-OFF CONTROL-CAP SPAN:SUB ;
+   TAIL CONTROL-OFF CONTROL-CAP SPAN:SUB ;
 
 
 : HEAD-BUF ( n -- SPAN:span<u8> )
-   REGION @ HEAD-OFF HEAD-CAP SPAN:SUB ;
+   TAIL HEAD-OFF HEAD-CAP SPAN:SUB ;
 
 
 : CTX-BUF ( n -- SPAN:span<u8> )
-   REGION @ CTX-OFF SHA1:CTX-BYTES SPAN:SUB ;
+   TAIL CTX-OFF SHA1:CTX-BYTES SPAN:SUB ;
 
 
 : DIGEST-BUF ( n -- SPAN:span<u8> )
-   REGION @ DIGEST-OFF SHA1:DIGEST-BYTES SPAN:SUB ;
+   TAIL DIGEST-OFF SHA1:DIGEST-BYTES SPAN:SUB ;
 
 
 : NONCE-BUF ( n -- SPAN:span<u8> )
@@ -545,9 +619,8 @@ LOCK TASK:FACILITY-INIT
    STOP-AT @ 0 <> if STOP-AT @ over 0= if nip else min then then ;
 
 
-\ The quiet clock starts again on bytes read or a call's end, and the spell
-\ has no ping. Written by the task while the slot is ready, and under LOCK by
-\ the worker whose call ends.
+\ Under LOCK, by the task on bytes read and by the worker whose call's end arms
+\ the read: the quiet clock starts again, and the spell has no ping.
 : HEARD-NOW ( n -- ) {: idx:n :}
    mono-ns idx HEARD !
    construct pinging none idx PINGED ! ;
@@ -556,7 +629,7 @@ LOCK TASK:FACILITY-INIT
 \ When an open socket's ping is due, or once the ping has left the queue,
 \ when the socket is lost; 0 for one not open or whose ping is still queued,
 \ since the stall rule (GIVE-UP?) bounds a queue that stops moving. Under
-\ LOCK, while no handler call holds it.
+\ LOCK, while its read is armed.
 : QUIET-DUE ( n -- n ) {: idx:n :}
    idx PHASE @ PHASE-OPEN <> if 0 exit then
    idx PINGED @
@@ -613,7 +686,7 @@ LOCK TASK:FACILITY-INIT
    a b min ;
 
 
-\ DUE, or QUIET-DUE when that comes first, for a slot no call holds.
+\ DUE, or QUIET-DUE when that comes first, for a slot whose read is armed.
 : READY-DUE ( n -- n ) {: idx:n :}
    idx DUE idx QUIET-DUE SOONER ;
 
@@ -636,7 +709,8 @@ LOCK TASK:FACILITY-INIT
 : VACATE ( n -- ) {: idx:n :}
    idx GEN @ 1+ GEN-MASK and idx GEN !
    PHASE-NONE idx PHASE !
-   DELIVERY-READY idx DELIVERY !
+   DELIVERY-FREE idx DELIVERY !
+   0 idx CALLS-OUT !
    0 idx ARMED !
    idx OUT @ DROP-SPAN idx OUT !
    0 idx OUT-AT !
@@ -656,73 +730,91 @@ LOCK TASK:FACILITY-INIT
    h >SLOT code PHASE-CLOSING SHUT ;
 
 
-\ Under LOCK: the slot is handing, its call queued or running.
-: CALLED? ( n -- bool ) {: idx:n :}
-   idx DELIVERY @ DELIVERY-READY <> ;
+\ Under LOCK: the slot's read is armed, its frames read and parsed: it is
+\ taking, below CALLS calls out, and with none once it is closed, since it is
+\ then finished.
+: READING? ( n -- bool ) {: idx:n :}
+   idx DELIVERY @ DELIVERY-TAKING <> if false exit then
+   idx CALLS-OUT @ {: out:n :}
+   idx PHASE @ PHASE-CLOSED = if out 0= exit then
+   out CALLS @ < ;
 
 
-: HANDING? ( n -- bool ) {: idx:n :}
+: LOCKED-READING? ( n -- bool ) {: idx:n :}
    LOCK TASK:GET
-   idx CALLED?
+   idx READING?
    UNLOCK ;
 
 
-\ Under LOCK: whether the call queued or running for the slot is its `closed`.
-: CLOSED-CALL? ( n -- bool )
-   PENDING @
-   MATCH message
-      opened OF false ENDOF
-      text OF drop false ENDOF
-      binary OF drop false ENDOF
-      closed OF drop true ENDOF
-   ;MATCH ;
+\ The row is queued or running, so nothing else writes its ROW-MSG, or its
+\ slot's HANDLER, HANDLER-ARG or GEN, until the call ends.
+: CALL-HANDLER ( n -- n ) {: row:n :}
+   row ROW-SLOT {: idx:n :}
+   idx HANDLE >SOCKET idx HANDLER-ARG @ row ROW-MSG @ idx HANDLER @ execute
+   row ;
 
 
-\ The slot is handing, so nothing else writes its PENDING, HANDLER,
-\ HANDLER-ARG or GEN until the call ends.
-: CALL-HANDLER ( n -- n ) {: idx:n :}
-   idx HANDLE >SOCKET idx HANDLER-ARG @ idx PENDING @ idx HANDLER @ execute
-   idx ;
-
-
-\ Under LOCK: a closing socket's peer has the run's stall from the end of a
-\ call to answer, since nothing was read while it ran.
+\ Under LOCK: a closing socket's peer has the run's stall, from when its read
+\ is armed again, to answer, since nothing was read while it was not.
 : EXTEND-CLOSE ( n -- ) {: idx:n :}
    idx PHASE @ PHASE-CLOSING <> if exit then
    mono-ns STALL-NS @ + idx CLOSE-BY @ max idx CLOSE-BY ! ;
 
 
-\ Under LOCK: a message's call ended. Its socket closes under 1011 when the
-\ call failed. The slot is ready again, its quiet clock and a closing peer's
-\ time to answer starting over, or, once the task has left (CLEANUP), which
-\ would serve it no more, closed and retired.
-: MESSAGE-ENDED ( n bool -- ) {: idx:n failed:bool :}
-   LEFT @ 0 <> if idx LINK @ TCP4:CLOSE drop idx VACATE exit then
+\ Under LOCK: the slot has one message call fewer out, or, at the end of
+\ `opened`, is taking.
+: CALL-OFF ( n -- ) {: idx:n :}
+   idx DELIVERY @ DELIVERY-OPENING = if
+      DELIVERY-TAKING idx DELIVERY ! exit
+   then
+   -1 idx CALLS-OUT +! ;
+
+
+\ Under LOCK, once the task has left (CLEANUP), which would serve the socket
+\ no more: its last call's end closes it and retires the slot.
+: LEFT-OFF ( n -- ) {: idx:n :}
+   idx CALLS-OUT @ 0 <> if exit then
+   idx LINK @ TCP4:CLOSE drop
+   idx VACATE ;
+
+
+\ Under LOCK: `opened` or a message call ended, or was dropped, in that row.
+\ A failed call closes the socket under 1011 while its other calls run on.
+\ An end that arms the read again starts the quiet clock and a closing
+\ peer's time to answer over.
+: MESSAGE-ENDED ( n n bool -- ) {: idx:n row:n failed:bool :}
+   idx READING? {: before:bool :}
+   ROW-FREE row ROW-STATE !
+   idx CALL-OFF
+   LEFT @ 0 <> if idx LEFT-OFF exit then
    failed if idx STATUS-INTERNAL PHASE-CLOSED SHUT drop then
+   before idx READING? 0= or if exit then
    idx EXTEND-CLOSE
-   idx HEARD-NOW
-   DELIVERY-READY idx DELIVERY ! ;
+   idx HEARD-NOW ;
 
 
-\ Under LOCK: the end of a `closed` call retires the slot, and any other is
+\ Under LOCK: the end of `closed` retires the slot, and any other is
 \ MESSAGE-ENDED's.
-: END-CALL ( n bool -- ) {: idx:n failed:bool :}
-   idx CLOSED-CALL? if idx VACATE exit then
-   idx failed MESSAGE-ENDED ;
+: END-CALL ( n n bool -- ) {: idx:n row:n failed:bool :}
+   idx DELIVERY @ DELIVERY-CLOSING = if
+      ROW-FREE row ROW-STATE !
+      idx VACATE exit
+   then
+   idx row failed MESSAGE-ENDED ;
 
 
-\ Under LOCK, on the worker: the call ended, and a STOP waiting for slots is
-\ told.
-: CALL-ENDED ( n bool -- )
-   END-CALL
+\ Under LOCK, on the worker: the row's call ended, and a STOP waiting for
+\ calls is told.
+: CALL-ENDED ( n bool -- ) {: row:n failed:bool :}
+   row ROW-SLOT row failed END-CALL
    STOPPING @ 0 <> if 0 STOPPER @ TASK:WAKE then ;
 
 
-: RUN-CALL ( n -- n ) {: idx:n :}
-   idx [: CALL-HANDLER ;] catch {: code:n :} drop
-   code 0 <> if idx code REPORT-FAULT idx exit then
+: RUN-CALL ( n -- n ) {: row:n :}
+   row [: CALL-HANDLER ;] catch {: code:n :} drop
+   code 0 <> if row ROW-SLOT code REPORT-FAULT row exit then
    false HTTP:WORKER-SLOT CALL-FAILED !
-   idx ;
+   row ;
 
 
 \ HAND's cleanup, on the worker, however the call ended: the slot moves on
@@ -730,76 +822,97 @@ LOCK TASK:FACILITY-INIT
 : HAND-ENDED ( -- )
    HTTP:WORKER-SLOT {: w:n :}
    LOCK TASK:GET
-   w CALL-SLOT @ w CALL-FAILED @ [: CALL-ENDED ;] [: UNLOCK ;] finally
+   w CALL-ROW @ w CALL-FAILED @ [: CALL-ENDED ;] [: UNLOCK ;] finally
    POKE ;
 
 
-\ Under LOCK: the call submitted for that handle starts, its slot running, or
-\ false when STOP retired the slot while the call was queued (DROP-QUEUED).
+\ Under LOCK: the call submitted for that job starts, its row running, or
+\ false when STOP dropped it while it was queued (DROP-QUEUED): its row is
+\ not queued, or its slot was retired since.
 : STARTS? ( n -- bool ) {: h:n :}
-   h CURRENT? 0= if false exit then
-   DELIVERY-RUNNING h >SLOT DELIVERY !
+   h >SLOT {: row:n :}
+   h SLOT-MASK invert and row ROW-SLOT or CURRENT? 0= if false exit then
+   row ROW-STATE @ ROW-QUEUED <> if false exit then
+   ROW-RUNNING row ROW-STATE !
    true ;
 
 
-\ A handler call, on a request worker, for the handle of its slot. A halt
-\ that cuts the call short, as HTTP:STOP's kill does, still ends it, since a
-\ halt unwinds through `finally`; a call that does not start runs nothing.
+\ A handler call, on a request worker, for the job of its row. A halt that
+\ cuts the call short, as HTTP:STOP's kill does, still ends it, since a halt
+\ unwinds through `finally`; a call that does not start runs nothing.
 : HAND ( n -- ) {: h:n :}
    LOCK TASK:GET
    h [: STARTS? ;] [: UNLOCK ;] finally
    0= if exit then
-   h >SLOT {: idx:n :}
+   h >SLOT {: row:n :}
    HTTP:WORKER-SLOT {: w:n :}
-   idx w CALL-SLOT !
+   row w CALL-ROW !
    true w CALL-FAILED !
-   idx [: RUN-CALL ;] [: HAND-ENDED ;] finally drop ;
+   row [: RUN-CALL ;] [: HAND-ENDED ;] finally drop ;
 
 
-: QUEUE-HAND ( n -- n ) {: idx:n :}
-   idx HANDLE [: HAND ;] HTTP:SUBMIT
-   idx ;
+: QUEUE-HAND ( n -- n ) {: row:n :}
+   row ROW-HANDLE [: HAND ;] HTTP:SUBMIT
+   row ;
 
 
-\ Under LOCK: a call HTTP:SUBMIT rejected never runs, so the slot is ready
-\ again, or retired for a `closed` nobody is told.
-: UNHAND ( n -- ) {: idx:n :}
-   idx CLOSED-CALL? if idx VACATE exit then
-   DELIVERY-READY idx DELIVERY ! ;
+\ Under LOCK: the row's call is queued with that message.
+: QUEUE-ROW ( n message -- ) {: row:n msg :}
+   msg row ROW-MSG !
+   ROW-QUEUED row ROW-STATE ! ;
 
 
-\ The message is handed to the slot's handler on a request worker, and the slot
-\ is handing until that call ends. A throw from HTTP:SUBMIT goes on once the
-\ slot is given back (UNHAND).
-: HAND-OFF ( n message -- ) {: idx:n msg :}
-   LOCK TASK:GET
-   msg idx PENDING !
-   DELIVERY-QUEUED idx DELIVERY !
-   UNLOCK
-   idx [: QUEUE-HAND ;] catch {: code:n :} drop
+\ Under LOCK: a call HTTP:SUBMIT rejected never runs, so its row is free
+\ again, or the slot retired for a `closed` nobody is told.
+: UNHAND ( n n -- ) {: idx:n row:n :}
+   ROW-FREE row ROW-STATE !
+   idx DELIVERY @ DELIVERY-CLOSING = if idx VACATE exit then
+   -1 idx CALLS-OUT +! ;
+
+
+\ The row's queued call is handed to the slot's handler on a request worker.
+\ A throw from HTTP:SUBMIT goes on once the row is given back (UNHAND).
+: HAND-OFF ( n n -- ) {: idx:n row:n :}
+   row [: QUEUE-HAND ;] catch {: code:n :} drop
    code 0= if exit then
    LOCK TASK:GET
-   idx [: UNHAND ;] [: UNLOCK ;] finally
+   idx row [: UNHAND ;] [: UNLOCK ;] finally
    code throw ;
 
 
-\ The connection is closed and the handler told `closed`, once. The slot is
-\ retired as that call ends (CALL-ENDED), however it ends, or by STOP while
-\ the call is still queued (DROP-QUEUED): the handler can still name the
-\ socket, and nothing closes the connection a second time.
+\ Under LOCK: the message is queued in the row whose buffer holds it, which
+\ the task chose below CALLS calls out (ROW-FOR).
+: TAKE-MESSAGE ( n message -- n ) {: idx:n msg :}
+   idx idx MSG-ROW @ ROW {: row:n :}
+   row msg QUEUE-ROW
+   1 idx CALLS-OUT +!
+   row ;
+
+
+\ Under LOCK: `closed`, with the socket's status, is queued in row 0.
+: TAKE-CLOSED ( n -- n ) {: idx:n :}
+   idx 0 ROW {: row:n :}
+   row idx STATUS @ WS-MESSAGE:CLOSED QUEUE-ROW
+   DELIVERY-CLOSING idx DELIVERY !
+   row ;
+
+
+\ The phase is closed. Only at taking(0), which only the task leaves, is the
+\ connection closed and `closed` queued in row 0, whose end retires the slot.
 : FINISH ( n -- ) {: idx:n :}
+   idx LOCKED-READING? 0= if exit then
    idx DISARM
    idx LINK @ TCP4:CLOSE drop
-   idx idx STATUS @ WS-MESSAGE:CLOSED HAND-OFF ;
+   LOCK TASK:GET
+   idx TAKE-CLOSED {: row:n :}
+   UNLOCK
+   idx row HAND-OFF ;
 
 
-\ A handing slot is finished once its call ends.
 : LOSE ( n -- ) {: idx:n :}
    LOCK TASK:GET
    idx LOST
-   idx CALLED?
-   LOCK TASK:RELEASE
-   if exit then
+   UNLOCK
    idx FINISH ;
 
 
@@ -877,6 +990,24 @@ LOCK TASK:FACILITY-INIT
    idx ORDER-STATUS ;
 
 
+\ Under LOCK: the slot's first row with no call. The task asks only below
+\ CALLS calls out, so one is free.
+: FREE-ROW ( n -- n ) {: idx:n :}
+   0
+   CALLS @ 0 ?do
+      idx i ROW ROW-STATE @ ROW-FREE = if drop i leave then
+   loop ;
+
+
+\ A message's first frame takes a free row's buffer for the message.
+: ROW-FOR ( n -- ) {: idx:n :}
+   idx CONTROL-FRAME? if exit then
+   idx F-WIRE @ 0= if exit then
+   LOCK TASK:GET
+   idx FREE-ROW idx MSG-ROW !
+   UNLOCK ;
+
+
 \ The header is decoded after every pull, so a fault shows in the fewest bytes
 \ and a header the input cut short is taken up where it stopped.
 : READ-HEADER ( n -- progress ) {: idx:n :}
@@ -888,6 +1019,7 @@ LOCK TASK:FACILITY-INIT
       got idx HEAD-U +!
       idx HEADER-STATUS {: status:n :}
       status 0 <> if status idx FAILING ! construct progress fault exit then
+      idx HEAD-DONE @ 0 <> if idx ROW-FOR then
    again ;
 
 
@@ -927,7 +1059,10 @@ LOCK TASK:FACILITY-INIT
    idx MSG-WIRE @ TEXT? if WS-MESSAGE:TEXT else WS-MESSAGE:BINARY then {: msg :}
    0 idx MSG-U !
    0 idx MSG-WIRE !
-   idx msg HAND-OFF ;
+   LOCK TASK:GET
+   idx msg TAKE-MESSAGE {: row:n :}
+   UNLOCK
+   idx row HAND-OFF ;
 
 
 \ Text is checked whole, because a scalar may straddle two fragments.
@@ -988,11 +1123,11 @@ LOCK TASK:FACILITY-INIT
    phase PHASE-OPEN = phase PHASE-CLOSING = or ;
 
 
-\ A message handed to its handler ends the parse, which takes up again from
-\ IN-AT once that call has ended.
+\ The parse ends once the slot's read is not armed, as at CALLS calls out,
+\ and takes up again from IN-AT once a call's end has armed it.
 : PARSE ( n -- ) {: idx:n :}
    begin
-      idx HANDING? if exit then
+      idx LOCKED-READING? 0= if exit then
       idx LIVE? 0= if 0 idx IN-U ! exit then
       idx FRAME-IN
       MATCH progress
@@ -1003,12 +1138,25 @@ LOCK TASK:FACILITY-INIT
    again ;
 
 
+\ The peer hung up: a closed socket keeps the status it closed under, its
+\ unwritten queue dropped; any other is lost.
+: HUNG-UP ( n -- ) {: idx:n :}
+   LOCK TASK:GET
+   idx LIVE? if idx LOST else 0 idx OUT-AT ! 0 idx OUT-U ! then
+   UNLOCK
+   idx FINISH ;
+
+
 : INPUT ( n -- ) {: idx:n :}
    idx LINK @ idx IN @ RX-CAP SPAN:TAKE SPAN:$ str> TCP4:TRANSFER-BYTES TCP4:TRY-READ
    MATCH TCP4:try-read-result
-      data OF BLEN>N idx IN-U ! 0 idx IN-AT ! idx HEARD-NOW idx PARSE ENDOF
+      data OF
+         BLEN>N idx IN-U ! 0 idx IN-AT !
+         LOCK TASK:GET idx HEARD-NOW UNLOCK
+         idx PARSE
+      ENDOF
       empty OF ENDOF
-      closed OF drop idx LIVE? if idx LOSE else 0 idx OUT-AT ! 0 idx OUT-U ! idx FINISH then ENDOF
+      closed OF drop idx HUNG-UP ENDOF
       failed OF drop idx LOSE ENDOF
    ;MATCH ;
 
@@ -1094,9 +1242,9 @@ ENUM course
    STOP-AT @ 0 <> idx PHASE @ PHASE-OPEN = and if idx STATUS-AWAY PHASE-CLOSED SHUT drop then ;
 
 
-\ A handing slot's course, under LOCK: its queue is written, and lost when it
-\ gives up, as a ready slot's is, but nothing is read, parsed or finished
-\ until its call ends.
+\ The course of a slot whose read is not armed, under LOCK: its queue is
+\ written, and lost when it gives up, as a reading slot's is, but nothing is
+\ read, parsed or finished until a call's end arms the read.
 : HELD ( n -- course ) {: idx:n :}
    idx AWAY
    idx QUEUED 0 > idx GIVE-UP? and if idx LOST then
@@ -1105,14 +1253,15 @@ ENUM course
 
 
 \ The slot's course, under LOCK: its phase first, since LINK, IN and HANDLER
-\ are the task's to read only once the slot is published, then its delivery.
+\ are the task's to read only once the slot is published, then whether its
+\ read is armed.
 \ Bytes held unparsed, the ones that rode behind the handshake or behind a
 \ message handed on, come next, since no poll reports them. A socket closed
 \ with its queue written is spent before it may give up, so a stop's deadline
 \ that passed during a call leaves its 1001 the status.
 : COURSE ( n -- course ) {: idx:n :}
    idx PHASE-SET? 0= if construct course vacant exit then
-   idx CALLED? if idx HELD exit then
+   idx READING? 0= if idx HELD exit then
    idx IN-U @ 0 > if construct course unparsed exit then
    idx AWAY
    idx PROBE
@@ -1164,14 +1313,14 @@ ENUM course
 
 
 \ The poll's readiness: room is written to, and anything else is read, which
-\ is how an end of stream or an error is learnt, once no handler call holds
-\ the slot.
+\ is how an end of stream or an error is learnt, while the slot's read is
+\ armed.
 : READY ( n n -- ) {: idx:n rev:n :}
    rev AIO:WRITABLE and 0 <> if
       idx LOCKED-FLUSH 0= if idx LOSE exit then
    then
    rev AIO:WRITABLE invert and 0= if exit then
-   idx HANDING? if exit then
+   idx LOCKED-READING? 0= if exit then
    idx INPUT ;
 
 
@@ -1214,13 +1363,14 @@ ENUM course
 \ The slot holds a socket and no handler call.
 : UNCALLED? ( n -- bool ) {: idx:n :}
    LOCK TASK:GET
-   idx PHASE-SET? idx DELIVERY @ DELIVERY-READY = and
+   idx PHASE-SET? idx DELIVERY @ DELIVERY-TAKING = and
+   idx CALLS-OUT @ 0= and
    UNLOCK ;
 
 
 \ LEFT is set first, so an ACCEPT has either published its socket for this
-\ scan to close or finds LEFT and takes nothing, and a handler call that ends
-\ after it closes and retires its own slot (MESSAGE-ENDED).
+\ scan to close or finds LEFT and takes nothing, and the last handler call of
+\ a socket that ends after it closes and retires its slot (LEFT-OFF).
 \ SERVE registers this before the task's first AIO submission registers AIO's
 \ own cleanup, which therefore runs first: it has given back every record the
 \ task submitted, the timer's among them, and emptied WAITERS, so no ticket is
@@ -1431,17 +1581,20 @@ ENUM course
    POKE ;
 
 
-\ Under LOCK, the connection taken: the handler, its value and `opened` are
-\ the slot's, and that call is queued before the task can see the slot, so it
-\ comes first; its worker waits for LOCK. The code HTTP:SUBMIT threw, or 0;
-\ after a throw the slot is reserved again and its connection closed.
+\ Under LOCK, the connection taken: the handler, its value and `opened`, in
+\ row 0, are the slot's, and that call is queued before the task can see the
+\ slot, so it comes first; its worker waits for LOCK. The code HTTP:SUBMIT
+\ threw, or 0; after a throw the row is free, the slot reserved again and its
+\ connection closed.
 : OPEN-CALL ( [ socket n message -- ] n n -- n ) {: q arg:n idx:n :}
    q idx HANDLER !
    arg idx HANDLER-ARG !
-   WS-MESSAGE:OPENED idx PENDING !
-   DELIVERY-QUEUED idx DELIVERY !
-   idx [: QUEUE-HAND ;] catch {: code:n :} drop
+   idx 0 ROW {: row:n :}
+   row WS-MESSAGE:OPENED QUEUE-ROW
+   DELIVERY-OPENING idx DELIVERY !
+   row [: QUEUE-HAND ;] catch {: code:n :} drop
    code 0= if 0 exit then
+   ROW-FREE row ROW-STATE !
    idx LINK @ TCP4:CLOSE drop
    PHASE-RESERVED idx PHASE !
    code ;
@@ -1498,10 +1651,12 @@ ENUM course
    CAP @ 0 ?do i PHASE @ PHASE-RESERVED = if drop true leave then loop ;
 
 
-\ Under LOCK: a slot is handing.
+\ Under LOCK: a call row is not free.
 : CALLING? ( -- bool )
    false
-   CAP @ 0 ?do i CALLED? if drop true leave then loop ;
+   CAP @ CALLS @ * 0 ?do
+      i ROW-STATE @ ROW-FREE <> if drop true leave then
+   loop ;
 
 
 \ Under LOCK, at one reading of the clock: what STOP still waits for, a
@@ -1514,11 +1669,12 @@ ENUM course
 
 \ Each handshake inside ACCEPT finds WS stopping and gives its slot back, so
 \ none fills a slot once STOP has returned and a START may move the tables.
-\ Each handler call ends and retires its slot, or is still out at the
-\ deadline: a running one holds START off until it ends (CLAIM-START), and
-\ STOP retires a queued one (DROP-QUEUED). Only a handshake makes the wait
-\ unbounded, ended by GIVE-BACK's hint; a call's wait is bounded by the
-\ deadline, so one that passes after UNGIVEN read the clock is a wait of zero.
+\ Each handler call ends, the last of a socket's retiring its slot, or is
+\ still out at the deadline: a running one holds START off until it ends
+\ (CLAIM-START), and STOP drops a queued one (DROP-QUEUED). Only a handshake
+\ makes the wait unbounded, ended by GIVE-BACK's hint; a call's wait is
+\ bounded by the deadline, so one that passes after UNGIVEN read the clock is
+\ a wait of zero.
 : AWAIT-GIVEN ( n -- ) {: deadline:n :}
    begin
       LOCK TASK:GET
@@ -1531,14 +1687,14 @@ ENUM course
    again ;
 
 
-\ Under LOCK, once the task has left: each slot whose call is still queued is
-\ retired, its connection closed unless FINISH has closed it, so neither a
-\ call a worker takes later nor one HTTP:STOP drops unrun leaves its slot
-\ handing. A worker that takes such a call finds its handle stale, since the
-\ retirement moved the slot's count on, and runs nothing (HAND).
+\ Under LOCK, once the task has left: each call still queued is dropped, and
+\ a slot it leaves no call is retired, its connection closed unless FINISH
+\ has closed it, so neither a call a worker takes later nor one HTTP:STOP
+\ drops unrun holds its row. A worker that takes such a call finds its row
+\ free or its slot's count moved on, and runs nothing (HAND).
 : DROP-QUEUED ( -- )
-   CAP @ 0 ?do
-      i DELIVERY @ DELIVERY-QUEUED = if i false END-CALL then
+   CAP @ CALLS @ * 0 ?do
+      i ROW-STATE @ ROW-QUEUED = if i ROW-SLOT i false END-CALL then
    loop ;
 
 
@@ -1560,11 +1716,12 @@ ENUM course
    true ;
 
 
-\ START's part under LOCK: the tables mapped for n sockets, then the limit,
-\ the config's bounds and the stop's state set for the new run.
-: SET-UP ( ^config n -- ) {: cfg:^ n:n :}
-   n TABLES-RESERVE
+\ START's part under LOCK: the tables mapped for n sockets of c calls, then
+\ the limits, the config's bounds and the stop's state set for the new run.
+: SET-UP ( ^config n n -- ) {: cfg:^ n:n c:n :}
+   n n c * TABLES-RESERVE
    n CAP !
+   c CALLS !
    cfg WS-CONFIG:PING @ MS>N NS-PER-MS * PING-NS !
    cfg WS-CONFIG:PONG @ MS>N NS-PER-MS * PONG-NS !
    cfg WS-CONFIG:STALL @ MS>N NS-PER-MS * STALL-NS !
@@ -1575,7 +1732,7 @@ ENUM course
 
 \ Under LOCK: this START claims the run, or false when WS is not idle, or
 \ when a handler call from an earlier run is still out, reading the tables
-\ SET-UP may move.
+\ SET-UP may move; every row is then free, whatever CALLS the run sets.
 : CLAIM-START ( -- bool )
    CALLING? if false exit then
    RUN @
@@ -1596,12 +1753,19 @@ ENUM course
    [: SERVE ;] WS-TASK TASK:ACTIVATE ;
 
 
+\ At least one socket of at least one call, and no row past SLOT-MASK.
+: LIMITS? ( n n -- bool ) {: n:n c:n :}
+   n 1 < c 1 < or if false exit then
+   c SLOT-MASK n / <= ;
+
+
 : LAUNCH ( ^config -- ^config ) {: cfg:^ :}
    AIO:RUNNING? 0= if E-AIO-STATE throw then
    cfg WS-CONFIG:SOCKETS @ {: n:n :}
-   n 1 < n SLOT-MASK > or if E-WS-LIMIT throw then
+   cfg WS-CONFIG:CALLS @ {: c:n :}
+   n c LIMITS? 0= if E-WS-LIMIT throw then
    LOCK TASK:GET
-   cfg n [: SET-UP ;] [: UNLOCK ;] finally
+   cfg n c [: SET-UP ;] [: UNLOCK ;] finally
    TASK:SELF 0 STOPPER !
    PIPE-OPEN
    [: ACTIVATE-TASK ;] catch {: code:n :}
@@ -1611,8 +1775,9 @@ ENUM course
 
 public
 
-\ Leaves sockets as it is.
+\ One call at a time to a socket, in order. Leaves sockets as it is.
 : DEFAULTS ( ^config -- ) {: cfg:^ :}
+   1 cfg WS-CONFIG:CALLS !
    30000 >MS cfg WS-CONFIG:PING !
    10000 >MS cfg WS-CONFIG:PONG !
    5000 >MS cfg WS-CONFIG:STALL ! ;
@@ -1633,20 +1798,20 @@ public
 
 
 \ Sends status 1001 to every open socket, closes each once its frames are
-\ written or within GOODBYE-MS, tells each handler `closed` once the call it
-\ has running, if any, has returned, and joins the task. A socket already
+\ written or within GOODBYE-MS, tells each handler `closed` once the calls
+\ it has out, if any, have returned, and joins the task. A socket already
 \ closing gets no 1001: it stays closing, and its handler is told its peer's
 \ answer, or 1006 once it gives up. STOP waits for WS's task and the handler
 \ calls at most GOODBYE-MS and STOP-MARGIN-MS, kills the task if it has not
-\ left by then, and returns. A call still running then ends later: its end
-\ closes its socket and retires its slot, telling the handler nothing more,
-\ and START is E-WS-STATE until it has. A call still queued then is dropped
-\ with its socket and never runs (DROP-QUEUED). Called inside a handler call,
-\ STOP waits out its bound for that call, then returns. The calls run on
-\ HTTP's workers, so WS stops before HTTP does. A handshake inside ACCEPT is
-\ answered 503 and STOP waits for it, however long its worker takes to get
-\ there. Outside a run or while START still starts it, while another STOP
-\ runs, or on WS's own task, it is E-WS-STATE.
+\ left by then, and returns. A call still running then ends later: the last
+\ of a socket's to end closes the socket and retires its slot, telling the
+\ handler nothing more, and START is E-WS-STATE until it has. A call still
+\ queued then is dropped and never runs (DROP-QUEUED). Called inside a
+\ handler call, STOP waits out its bound for that call, then returns. The
+\ calls run on HTTP's workers, so WS stops before HTTP does. A handshake
+\ inside ACCEPT is answered 503 and STOP waits for it, however long its
+\ worker takes to get there. Outside a run or while START still starts it,
+\ while another STOP runs, or on WS's own task, it is E-WS-STATE.
 : STOP ( -- )
    LOCK TASK:GET
    CLAIM-STOP

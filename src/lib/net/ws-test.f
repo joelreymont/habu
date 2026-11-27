@@ -56,6 +56,18 @@ package WS
    LOCK TASK:GET
    LEFT @
    LOCK TASK:RELEASE ;
+\ The message calls the socket's slot has queued or running.
+: WS-TEST:OUT ( socket -- n )
+   SOCKET>N >SLOT {: idx:n :}
+   LOCK TASK:GET
+   idx CALLS-OUT @
+   LOCK TASK:RELEASE ;
+\ The bytes the socket's slot has queued and not yet written.
+: WS-TEST:QUEUED ( socket -- n )
+   SOCKET>N >SLOT {: idx:n :}
+   LOCK TASK:GET
+   idx QUEUED
+   LOCK TASK:RELEASE ;
 ;package
 
 \ Reopens HTTP for its listener's descriptor, which the fault case polls so the
@@ -213,7 +225,9 @@ variable FIRST-DONE               \ set once that wait has ended
 variable NEXT-SAW                 \ FIRST-DONE as the handler of `next` found it
 TYPED-VARIABLE CFG WS:config      \ the config every WS:START here is given
 variable THROW-ARMED              \ set while the next `closed` handler is to throw
-variable HOLDING                  \ set while the handler of `hold` waits on UNHELD
+variable HOLDING                  \ the handlers of `hold` waiting on UNHELD
+variable CLOSE-SAW                \ HOLDING as the last `closed` handler found it
+1 TYPED-BUFFER LIMITED WS:socket  \ the socket whose calls out a case awaits
 variable PROBING                  \ set while the handler of `brief` sends its probes
 variable PROBE-END                \ what the probe that ended them threw
 variable ERR-U
@@ -246,6 +260,11 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    SIZED
    SHORT-MS >MS CFG WS-CONFIG:PING !
    SHORT-MS >MS CFG WS-CONFIG:PONG ! ;
+
+\ Two message calls of a socket at once.
+: PAIRED ( n -- ^WS:config )
+   SIZED
+   2 CFG WS-CONFIG:CALLS ! ;
 
 : STALL-MS ( -- n ) CFG WS-CONFIG:STALL @ MS>N ;
 
@@ -652,9 +671,9 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 
 \ The handler holds its worker until the case signals UNHELD.
 : HOLD ( -- )
-   1 HOLDING atomic!
+   1 HOLDING atomic-add drop
    UNHELD TASK:WAIT-SEM
-   0 HOLDING atomic! ;
+   -1 HOLDING atomic-add drop ;
 
 : SEND-PROBE ( -- )
    0 NOTED @ s" ." WS:SEND-TEXT ;
@@ -703,7 +722,10 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
       opened OF ENDOF
       text OF sock TEXT-IN ENDOF
       binary OF sock BINARY-IN ENDOF
-      closed OF sock CLOSED-IN THROW-IN-CLOSED ENDOF
+      closed OF
+         HOLDING atomic@ CLOSE-SAW atomic!
+         sock CLOSED-IN THROW-IN-CLOSED
+      ENDOF
    ;MATCH ;
 
 : KIND ( WS:message -- n )
@@ -1468,6 +1490,124 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    conn HEAR WS-OPCODE:PING s" " GOT
    conn ENDS ;
 
+: CALLS-RESET ( -- )
+   0 BLOCKING atomic!
+   0 FIRST-DONE atomic!
+   -1 NEXT-SAW atomic!
+   0 HOLDING atomic! ;
+
+: TEXT-OUT ( TCP4:connection str -- ) {: conn:TCP4:connection s:str :}
+   conn true WS-OPCODE:TEXT s SAY ;
+
+: TWO-HOLDING ( -- n )
+   HOLDING atomic@ 2 = bool>n ;
+
+: TWO-OUT ( -- n )
+   0 LIMITED @ WS-TEST:OUT 2 = bool>n ;
+
+\ With calls 2 a socket's second message runs while its first blocks: `next`
+\ is answered first, its handler finding that wait not ended.
+: PAIR-CASE ( -- )
+   s" two calls of one socket at once" SECTION
+   CALLS-RESET
+   OPENS drop {: a:TCP4:connection :}
+   a s" wait" TEXT-OUT
+   [: BLOCKING atomic@ ;] AWAITED drop
+   a WS-OPCODE:TEXT s" next" EXCHANGE
+   s" next answered while wait blocks" T-LABEL
+   BLOCKING atomic@ 1 T=
+   NEXT-SAW atomic@ 0 T=
+   NEXT-SAW atomic@ 0= if s" < next handled while wait blocked" LOG-LINE then
+   RELEASED TASK:SIGNAL-SEM
+   a HEAR WS-OPCODE:TEXT s" waited" GOT
+   a FAREWELL ;
+
+\ With both calls out a third message is not handed: it waits in the peer's
+\ stream, the server's WORKERS both busy, until a call ends.
+: LIMIT-CASE ( -- )
+   s" a third message behind two calls" SECTION
+   CALLS-RESET
+   OPENS {: a:TCP4:connection sock:WS:socket :}
+   a s" wait" TEXT-OUT
+   [: BLOCKING atomic@ ;] AWAITED drop
+   a s" hold" TEXT-OUT
+   [: HOLDING atomic@ ;] AWAITED drop
+   a s" next" TEXT-OUT
+   SHORT-MS >MS TASK:SLEEP
+   s" not handed while two calls are out" T-LABEL
+   sock WS-TEST:OUT 2 T=
+   RELEASED TASK:SIGNAL-SEM
+   a HEAR WS-OPCODE:TEXT s" waited" GOT
+   a HEAR WS-OPCODE:TEXT s" next" GOT
+   UNHELD TASK:SIGNAL-SEM
+   a FAREWELL ;
+
+\ The peer's close, read once one call ends, is answered while the other
+\ runs, and `closed` comes only once that call has ended too.
+: CLOSED-LAST-CASE ( -- )
+   s" closed behind two calls" SECTION
+   CALLS-RESET
+   -1 CLOSE-SAW atomic!
+   OPENS {: a:TCP4:connection sock:WS:socket :}
+   a s" wait" TEXT-OUT
+   [: BLOCKING atomic@ ;] AWAITED drop
+   a s" hold" TEXT-OUT
+   [: HOLDING atomic@ ;] AWAITED drop
+   a true WS-OPCODE:CLOSE 1000 STATUS$ SAY
+   RELEASED TASK:SIGNAL-SEM
+   a HEAR WS-OPCODE:TEXT s" waited" GOT
+   a HEAR 1000 GOT-CLOSE
+   UNHELD TASK:SIGNAL-SEM
+   a ENDS
+   sock 1000 CLOSED-WITH
+   s" closed once both calls ended" T-LABEL
+   CLOSE-SAW atomic@ 0 T= ;
+
+: FILL-ONCE ( WS:socket -- bool ) {: sock:WS:socket :}
+   begin sock WS-TEST:QUEUED QUEUE-MAX < while
+      sock 1 PUSHES dup 0 T= 0<> if false exit then
+   repeat true ;
+
+\ The socket's queue at QUEUE-MAX, and still there once the kernel's buffers
+\ have taken their share.
+: FILL-QUEUE ( WS:socket -- ) {: sock:WS:socket :}
+   begin
+      sock FILL-ONCE 0= if exit then
+      150 >MS TASK:SLEEP
+   sock WS-TEST:QUEUED QUEUE-MAX >= until ;
+
+\ A socket its ping loses behind a full queue, one of its two calls out, is
+\ told `closed` only once that call has ended, and leaves no call counted out.
+: LOSS-CASE ( -- )
+   s" a socket lost with a call out" SECTION
+   CALLS-RESET
+   -1 CLOSE-SAW atomic!
+   2 PAIRED
+   2000 >MS CFG WS-CONFIG:PING !
+   RESTART
+   DIAL-SMALL OPENS-OVER {: still:TCP4:connection stuck:WS:socket :}
+   still s" hold" TEXT-OUT
+   [: HOLDING atomic@ ;] AWAITED drop
+   stuck FILL-QUEUE
+   stuck 0 WATCH !
+   [: stuck WS-TEST:QUEUED 0= bool>n ;] AWAITED drop
+   SHORT-MS >MS TASK:SLEEP
+   s" no closed told while hold is out" T-LABEL
+   WATCHED 0 T=
+   CLOSE-SAW atomic@ -1 T=
+   UNHELD TASK:SIGNAL-SEM
+   stuck LOST CLOSED-WITH
+   [: stuck WS-TEST:OUT 0= bool>n ;] AWAITED drop
+   s" no call out of the slot once every call ended" T-LABEL
+   stuck WS-TEST:OUT 0 T=
+   still TCP4:CLOSE DROP-STATUS ;
+
+\ The cases of a run with two calls to a socket.
+: CALLS-CASES ( -- )
+   4 PAIRED RESTART
+   PAIR-CASE LIMIT-CASE CLOSED-LAST-CASE
+   LOSS-CASE ;
+
 : OVERFLOW-CASE ( -- )
    s" a queue past its bound" SECTION
    OPENS {: still:TCP4:connection stuck:WS:socket :}
@@ -1533,6 +1673,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    s" a stop of an idle socket" T-LABEL
    [: 0 SIZED WS:START ;] E-WS-LIMIT TTHROWSQ
    [: $100000000 SIZED WS:START ;] E-WS-LIMIT TTHROWSQ
+   [: 1 SIZED 0 over WS-CONFIG:CALLS ! WS:START ;] E-WS-LIMIT TTHROWSQ
    CROWD SIZED WS:START
    OPENS drop {: conn:TCP4:connection :}
    mono-ns {: began:n :}
@@ -1693,6 +1834,36 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    conn ENDS
    s" a start once that call has retired its slot" T-LABEL
    sock CLOSED-OF 0 T=
+   [: 1 SIZED WS:START ;] catch 0 T=
+   [: WS:STOP ;] catch 0 T= ;
+
+\ A stop while one socket's call runs and its next is queued, the server's
+\ WORKERS both held: the queued call is dropped unrun, and a start succeeds
+\ once the running calls have ended.
+: QUEUED-STOP-CASE ( -- )
+   s" a stop with a call queued" SECTION
+   CALLS-RESET
+   4 PAIRED WS:START
+   OPENS drop {: b:TCP4:connection :}
+   OPENS {: a:TCP4:connection sock:WS:socket :}
+   sock 0 LIMITED !
+   b s" hold" TEXT-OUT
+   [: HOLDING atomic@ ;] AWAITED drop
+   a s" hold" TEXT-OUT
+   ['] TWO-HOLDING AWAITED drop
+   a s" next" TEXT-OUT
+   ['] TWO-OUT AWAITED drop
+   WS:STOP
+   a HEAR 1001 GOT-CLOSE
+   b HEAR 1001 GOT-CLOSE
+   s" a start while the calls run" T-LABEL
+   [: 1 SIZED WS:START ;] E-WS-STATE TTHROWSQ
+   UNHELD TASK:SIGNAL-SEM
+   UNHELD TASK:SIGNAL-SEM
+   a ENDS
+   b ENDS
+   s" a start once they ended, the queued call unrun" T-LABEL
+   NEXT-SAW atomic@ -1 T=
    [: 1 SIZED WS:START ;] catch 0 T=
    [: WS:STOP ;] catch 0 T= ;
 
@@ -2066,6 +2237,29 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    s" == a peer that falls silent" W
    s" < ping 0" W
    s" < end of stream" W
+   s" == two calls of one socket at once" W
+   s" > text 4 77616974" W
+   s" > text 4 6e657874" W
+   s" < text 4 6e657874" W
+   s" < next handled while wait blocked" W
+   s" < text 6 776169746564" W
+   W-FAREWELL
+   s" == a third message behind two calls" W
+   s" > text 4 77616974" W
+   s" > text 4 686f6c64" W
+   s" > text 4 6e657874" W
+   s" < text 6 776169746564" W
+   s" < text 4 6e657874" W
+   W-FAREWELL
+   s" == closed behind two calls" W
+   s" > text 4 77616974" W
+   s" > text 4 686f6c64" W
+   s" > close 2 03e8" W
+   s" < text 6 776169746564" W
+   s" < close 2 03e8" W
+   s" < end of stream" W
+   s" == a socket lost with a call out" W
+   s" > text 4 686f6c64" W
    s" == a stop" W
    s" < close 2 03e9" W-FAILED
    s" == a stop while a socket closes" W
@@ -2084,6 +2278,14 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    s" == a stop while a handler call blocks" W
    s" > text 4 686f6c64" W
    s" < close 2 03e9" W
+   s" < end of stream" W
+   s" == a stop with a call queued" W
+   s" > text 4 686f6c64" W
+   s" > text 4 686f6c64" W
+   s" > text 4 6e657874" W
+   s" < close 2 03e9" W
+   s" < close 2 03e9" W
+   s" < end of stream" W
    s" < end of stream" W
    s" == a stop while a handler call runs briefly" W
    s" > text 5 6272696566" W
@@ -2127,7 +2329,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    HEADER-FAULTS MESSAGE-FAULTS BOUND-CASES
    CLOSE-STATUS-CASES CLOSE-CASES SERVER-CLOSE-CASE TWICE-CASE THROW-CASE
    MANY-CASE BLOCK-CASE PUSH-CASE BOTH-CASE BURST-CASE HELD-CASE OVERFLOW-CASE STALL-CASE
-   SILENT-CASE ;
+   SILENT-CASE CALLS-CASES ;
 
 public
 
@@ -2154,7 +2356,7 @@ public
    CROWD SIZED RESTART
    STOP-CASE STALE-CASE IDLE-STOP-CASE CLOSING-STOP-CASE
    SHRINK-CASE STRAGGLER-CASE STOP-TWICE-CASE START-RACE-CASE HANDLER-STOP-CASE
-   BLOCKED-STOP-CASE BRIEF-STOP-CASE
+   BLOCKED-STOP-CASE QUEUED-STOP-CASE BRIEF-STOP-CASE
    FAULT-CASE
    WRAP-CASE
    HTTP:STOP
