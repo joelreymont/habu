@@ -4,6 +4,23 @@
 \ of the query as written, then a caret under column C. L and C count from 1,
 \ C in bytes. A line over 80 bytes shows 40 bytes each side of C, `...` at
 \ each cut end; the caret's padding is the visible width of what precedes it.
+\ A fix removes the mistake it names: applied as written, the query parses
+\ there or is rejected later for a mistake of its own. Later is, by a later
+\ stage, anywhere; by the same stage or an earlier one (lexer, parser,
+\ validator), past the found token the fix keeps, or at it when it ends a
+\ construct (the end of the query, `}`, `)` or `]`) and the fix wrote only
+\ before it, or at a closer the fix wrote when it wrote nothing else; not
+\ before where it stood when the fix removes or replaces it. A
+\ fix replaces, removes or moves the found token or tokens it names; writes
+\ before it, or a variable into GROUP BY; writes the closer of a construct the
+\ found token cannot continue, unless one of its own closers follows and the
+\ found token starts no pattern, or moves a data block's } there when its own
+\ } follows; or puts a condition or a row in parentheses, or the triples or
+\ pattern before a UNION in braces. Found whole: a
+\ malformed escape, blank node label or language tag, a nameless `?` or `$`,
+\ a line break in a one-quote string and a prefixed name whose prefix ends
+\ in `.`; an unclosed string, at its line's first `}`, `)` or `]` after its
+\ quote or at its end.
 
 require src/lib/arena.f
 require src/lib/vector.f
@@ -295,6 +312,11 @@ STRUCTURE syntax DERIVE addr
    state line spot col 1- - spot SHOW-LINE
    E-QUERY REASON:STOP ;
 
+\ The text of the token after the parser's current one, empty past the
+\ last.
+: NEXT-TOKEN$ ( ^syntax -- str )
+   SYNTAX-NEXT TOKEN-TEXT @ ;
+
 \ Rejects at the lexer's position, found the character there.
 : REJECT-BYTE ( ^syntax str str -- )
    {: state x:str f:str :}
@@ -303,6 +325,13 @@ STRUCTURE syntax DERIVE addr
    state SYNTAX-POSITION @ {: at:n :}
    at size >= if 0 else source at UTF8:SUBPART-END at - then
       {: wide:n :}
+   state at x text at + wide >str f REJECTED ;
+
+\ Rejects at byte n, found the bytes from n to the lexer's position.
+: REJECT-SPAN ( ^syntax n str str -- )
+   {: state at:n x:str f:str :}
+   state SYNTAX-SOURCE @ str> drop {: text :}
+   state SYNTAX-POSITION @ at - {: wide:n :}
    state at x text at + wide >str f REJECTED ;
 
 : NODE ( ^syntax n -- ^node )

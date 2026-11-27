@@ -36,19 +36,163 @@ private
       state text state fix s"  here" JOIN$ REJECT
    then ;
 
-\ The current token is of kind n, else a rejection expecting the text.
-: REQUIRE-KIND ( ^syntax n str -- )
-   {: state kind:n x:str :}
-   state TOKEN-K kind <> if
-      state s" write " x JOIN$ {: fix:str :}
+\ The token ends the query, a triple, a list or a [ ] property list.
+: CLOSES? ( ^syntax -- bool )
+   {: state :}
+   state END? state s" ." IS$ or state s" ;" IS$ or
+   state s" ," IS$ or state s" }" IS$ or state s" ]" IS$ or ;
+
+\ The token starts a pattern other than triples.
+: NONTRIPLE? ( ^syntax -- bool )
+   {: state :}
+   state s" {" IS$ state s" OPTIONAL" IS$ or state s" MINUS" IS$ or
+   state s" GRAPH" IS$ or state s" SERVICE" IS$ or
+   state s" FILTER" IS$ or state s" BIND" IS$ or state s" VALUES" IS$ or ;
+
+\ Whether the token may follow an object: it ends a triple, a list or the
+\ group, or starts a pattern other than triples.
+: AFTER-OBJECT? ( ^syntax -- bool )
+   {: state :} state CLOSES? state NONTRIPLE? or ;
+
+\ Rejects the token expecting the first text; the fix replaces the token
+\ with the second text, or at the end of the query writes it there.
+: REPLACE-WITH ( ^syntax str str -- )
+   {: state x:str what:str :}
+   state END? if
+      state s" write " what JOIN$ {: fix:str :}
       state x state fix s"  here" JOIN$ REJECT
-   then ;
+   then
+   state x state s" replace it with " what JOIN$ REJECT ;
+
+\ How the token text moves bracket depth: 1 for an opener, -1 for a
+\ closer, else 0.
+: BRACKET ( str -- n )
+   {: t:str :}
+   t s" (" STR:=  t s" [" STR:= or  t s" {" STR:= or if 1 exit then
+   t s" )" STR:=  t s" ]" STR:= or  t s" }" STR:= or if -1 exit then
+   0 ;
+
+\ Whether the opener and the closer make a pair.
+: PAIR? ( str str -- bool )
+   {: o:str c:str :}
+   o s" (" STR:=  c s" )" STR:= and
+   o s" {" STR:=  c s" }" STR:= and or
+   o s" [" STR:=  c s" ]" STR:= and or ;
+
+\ Steps a scan's count of unmatched brackets of one kind and its depth
+\ over a bracket that moves depth b in the scan's direction, of that kind
+\ when the flag holds; false where one of another kind ends the scan.
+: UNMATCHED ( n n n bool -- n n bool )
+   {: b:n same:bool :}
+   b 1 = if 1+ true exit then
+   b 0= if true exit then
+   dup 0 > if 1- true exit then
+   same 0= if false exit then
+   swap 1+ swap true ;
+
+: AFTER-STEP ( n n str str -- n n bool )
+   {: t:str c:str :}
+   t BRACKET  t c STR:=  UNMATCHED ;
+
+\ Steps the depth over the token text, which is kept when it opens
+\ level k.
+: DEPTH-STEP ( n str str n -- n str )
+   {: depth:n kept:str t:str k:n :}
+   t BRACKET {: b:n :}
+   depth b + 0 max {: new:n :}
+   new  b 1 = new k = and if t else kept then ;
+
+\ The closers of the kind at depth 0 from the current token, up to a
+\ closer of another kind at depth 0; a scan.
+: CLOSERS-AFTER ( ^syntax str -- n )
+   {: state c:str :}
+   0 0 state SYNTAX-CURSOR @ begin
+      state swap LEX-AT {: token :}
+      token TOKEN-KIND @ 0= if drop exit then
+      token TOKEN-TEXT @ c AFTER-STEP
+   while state SYNTAX-POSITION @ repeat drop ;
+
+\ How many brackets are open before the current token, a closer closing
+\ the last one open, and the text of the last opener that opened level
+\ k, empty for none; a scan from the query's start.
+: OPEN-AT ( ^syntax n -- n str )
+   {: state k:n :}
+   0 s" " state FIRST-AT begin dup state SYNTAX-CURSOR @ < while
+      {: at:n :} state at LEX-AT TOKEN-TEXT @ k DEPTH-STEP
+      state SYNTAX-POSITION @
+   repeat drop ;
+
+\ The openers of the closer's kind still open before the current token,
+\ from the last, up to one of another kind; a scan from the query's
+\ start for each open level, deepest first.
+: OPENERS-BEFORE ( ^syntax str -- n )
+   {: state c:str :}
+   state 0 OPEN-AT drop {: depth:n :}
+   0 depth begin dup 0 > while
+      state over OPEN-AT {: t:str :} drop
+      t c PAIR? 0= if drop exit then
+      swap 1+ swap 1-
+   repeat drop ;
+
+\ Whether the closer is ahead: at least one, and as many as the openers
+\ of its kind still open, follow at depth 0.
+: CLOSER-AHEAD? ( ^syntax str -- bool )
+   {: state c:str :}
+   state [: state c CLOSERS-AFTER
+      state c OPENERS-BEFORE 1 max >= ;] SCANNING ;
+
+\ Whether the closer is the token after the current one, which opens
+\ nothing.
+: CLOSER-NEXT? ( ^syntax str -- bool )
+   {: state c:str :}
+   state TOKEN$ BRACKET 1 = if false exit then
+   state NEXT-TOKEN$ c STR:= ;
+
+\ Rejects the token expecting x where the closer follows it: the fix
+\ removes it when the closer is next or w is empty, else replaces it
+\ with w.
+: STRAY ( ^syntax str str str -- )
+   {: state x:str c:str w:str :}
+   state c CLOSER-NEXT?  w STR:LEN 0=  or if
+      state x s" remove it" REJECT
+   then state x w REPLACE-WITH ;
+
+\ Rejects the token expecting x: the fix writes w before it when the flag
+\ says it may follow, else replaces it with w.
+: MISSING ( ^syntax str str bool -- )
+   {: state x:str w:str before:bool :}
+   before if
+      state s" write " w JOIN$ {: fix:str :}
+      state x state fix s"  here" JOIN$ REJECT
+   then state x w REPLACE-WITH ;
+
+\ The ) of a call, a list, a parenthesized expression or a path's group;
+\ w is what else the construct takes there, empty for nothing. The
+\ quotation tests whether the current token may follow it or end what
+\ holds it, and runs first: it rejects a token wrong wherever it stands.
+: CLOSE-PAREN ( ^syntax str [ ^syntax -- bool ] -- )
+   {: state w:str follows :}
+   state s" )" ACCEPT$ if exit then
+   state follows execute {: fits:bool :}
+   state s" )" CLOSER-AHEAD? if state s" )" s" )" w STRAY then
+   state s" )" s" )" fits MISSING ;
+
+\ Rejects a token not of kind n, expecting the text: written before the
+\ token when the quotation says it may follow, else in its place.
+: REQUIRE-KIND ( ^syntax n str [ ^syntax -- bool ] -- )
+   {: state kind:n x:str follows :}
+   state TOKEN-K kind = if exit then
+   state x x state follows execute MISSING ;
 
 \ What a term may be, expected where none starts.
 : ANY-TERM ( -- str )
    s" a variable, IRI, prefixed name, literal or blank node" ;
 
-: TERM-FIX ( -- str ) s" write a term such as ?x or <iri> here" ;
+\ What a term in an expression may be.
+: EXPRESSION-TERM ( -- str )
+   s" a variable, IRI, prefixed name or literal" ;
+
+: TERM-EXAMPLE ( -- str ) s" a term such as ?x or <iri>" ;
 
 : COPY-TOKEN ( ^syntax n n n -- n )
    {: state kind:n front:n back:n :}
@@ -241,16 +385,23 @@ private
    prefix state prefix IRI$ str> nip
    state text colon 1+ + size colon - 1- >str false DECODE$ ;
 
-: READ-IRI ( ^syntax -- n )
+\ The current token, an IRI or a prefixed name, as an IRI node.
+: IRI-TERM ( ^syntax -- n )
    {: state :}
    state TOKEN$ str> {: text size:n :}
    state TOKEN-K T-IRI = if
       state text 1+ size 2 - >str RESOLVE-IRI
-   else
-      state T-NAME s" an IRI or prefixed name" REQUIRE-KIND
-      state text size >str EXPAND-NAME
+   else state text size >str EXPAND-NAME
    then {: head:n keep:n tail:str :}
    state head keep tail HEADED-IRI state NEXT-TOKEN ;
+
+\ An IRI or prefixed name; the quotation tests whether the current token
+\ may follow one.
+: READ-IRI ( ^syntax [ ^syntax -- bool ] -- n )
+   {: state follows :}
+   state TOKEN-K T-IRI <> if
+      state T-NAME s" an IRI or prefixed name" follows REQUIRE-KIND
+   then state IRI-TERM ;
 
 : LITERAL-NODE ( ^syntax str n -- n )
    {: state text:str datatype:n :}
@@ -284,11 +435,13 @@ private
    state STRING-VALUE {: value:str :}
    state value state XSD-STRING LITERAL-NODE ;
 
-: READ-STRING ( ^syntax -- n )
-   {: state :}
+\ A string literal. A missing datatype IRI is written before a token the
+\ quotation says may follow the literal, else replaces the token.
+: READ-STRING ( ^syntax [ ^syntax -- bool ] -- n )
+   {: state follows :}
    state STRING-VALUE {: value:str :}
    state s" ^^" ACCEPT$ if
-      state value state READ-IRI LITERAL-NODE exit
+      state value state follows READ-IRI LITERAL-NODE exit
    then
    state TOKEN-K T-LANG = if state value READ-LANGUAGE exit then
    state value state XSD-STRING LITERAL-NODE ;
@@ -354,28 +507,38 @@ private
    state N-VAR 1 0 COPY-TOKEN {: node:n :}
    state node state node VAR-NUMBER NODE-VALUE! node ;
 
-: READ-TERM ( ^syntax -- n )
-   {: state :}
+\ A term, which starts at the current token; the quotation tests whether
+\ the current token may follow it.
+: READ-TERM ( ^syntax [ ^syntax -- bool ] -- n )
+   {: state follows :}
    state TOKEN-K case
       T-VAR of state READ-VAR endof
-      T-IRI of state READ-IRI endof
-      T-NAME of state READ-IRI endof
+      T-IRI of state IRI-TERM endof
+      T-NAME of state IRI-TERM endof
       T-BNODE of state N-BNODE 2 0 COPY-TOKEN endof
-      T-STRING of state READ-STRING endof
+      T-STRING of state follows READ-STRING endof
       T-INTEGER of state NUMBER-TERM endof
       T-DECIMAL of state NUMBER-TERM endof
       T-DOUBLE of state NUMBER-TERM endof
-      T-WORD of
-         state s" true" IS$ state s" false" IS$ or if
-            state BOOLEAN-TERM
-         else state ANY-TERM TERM-FIX REJECT then
-      endof
-      state ANY-TERM TERM-FIX REJECT
+      state BOOLEAN-TERM swap
    endcase ;
+
+\ Whether the current token may follow a PREFIX or BASE declaration.
+: PROLOGUE-NEXT? ( ^syntax -- bool )
+   {: state :}
+   state s" PREFIX" IS$ state s" BASE" IS$ or
+   state s" SELECT" IS$ or state s" ASK" IS$ or
+   state s" CONSTRUCT" IS$ or state s" DESCRIBE" IS$ or ;
+
+\ The IRI a PREFIX or BASE declares is the current token.
+: DECLARED-IRI ( ^syntax -- )
+   {: state :}
+   state T-IRI s" an IRI in <...>" [: PROLOGUE-NEXT? ;] REQUIRE-KIND ;
 
 : READ-PREFIX ( ^syntax -- )
    {: state :}
-   state T-NAME s" a prefix such as ex:" REQUIRE-KIND
+   state T-NAME s" a prefix such as ex:"
+      [: TOKEN-K T-IRI = ;] REQUIRE-KIND
    state TOKEN$ str> {: text size:n :}
    text size >str 58 CHAR-OFF size 1- <> if
       state s" a prefix such as ex:"
@@ -385,8 +548,8 @@ private
       state s" a prefix not declared before"
          s" remove this declaration" REJECT
    then
-   state NEXT-TOKEN state T-IRI s" an IRI in <...>" REQUIRE-KIND
-   state READ-IRI {: iri:n :}
+   state NEXT-TOKEN state DECLARED-IRI
+   state IRI-TERM {: iri:n :}
    state N-PREFIX text size 1- >str TEXT-NODE {: prefix:n :}
    state prefix iri NODE-VALUE!
    state prefix +FIRST-NAME ;
@@ -404,10 +567,10 @@ private
 
 : READ-BASE ( ^syntax -- )
    {: state :}
-   state T-IRI s" an IRI in <...>" REQUIRE-KIND
+   state DECLARED-IRI
    state SYNTAX-DECLARED-BASE @ 0= if state BASE-SCHEME then
    state TOKEN$ str> 2 - swap 1+ swap >str {: written:str :}
-   state state READ-IRI written DECLARE-BASE ;
+   state state IRI-TERM written DECLARE-BASE ;
 
 : PROLOGUE ( ^syntax -- )
    {: state :}

@@ -10,6 +10,7 @@ require src/lib/sparql/terms.f
 require src/lib/sparql/expression.f
 require src/lib/sparql/iri.f
 require src/lib/sparql/lex.f
+require src/lib/fmt.f
 
 package SPARQL
 private
@@ -385,6 +386,41 @@ STRUCTURE link DERIVE addr FIELD node n FIELD next ^link ;STRUCTURE
       else list node 1+ count then
    repeat 2drop state swap REVERSE ;
 
+\ `?name` for variable node n.
+: VAR-FIX ( ^syntax n -- str )
+   {: state name:n :}
+   state s" ?" state state name TEXT$ FIX-NAME JOIN$ ;
+
+\ The set's variables as a fix writes them, `?a ?b`, in order of first use.
+: VARS-FIX ( ^syntax n ^var-set -- str )
+   {: state query:n set :}
+   s" " state query set STAR-NAMES begin dup 0<> while
+      {: text:str list:n :}
+      text STR:LEN 0= if text else state text s"  " JOIN$ then
+      state swap  state state list NODE-A@ VAR-FIX  JOIN$
+      state list NODE-B@
+   repeat drop ;
+
+\ Whether the query uses the variable of the name.
+: USED? ( ^syntax str -- bool )
+   {: state name:str :}
+   state N-VAR name FIRST-NAME 0<> ;
+
+\ The first of the names nK, nK+1 ... the query does not use, n for n0.
+: UNUSED-NAME ( ^syntax n -- str )
+   {: state k:n :}
+   k 0= if s" n" else state s" n" k FMT:INT$ JOIN$ then {: name:str :}
+   state name USED? if state k 1+ RECURSE exit then name ;
+
+\ The fix of `*` in a grouped query: the variables it may select, else a
+\ count under a name the query does not use.
+: STAR-FIX ( ^syntax n ^var-set -- str )
+   {: state query:n grouped :}
+   grouped MEMBER-COUNT 0= if
+      state s" replace * with (COUNT(*) AS ?" state 0 UNUSED-NAME JOIN$
+      state swap s" )" JOIN$ exit
+   then state s" replace * with " state query grouped VARS-FIX JOIN$ ;
+
 \ The set of the projected variables, which become the query's names in
 \ projection order. Scope gains the aliases; grouped, a set of the caller's
 \ own, gains each projected name, as an expression may use the names
@@ -395,7 +431,7 @@ STRUCTURE link DERIVE addr FIELD node n FIELD next ^link ;STRUCTURE
       aggregate if
          state state query QUERY-STAR
             s" SELECT with named variables in a grouped query"
-            s" replace * with the variables to select" REJECT-TOKEN
+            state query grouped STAR-FIX REJECT-TOKEN
       then
       state query state query scope STAR-NAMES QUERY-NAMES! scope exit
    then

@@ -112,12 +112,12 @@ private
    state at AT-BYTE -1 = if -1 exit then
    state state SYNTAX-SOURCE @ at SPAN-SCALAR drop ;
 
-: HEX-DIGITS ( ^syntax n -- n )
-   {: state count:n :}
+: HEX-DIGITS ( ^syntax n n -- n )
+   {: state offset:n count:n :}
    0 count 0 ?do
       state PEEK HEX? 0= if
-         state s\" a hex digit (\\u takes 4, \\U 8)"
-            s\" write \\u with 4 hex digits, as in \\u00E9" REJECT-BYTE
+         state offset s\" a hex digit (\\u takes 4, \\U 8)"
+            s\" write \\u with 4 hex digits, as in \\u00E9" REJECT-SPAN
       then
       16 * state PEEK HEX-VALUE + state STEP
    loop ;
@@ -134,12 +134,12 @@ private
    digits 0= if state SCALAR exit then
    state SYNTAX-POSITION @ {: offset:n :}
    2 state SYNTAX-POSITION +!
-   state digits HEX-DIGITS {: point:n :}
+   state offset digits HEX-DIGITS {: point:n :}
    point $10FFFF > point $D800 $DFFF BETWEEN? or if
-      offset state SYNTAX-POSITION !
-      state s" a Unicode scalar value: at most 10FFFF, not D800 to DFFF"
+      state offset
+         s" a Unicode scalar value: at most 10FFFF, not D800 to DFFF"
          s\" write the character itself or one \\U escape, as in \\U0001F600"
-         REJECT-BYTE
+         REJECT-SPAN
    then point state SYNTAX-POSITION @ ;
 
 \ Past each code point before the first \u or \U escape; false at the end.
@@ -202,12 +202,15 @@ private
    state SYNTAX-SOURCE @ str> drop start +
    state SYNTAX-POSITION @ start - >str token TOKEN-TEXT ! ;
 
+\ Steps over count hex digits; the position follows a %.
 : REQUIRE-HEX ( ^syntax n -- )
    {: state count:n :}
+   state SYNTAX-POSITION @ 1- {: percent:n :}
    count 0 ?do
       state PEEK HEX? 0= if
-         state s" a hex digit after %"
-            s\" write % as \\% or follow it with two hex digits" REJECT-BYTE
+         percent 1+ state SYNTAX-POSITION !
+         state percent s" a hex digit after %"
+            s\" write % as \\% or follow it with two hex digits" REJECT-SPAN
       then state STEP
    loop ;
 
@@ -220,6 +223,7 @@ private
 
 : STRING-ESCAPE ( ^syntax -- )
    {: state :}
+   state SYNTAX-POSITION @ {: slash:n :}
    state STEP
    state PEEK dup 34 = over 39 = or over 92 = or if
       drop state STEP exit
@@ -227,8 +231,9 @@ private
    s" tbnrf" swap STR:INDEX-OF
    MATCH option
       none OF
-         state s\" an escape: \\t \\b \\n \\r \\f \\\" \\' or \\\\"
-            s\" write a backslash as \\\\" REJECT-BYTE
+         state slash
+            s\" an escape: \\t \\b \\n \\r \\f \\\" \\' or \\\\"
+            s\" write a backslash as \\\\" REJECT-SPAN
       ENDOF
       some OF drop state STEP ENDOF
    ;MATCH ;
@@ -240,6 +245,44 @@ private
       quote <> if false unloop exit then
    loop true ;
 
+\ Whether the quote byte is at or after offset n, outside an escape.
+: CLOSED? ( ^syntax n n -- bool )
+   {: state at:n quote:n :}
+   at begin state over AT-BYTE dup -1 <> while
+      dup quote = if 2drop true exit then
+      92 = if 1+ then 1+
+   repeat 2drop false ;
+
+\ Whether byte n ends a line or a group a string may be in.
+: STRING-STOP? ( n -- bool )
+   dup -1 = over 10 = or over 13 = or
+   over 125 = or over 41 = or swap 93 = or ;
+
+\ Rejects a string no quote closes, at the first `}`, `)` or `]` from
+\ offset n on its line, else at the line's end.
+: UNCLOSED ( ^syntax n -- )
+   {: state from:n :}
+   from begin state over AT-BYTE STRING-STOP? 0= while 1+ repeat
+   state SYNTAX-POSITION !
+   state s" the string's closing quote"
+      s" close the string with the quote that opens it" REJECT-BYTE ;
+
+\ Where the line break at offset n ends, past its CRLF or LF.
+: BREAK-END ( ^syntax n -- n )
+   {: state at:n :}
+   state at AT-BYTE 13 =  state at 1+ AT-BYTE 10 =  and
+   if at 2 + else at 1+ then ;
+
+\ Rejects the line break at the position, whole, in the one-quote string
+\ opened at offset n by the quote byte; unclosed if no quote follows.
+: LINE-BREAK ( ^syntax n n -- )
+   {: state start:n quote:n :}
+   state SYNTAX-POSITION @ {: at:n :}
+   state at quote CLOSED? 0= if state start 1+ UNCLOSED then
+   state at BREAK-END state SYNTAX-POSITION !
+   state at s" the closing quote before the line ends"
+      s\" write the line break as \\n" REJECT-SPAN ;
+
 : SCAN-STRING ( ^syntax -- )
    {: state :}
    state SYNTAX-POSITION @ {: start:n :}
@@ -247,13 +290,9 @@ private
    state quote 3 QUOTED? if 3 else 1 then {: width:n :}
    width state SYNTAX-POSITION +!
    begin state quote width QUOTED? 0= while
-      state PEEK -1 = if
-         state s" the string's closing quote"
-            s" close the string with the quote that opens it" REJECT-BYTE
-      then
+      state PEEK -1 = if state start width + UNCLOSED then
       width 1 = state PEEK dup 10 = swap 13 = or and if
-         state s" the closing quote before the line ends"
-            s\" write the line break as \\n" REJECT-BYTE
+         state start quote LINE-BREAK
       then
       state PEEK 0= if
          state s" a string without U+0000" s" remove it" REJECT-BYTE
@@ -400,8 +439,8 @@ private
    state SYNTAX-POSITION @ {: start:n :}
    2 state SYNTAX-POSITION +!
    state state SYNTAX-POSITION @ SCALAR-AT LABEL-START? 0= if
-      state s" a blank node label after _:"
-         s" write a label after _:, as in _:b1" REJECT-BYTE
+      state start s" a blank node label after _:"
+         s" write a label after _:, as in _:b1" REJECT-SPAN
    then
    begin state NAME-STEP? while repeat
    state start TRIM-DOTS
@@ -443,8 +482,31 @@ private
    state PEEK 95 =
    state state SYNTAX-POSITION @ 1+ AT-BYTE 58 = and ;
 
-\ A colon right after the text ends a prefix; after a trimmed dot it starts
-\ a name of its own.
+\ Rejects the prefixed name from offset n whole: its prefix ends at the
+\ position, in dots up to the colon at offset c.
+: DOTTED-PREFIX ( ^syntax n n -- )
+   {: state start:n colon:n :}
+   state SYNTAX-POSITION @ {: trimmed:n :}
+   colon state SYNTAX-POSITION !  state STEP state SCAN-LOCAL
+   state SYNTAX-SOURCE @ str> drop {: text :}
+   state SYNTAX-ARENA @ ARENA:ALLOCATOR 0 [type] u8 VEC:NEW {: fix :}
+   s" replace it with " fix VEC:APPEND
+   text start + trimmed start - >str fix VEC:APPEND
+   text colon + state SYNTAX-POSITION @ colon - >str fix VEC:APPEND
+   state start s" a prefix that does not end in ." fix VEC:BYTES
+      REJECT-SPAN ;
+
+\ Whether the text from offset n to the position is true or false, the
+\ words that end a triple, so a dot may follow them.
+: BOOLEAN-WORD? ( ^syntax n -- bool )
+   {: state start:n :}
+   state SYNTAX-SOURCE @ str> drop start +
+   state SYNTAX-POSITION @ start - >str {: text:str :}
+   text s" true" STR:=CI  text s" false" STR:=CI  or ;
+
+\ A colon right after the text ends a prefix. A prefix cannot end in a dot,
+\ so a colon right after trimmed dots ends a name rejected whole, unless
+\ the text is true or false: `true.:p` is `true`, `.` and `:p`.
 : SCAN-NAME ( ^syntax -- )
    {: state :}
    state LABEL? if state SCAN-LABEL exit then
@@ -455,24 +517,36 @@ private
       state s" a name character; escapes go only after the colon"
          s" remove the escape" REJECT-BYTE
    then
+   state SYNTAX-POSITION @ {: stop:n :}
    state start TRIM-DOTS
-   state PEEK 58 = if state start SCAN-PREFIXED
-   else state start SCAN-WORD then ;
+   state PEEK 58 = if state start SCAN-PREFIXED exit then
+   state stop AT-BYTE 58 =  state start BOOLEAN-WORD? 0=  and if
+      state start stop DOTTED-PREFIX
+   then
+   state start SCAN-WORD ;
+
+\ Rejects the language tag from offset n through the letters, digits and
+\ - after the position.
+: REJECT-TAG ( ^syntax n str str -- )
+   {: state start:n x:str f:str :}
+   begin state PEEK dup LETTER? over DIGIT? or swap 45 = or while
+      state STEP
+   repeat state start x f REJECT-SPAN ;
 
 : SCAN-LANGUAGE ( ^syntax -- )
    {: state :}
    state SYNTAX-POSITION @ {: start:n :}
    state STEP
    state PEEK LETTER? 0= if
-      state s" a letter after @"
-         s" write a language tag after @, as in @en" REJECT-BYTE
+      state start s" a letter after @"
+         s" write a language tag after @, as in @en" REJECT-TAG
    then
    begin state PEEK LETTER? while state STEP repeat
    begin state PEEK 45 = while
       state STEP
       state PEEK dup LETTER? swap DIGIT? or 0= if
-         state s" a letter or digit after - in a language tag"
-            s" follow the - with letters or digits, as in @en-GB" REJECT-BYTE
+         state start s" a letter or digit after - in a language tag"
+            s" follow the - with letters or digits, as in @en-GB" REJECT-TAG
       then
       begin state PEEK dup LETTER? swap DIGIT? or while
          state STEP
@@ -495,14 +569,48 @@ private
    first state PEEK TWO-PUNCT? if state STEP then
    state T-PUNCT start TOKEN! ;
 
+\ Whether code point n ends a malformed variable: a blank, or a character
+\ that starts a comment, string, IRI, variable, name, tag or punctuation.
+: ENDS-VARIABLE? ( n -- bool )
+   dup WHITE? swap
+   s\" {}()[];,.=<>!+-*/|^?&$@:\"'#" swap STR:INDEX-OF
+   MATCH option
+      none OF false ENDOF
+      some OF drop true ENDOF
+   ;MATCH or ;
+
+\ Whether the position holds a code point of a malformed variable.
+: IN-VARIABLE? ( ^syntax -- bool )
+   dup PEEK -1 = if drop false exit then
+   SCALAR drop ENDS-VARIABLE? 0= ;
+
+\ Rejects the variable at the position, its ? or $ the code point n, through
+\ the code points up to one that ends it.
+: BAD-VARIABLE ( ^syntax n -- )
+   {: state sigil:n :}
+   state SYNTAX-POSITION @ {: start:n :}
+   state STEP
+   begin state IN-VARIABLE? while
+      state SCALAR nip state SYNTAX-POSITION !
+   repeat
+   sigil 63 = if
+      state start s" a variable name after ?"
+         s" write a name after ?, as in ?x" REJECT-SPAN
+   then
+   state start s" a variable name after $"
+      s" write a name after $, as in $x" REJECT-SPAN ;
+
 : LEX-ONE ( ^syntax -- )
    {: state :}
    state PEEK {: char:n :}
    char dup 34 = swap 39 = or if state SCAN-STRING exit then
    char 60 = if state IRI-AHEAD? if state SCAN-IRI exit then then
    char dup 63 = swap 36 = or if
-      state state SYNTAX-POSITION @ 1+ SCALAR-AT
-      dup PN-U? swap DIGIT? or if state SCAN-VARIABLE exit then
+      state state SYNTAX-POSITION @ 1+ SCALAR-AT {: next:n :}
+      next PN-U? next DIGIT? or if state SCAN-VARIABLE exit then
+      next -1 <> next ENDS-VARIABLE? 0= and if
+         state char BAD-VARIABLE
+      then
    then
    char DIGIT? if state SCAN-NUMBER exit then
    char 46 = if
@@ -560,6 +668,38 @@ private
 \ The decoded offset of the token before the current one.
 : PREVIOUS-AT ( ^syntax -- n )
    dup SYNTAX-PREVIOUS TOKEN-OFFSET ;
+
+\ A scan lexes into the parser's next token and moves the lexer, so it
+\ runs under SCANNING.
+
+\ Lexes the token at decoded offset n as the next token, the lexer then
+\ at the offset of the token after it.
+: LEX-AT ( ^syntax n -- ^token )
+   {: state at:n :}
+   state at LEX-FROM state LEX-NEXT state SYNTAX-NEXT ;
+
+\ The decoded offset of the token after the one at offset n.
+: PAST-TOKEN ( ^syntax n -- n )
+   {: state at:n :}
+   state at LEX-AT drop state SYNTAX-POSITION @ ;
+
+\ The decoded offset of the query's first token.
+: FIRST-AT ( ^syntax -- n )
+   {: state :}
+   state 0 LEX-FROM state SKIP-WHITE state SYNTAX-POSITION @ ;
+
+\ Runs the scan, then puts the lexer's position and word end and the
+\ parser's next token back.
+: SCANNING ( R ^syntax [ R -- S ] -- S )
+   {: state scan :}
+   state SYNTAX-POSITION @ {: at:n :}
+   state SYNTAX-WORD-END @ {: end:n :}
+   state SYNTAX-NEXT {: next :}
+   next TOKEN-KIND @ {: kind:n :}
+   next TOKEN-TEXT @ {: text:str :}
+   scan execute
+   at state SYNTAX-POSITION !  end state SYNTAX-WORD-END !
+   kind next TOKEN-KIND !  text next TOKEN-TEXT ! ;
 
 : LEX ( ^syntax -- )
    {: state :}
