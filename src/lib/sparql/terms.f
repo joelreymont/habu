@@ -196,7 +196,7 @@ private
    state SYNTAX-INTERNS {: table:^ :}
    table hash [: state kind bytes text datatype language SAME-TERM? ;]
       INTERNED dup 0<> if exit then drop
-   state kind text TERM-NODE {: term:n :}
+   state kind text TEXT-NODE {: term:n :}
    state term NODE {: node :}
    datatype node NODE-A !
    head node NODE-C ! keep node NODE-D !

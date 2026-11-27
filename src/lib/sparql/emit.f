@@ -188,6 +188,8 @@ require src/lib/sparql/validate.f
 require src/lib/sparql/statement.f
 require src/lib/sparql/write.f
 require src/lib/sparql/lex.f
+require src/lib/siphash.f
+require src/lib/sparql/terms.f
 
 package SPARQL
 private
@@ -208,8 +210,9 @@ private
 \ The parameters one PostgreSQL call takes.
 65535 constant PARAMETERS
 
-\ A parameter of the statement: a term's JSON text, or a string's own.
-STRUCTURE argument DERIVE addr FIELD text str FIELD term bool ;STRUCTURE
+\ A parameter of the statement: a term node, or 0 and a string. A term's
+\ text is empty until TERM-TEXT copies its JSON there.
+STRUCTURE argument DERIVE addr FIELD node n FIELD text str ;STRUCTURE
 
 \ A variable's name, or `_:` and a blank node's label or `#` and number,
 \ and its frame: 0 for the query's own, a subquery's serial for its own.
@@ -316,10 +319,6 @@ STRUCTURE aggregate DERIVE addr
 \ datatype IRI, decoded.
 STRUCTURE known-term DERIVE addr FIELD uri bool FIELD datatype str ;STRUCTURE
 
-\ A constant node's text, empty before it is written, and its place in
-\ the plan's known terms plus 1, 0 before it is looked up.
-STRUCTURE node-term DERIVE addr FIELD text str FIELD place n ;STRUCTURE
-
 \ An active graph's every subject and object: the statement's CTE name
 \ of them, empty when no source is in the graph, and the form of its k.
 STRUCTURE node-set DERIVE addr
@@ -342,8 +341,7 @@ STRUCTURE plan DERIVE addr
    FIELD syntax ^syntax
    FIELD store ^store
    FIELD arguments ^segs<argument>
-   FIELD terms ^n  \ a term's text to its parameter's number
-   FIELD strings ^n  \ a string's text to its parameter's number
+   FIELD strings interns  \ the string parameters' numbers by text
    FIELD variables ^VEC:vector<name>
    FIELD reads n  \ MOST bounds it
    FIELD serial n
@@ -356,7 +354,7 @@ STRUCTURE plan DERIVE addr
    FIELD aggregates ^VEC:vector<aggregate>
    FIELD known ^VEC:vector<known-term>
    FIELD places ^n  \ a MAP map from a text to its place in known
-   FIELD rows ^segs<node-term>  \ by term number
+   FIELD constant known-term  \ NODE-KNOWN's, refilled by each call
    FIELD sets ^VEC:vector<node-set>  \ the node CTEs written, one per graph
    FIELD tests ^VEC:vector<node-test>  \ built, one per graph and key kind
    FIELD texts ^texts  \ the statement's copied text
@@ -473,67 +471,99 @@ defer EXISTS-SQL ( ^plan n -- )
 : TERM@ ( ^plan n -- ^known-term )
    {: plan k:n :} plan PLAN-KNOWN @ k VEC:AT ;
 
-: NODE-TERM@ ( ^plan n -- ^node-term )
-   {: plan node:n :}
-   plan PLAN-ROWS @ plan TREE node NODE NODE-VALUE @ SEG-AT ;
+\ The literal node's datatype IRI.
+: NODE-DATATYPE$ ( ^syntax n -- str )
+   {: state term:n :}
+   state term NODE-B@ 0<> if
+      s" http://www.w3.org/1999/02/22-rdf-syntax-ns#langString" exit
+   then
+   state term NODE-A@ {: datatype:n :}
+   datatype 0= if s" http://www.w3.org/2001/XMLSchema#string" exit then
+   state datatype IRI$ ;
 
-\ The IRI or literal node's text.
+\ The IRI or literal node's JSON text, valid until the plan's writer is
+\ next used.
 : TERM-JSON ( ^plan n -- str )
    {: plan node:n :}
-   plan node NODE-TERM@ {: row:^ :}
-   row NODE-TERM-TEXT @ {: text:str :}
-   text STR:LEN 0<> if text exit then
-   plan plan WRITER plan TREE node WRITE-TERM WRITER$
-   dup row NODE-TERM-TEXT ! ;
+   plan WRITER plan TREE node WRITE-TERM JSON:WRITTEN$ ;
 
-\ The IRI or literal node's term.
+\ The IRI or literal node's term, valid until the next call.
 : NODE-KNOWN ( ^plan n -- ^known-term )
    {: plan node:n :}
-   plan node NODE-TERM@ NODE-TERM-PLACE {: place:^ :}
-   place @ 0= if plan plan node TERM-JSON TERM-PLACE 1+ place ! then
-   plan place @ 1- TERM@ ;
+   plan TREE {: state :}
+   plan PLAN-CONSTANT {: term:^ :}
+   state node NODE-K N-IRI = {: uri:bool :}
+   uri term KNOWN-TERM-URI !
+   uri if s" " else state node NODE-DATATYPE$ then
+   term KNOWN-TERM-DATATYPE ! term ;
 
 \ Rejects the whole query: what it may have at most, and the fix.
 : TOO-MANY ( ^plan str str -- )
    {: plan most:str fix:str :}
    plan TREE dup SYNTAX-SOURCE @ str> nip most fix REJECT-TOKEN ;
 
-\ The text's parameter number k, added on its first use as a term or as a
-\ string. The text must live as long as the plan.
-: PARAMETER ( ^plan str bool -- n )
-   {: plan text:str term:bool :}
-   term if plan PLAN-TERMS else plan PLAN-STRINGS then {: mp:^ :}
-   mp plan TREE SYNTAX-ARENA @ MAP:ROOM
-   mp @ text MAP:GET MATCH option
-      none OF
-         plan PLAN-ARGUMENTS @ SEG-COUNT PARAMETERS = if
-            plan s" at most 65535 constants" s" split the query" TOO-MANY
-         then
-         plan PLAN-ARGUMENTS @ SEG-PUSH {: a:^ :}
-         text a ARGUMENT-TEXT ! term a ARGUMENT-TERM !
-         plan PLAN-ARGUMENTS @ SEG-COUNT dup mp @ text MAP:SET
-      ENDOF
-      some OF ENDOF
-   ;MATCH ;
+: PARAMETER@ ( ^plan n -- ^argument )
+   {: plan k:n :} plan PLAN-ARGUMENTS @ k 1- SEG-AT ;
+
+\ A new parameter, of the term node or of 0 and the string; its number.
+: NEW-PARAMETER ( ^plan n str -- n )
+   {: plan node:n text:str :}
+   plan PLAN-ARGUMENTS @ {: args:^ :}
+   args SEG-COUNT PARAMETERS = if
+      plan s" at most 65535 constants" s" split the query" TOO-MANY
+   then
+   args SEG-PUSH {: a:^ :}
+   node a ARGUMENT-NODE ! text a ARGUMENT-TEXT !
+   args SEG-COUNT ;
+
+\ The term node's parameter number, kept as its value from its first use.
+: TERM-PARAMETER ( ^plan n -- n )
+   {: plan node:n :}
+   plan TREE node NODE {: term:^ :}
+   term NODE-VALUE @ {: k:n :}
+   k 0<> if k exit then
+   plan node s" " NEW-PARAMETER dup term NODE-VALUE ! ;
+
+\ The IRI or literal node's JSON text, copied once into its parameter's
+\ argument, which it gives the node: it lives as long as the plan.
+: TERM-TEXT ( ^plan n -- str )
+   {: plan node:n :}
+   plan plan node TERM-PARAMETER PARAMETER@ {: a:^ :}
+   a ARGUMENT-TEXT @ {: text:str :}
+   text STR:LEN 0<> if text exit then
+   plan TREE plan node TERM-JSON COPY$ dup a ARGUMENT-TEXT ! ;
+
+: STRING-HASH ( ^plan str -- n )
+   {: plan text:str :}
+   plan PLAN-STRINGS INTERNS-HASH {: sip :}
+   sip text str> nip SIPHASH:ABSORB-WORD
+   sip text ABSORB$ sip SIPHASH:FINISH ;
+
+\ The string's parameter number, added on its first use. The text must
+\ live as long as the plan.
+: STRING-PARAMETER ( ^plan str -- n )
+   {: plan text:str :}
+   plan PLAN-STRINGS {: table:^ :}
+   table plan text STRING-HASH
+      [: plan swap PARAMETER@ ARGUMENT-TEXT @ text STR:= ;]
+      INTERNED {: found:n :}
+   found 0<> if found exit then
+   plan 0 text NEW-PARAMETER {: k:n :}
+   table k
+      [: plan swap PARAMETER@ ARGUMENT-TEXT @ plan swap STRING-HASH ;]
+      +INTERN k ;
 
 \ Appends parameter k, `$k`.
 : +PARAMETER ( ^rel n -- )
    {: v:^ k:n :} v s" $" +SQL v k +INT ;
 
-\ Appends the text's parameter.
-: +ARGUMENT ( ^plan ^rel str bool -- )
-   {: plan v:^ text:str term:bool :} v plan text term PARAMETER +PARAMETER ;
+\ Appends the term node's parameter, JSONB.
+: +TERM-ARG ( ^plan ^rel n -- )
+   {: plan v:^ node:n :} v plan node TERM-PARAMETER +PARAMETER ;
 
-\ A leaf of the text's parameter.
-: ARGUMENT ( ^plan str bool -- ^rel )
-   {: plan text:str term:bool :}
-   plan NEW-SQL {: v:^ :} plan v text term +ARGUMENT v ;
-
-\ A leaf of the JSON term's parameter, JSONB.
-: TERM-ARG ( ^plan str -- ^rel ) true ARGUMENT ;
-
-\ Appends the JSON term's parameter, JSONB.
-: +TERM-ARG ( ^plan ^rel str -- ) true +ARGUMENT ;
+\ A leaf of the term node's parameter, JSONB.
+: TERM-ARG ( ^plan n -- ^rel )
+   {: plan node:n :} plan NEW-SQL {: v:^ :} plan v node +TERM-ARG v ;
 
 \ Appends the text inside an E'' literal, each `\` and `'` doubled: `\'`
 \ is rejected under backslash_quote off and unsafe in a multibyte encoding.
@@ -554,7 +584,8 @@ defer EXISTS-SQL ( ^plan n -- )
    {: plan t:str :} plan NEW-SQL {: v:^ :} v t +TERM-LITERAL v ;
 
 \ Appends the string's parameter, text.
-: +TEXT-ARG ( ^plan ^rel str -- ) false +ARGUMENT ;
+: +TEXT-ARG ( ^plan ^rel str -- )
+   {: plan v:^ text:str :} v plan text STRING-PARAMETER +PARAMETER ;
 
 : STRING+ ( ^plan str -- )
    {: plan a:str :} plan plan PLAN-OUT @ a +TEXT-ARG ;
@@ -727,10 +758,10 @@ defer EXISTS-SQL ( ^plan n -- )
    {: v:^ f:str b:^ :}
    v f +SQL v s" (" +SQL v b +BINDING v s" )" +SQL ;
 
-\ Appends `f(` the JSON term's parameter `)`.
-: +CALL-TERM ( ^plan ^rel str str -- )
-   {: plan v:^ f:str t:str :}
-   v f +SQL v s" (" +SQL plan v t +TERM-ARG v s" )" +SQL ;
+\ Appends `f(` the term node's parameter `)`.
+: +CALL-TERM ( ^plan ^rel str n -- )
+   {: plan v:^ f:str node:n :}
+   v f +SQL v s" (" +SQL plan v node +TERM-ARG v s" )" +SQL ;
 
 \ Appends the binding's value as a JSONB term.
 : +TERM ( ^plan ^rel ^binding -- )
@@ -895,9 +926,8 @@ defer EXISTS-SQL ( ^plan n -- )
 \ The constant's value, a binding outside any scope.
 : CONSTANT-VALUE ( ^plan n -- ^binding )
    {: plan node:n :}
-   plan node TERM-JSON {: j:str :}
    plan AL [type] binding ALLOC:NEW {: b:^ :}
-   b -1 KNOWN plan j TERM-ARG j SET-BINDING b ;
+   b -1 KNOWN plan node TERM-ARG plan node TERM-TEXT SET-BINDING b ;
 
 \ Appends ` AND `, unless where is empty, and the condition.
 : +AND ( ^rel ^rel -- )
@@ -1614,7 +1644,7 @@ STRUCTURE pruning DERIVE addr
    where sl alias +SLOT-SQL
    plan TREE node NEGATED? 0= if
       where s"  = " +SQL
-      plan where f plan node TERM-JSON +CALL-TERM exit
+      plan where f node +CALL-TERM exit
    then
    where s"  IS NOT NULL" +SQL
    plan TREE node NODE-A@ {: list:n :}
@@ -1622,7 +1652,7 @@ STRUCTURE pruning DERIVE addr
    where s"  AND (" +SQL where sl alias +SLOT-SQL where s"  IN (" +SQL
    list begin dup 0<> while
       {: each:n :}
-      plan where f plan plan TREE each NODE-A@ TERM-JSON +CALL-TERM
+      plan where f plan TREE each NODE-A@ +CALL-TERM
       plan TREE each NODE-B@ dup 0<> if where s" ," +SQL then
    repeat drop where s" )) IS NOT TRUE" +SQL ;
 
@@ -1788,7 +1818,7 @@ STRUCTURE pruning DERIVE addr
    plan TREE a VARIABLE? {: var:bool :}
    plan TREE b VARIABLE? var xor if false exit then
    var if plan a VAR-NAME plan b VAR-NAME STR:= exit then
-   plan a TERM-JSON plan b TERM-JSON STR:= ;
+   a b = ;
 
 \ Whether the row is the source's by its subject slot for the node.
 : ROW-OF? ( ^plan ^subject-row n ^source -- bool )
@@ -2599,8 +2629,11 @@ STRUCTURE pruning DERIVE addr
 \ Whether the node is a constant that `=` finds equal to no other term.
 : UNTYPED? ( ^plan n -- bool )
    {: plan node:n :}
-   plan TREE node CONSTANT? 0= if false exit then
-   plan node TERM-JSON JSON:PARSE s" datatype" HAS? 0= ;
+   plan TREE {: state :}
+   state node CONSTANT? 0= if false exit then
+   state node NODE-K N-IRI = if true exit then
+   state node NODE-B@ 0<> if true exit then
+   state node NODE-DATATYPE$ s" http://www.w3.org/2001/XMLSchema#string" STR:= ;
 
 \ Whether the list of expressions is not empty and each is UNTYPED?.
 : ALL-UNTYPED? ( ^plan n -- bool )
@@ -2731,10 +2764,9 @@ STRUCTURE pruning DERIVE addr
    {: plan v:^ c:n k:^ e:n :}
    plan e NATIVE-VAR {: b:^ :}
    b NULL-PTR <> if v b +BINDING exit then
-   plan e TERM-JSON {: t:str :}
-   c NUMERIC = if plan v s" sparql.numeric" t +CALL-TERM
+   c NUMERIC = if plan v s" sparql.numeric" e +CALL-TERM
    else
-      plan v plan k BINDING-SHAPE @ SHAPE@ SHAPE-IN @ t +CALL-TERM
+      plan v plan k BINDING-SHAPE @ SHAPE@ SHAPE-IN @ e +CALL-TERM
    then ;
 
 \ The condition that native binding k is constant c.
@@ -3004,7 +3036,7 @@ STRUCTURE pruning DERIVE addr
       {: list:n :} state list NODE-A@ {: term:n :}
       list row <> if v s" ," +SQL then
       state term NODE-K N-UNDEF = if v s" NULL::jsonb" +SQL
-      else plan v plan term TERM-JSON +TERM-ARG then
+      else plan v term +TERM-ARG then
       state list NODE-B@
    repeat drop v s" )" +SQL ;
 
@@ -5085,7 +5117,7 @@ STRUCTURE walk DERIVE addr
    {: plan query:n r:^ :}
    plan query NAMES {: names:^ :}
    plan names HEAD-JSON {: head:str :}
-   plan head false PARAMETER {: ha:n :}
+   plan head STRING-PARAMETER {: ha:n :}
    head STR:LEN 3 + {: fixed:n :}
    plan PLAN-STORE @ STORE-LIMIT @ {: bytes:n :}
    plan NEW-SQL {: v:^ :}
@@ -5158,7 +5190,7 @@ STRUCTURE walk DERIVE addr
    args SEG-COUNT 0 ?do
       i 0<> if v s" ," +SQL then
       v s" ($" +SQL v i 1+ +INT
-      args i SEG-AT ARGUMENT-TERM @ if v s" ::jsonb" +SQL then
+      args i SEG-AT ARGUMENT-NODE @ 0<> if v s" ::jsonb" +SQL then
       v s" ::text)" +SQL
    loop v s" )" +SQL
    plan AL s" t0" false v NEW-CTE ;
@@ -5177,8 +5209,9 @@ STRUCTURE walk DERIVE addr
    t0 t REL-WITH ! t ;
 
 \ Appends the parsed query's statement on the store to the vector and
-\ passes its parameters' texts in order. The statement is counted, the
-\ vector reserved for it, and written there: the arena holds no copy.
+\ passes its parameters' texts in order, each valid until the quotation
+\ returns. The statement is counted, the vector reserved for it, and
+\ written there: the arena holds no copy.
 : EMIT ( ^syntax ^store ^VEC:vector<u8> [ str -- ] -- )
    {: state store:^ sql:^ params :}
    state SYNTAX-ARENA @ ARENA:ALLOCATOR {: al:^ :}
@@ -5193,8 +5226,8 @@ STRUCTURE walk DERIVE addr
    NULL-PTR plan PLAN-OUTER !
    al 0 [type] aggregate VEC:NEW plan PLAN-AGGREGATES !
    al 0 [type] known-term VEC:NEW plan PLAN-KNOWN !
-   al [type] node-term SEG-NEW plan PLAN-ROWS !
-   plan PLAN-ROWS @ state SYNTAX-TERMS @ SEG-ENSURE
+   plan PLAN-STRINGS {: strings:^ :}
+   strings state SYNTAX-ARENA @ INTERNS-INIT
    al 0 [type] node-set VEC:NEW plan PLAN-SETS !
    al 0 [type] node-test VEC:NEW plan PLAN-TESTS !
    al 0 [type] bool VEC:NEW plan PLAN-BOUND !
@@ -5207,7 +5240,10 @@ STRUCTURE walk DERIVE addr
    al sql NEW-SINK r WRITE-REL
    plan PLAN-ARGUMENTS @ {: args:^ :}
    args SEG-COUNT 0 ?do
-      args i SEG-AT ARGUMENT-TEXT @ params execute
+      args i SEG-AT {: a:^ :}
+      a ARGUMENT-NODE @ {: node:n :}
+      node 0<> if plan node TERM-JSON else a ARGUMENT-TEXT @ then
+      params execute
    loop ;
 
 : INSTALL-EMIT ( -- )

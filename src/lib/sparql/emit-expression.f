@@ -35,7 +35,7 @@ private
 : TERM+ ( ^plan n -- )
    {: plan node:n :}
    plan TREE node VARIABLE? 0= if
-      plan plan PLAN-OUT @ plan node TERM-JSON +TERM-ARG exit
+      plan plan PLAN-OUT @ node +TERM-ARG exit
    then
    plan PLAN-SCOPE @ plan node VAR LOOKUP {: b:^ :}
    b NULL-PTR = if plan s" NULL::jsonb" SQL+ exit then

@@ -133,7 +133,6 @@ STRUCTURE syntax DERIVE addr
    FIELD serial n
    FIELD group n
    FIELD nesting n
-   FIELD terms n  \ the IRI and literal nodes made
    FIELD interns interns  \ the IRI and literal nodes by key
    FIELD names interns
 ;STRUCTURE
@@ -283,13 +282,6 @@ STRUCTURE syntax DERIVE addr
    {: state kind:n text:str :}
    state kind ADD-NODE {: index:n :}
    state index text TEXT! index ;
-
-\ An IRI or literal node; its value is its number among the query's terms.
-: TERM-NODE ( ^syntax n str -- n )
-   {: state kind:n text:str :}
-   state kind text TEXT-NODE {: index:n :}
-   state SYNTAX-TERMS @ state index NODE NODE-VALUE !
-   1 state SYNTAX-TERMS +! index ;
 
 \ Slot n of the slots at the address.
 : ENTRY ( ^u8 n -- ^u8 )

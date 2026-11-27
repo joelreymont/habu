@@ -620,6 +620,11 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    s" SELECT ?s ?w WHERE { ?s t:30 ?w FILTER(?w > 100) }"
    s" {'head':{'vars':['s','w']},'results':{'bindings':[{'s':{'type':'uri','value':'urn:test:1'},'w':{'type':'literal','value':'1200','datatype':'http://www.w3.org/2001/XMLSchema#integer'}},{'s':{'type':'uri','value':'urn:test:2'},'w':{'type':'literal','value':'950.5','datatype':'http://www.w3.org/2001/XMLSchema#decimal'}}]}}"
    EXPECT
+   \ A datatype written with a prefix is the same IRI written in full.
+   s" PREFIX x: <http://www.w3.org/2001/XMLSchema#> SELECT ?s WHERE { ?s t:30 '1200'^^x:integer }"
+   s" SELECT ?s WHERE { ?s t:30 1200 }"
+   s" {'head':{'vars':['s']},'results':{'bindings':[{'s':{'type':'uri','value':'urn:test:1'}}]}}"
+   ALIKE
    s" SELECT ?l WHERE { ?s rdfs:label ?l FILTER(STRSTARTS(?l, 'M')) }"
    s" {'head':{'vars':['l']},'results':{'bindings':[{'l':{'type':'literal','value':'Mill'}},{'l':{'type':'literal','value':'Machine'}}]}}"
    EXPECT ;

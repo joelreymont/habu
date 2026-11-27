@@ -2,10 +2,11 @@
 \ statement on the store a host describes (src/lib/sparql/store.f). It takes
 \ the query text, the description, a vector and a quotation. True: the
 \ statement is appended to the vector and the quotation is run on each of
-\ its parameters' texts, $1's first; a text is lent for the run. False: the
-\ query is rejected, the vector holds the text `L:C: expected X, found Y;
-\ FIX`, the query's line L and a caret under column C, and the quotation is
-\ not run. A description not in the format throws JSON:E-MEMBER.
+\ its parameters' texts, $1's first; a text is valid until the quotation
+\ returns. False: the query is rejected, the vector holds the text `L:C:
+\ expected X, found Y; FIX`, the query's line L and a caret under column
+\ C, and the quotation is not run. A description not in the format throws
+\ JSON:E-MEMBER.
 \ CONTRACT. The statement takes its parameters as text and answers one row of
 \ one text, the SPARQL Results JSON document; once the document passes the
 \ description's `bytes` it raises SQLSTATE 54000. The host runs it in a
