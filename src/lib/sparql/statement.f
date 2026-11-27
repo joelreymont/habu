@@ -1,14 +1,14 @@
 \ statement.f - the statement's records: a rel is a statement, its WITH's
 \ CTEs and its text, which is its pieces in order, then its open text; a
-\ piece is one string of that text, held as given, not copied, or a child
-\ rel, whose WITH and text it stands for; the open text is the bytes copied
-\ in since the last piece, which the next piece turns into a text piece; a
-\ cte is one WITH entry, its name and body, a rel that reads only the CTEs
-\ before it in the list; a ctes is a list of CTEs in written order. A
-\ recursive rel's WITH is WITH RECURSIVE. A rel's copies are the hidden
-\ bytes behind the text copied into it, open or since turned into pieces:
-\ those of the expressions PostgreSQL copies in for the derived tables'
-\ columns that text reads.
+\ piece is one string of that text, held as given, not copied, then a
+\ child rel when it has one, whose WITH and text it stands for; the open
+\ text is the bytes copied in since the last piece, which the next piece
+\ takes as its string; a cte is one WITH entry, its name and body, a rel
+\ that reads only the CTEs before it in the list; a ctes is a list of CTEs
+\ in written order. A recursive rel's WITH is WITH RECURSIVE. A rel's
+\ copies are the hidden bytes behind the text copied into it, open or since
+\ turned into pieces: those of the expressions PostgreSQL copies in for the
+\ derived tables' columns that text reads.
 \ A statement's texts hold every rel's copied bytes: a rel's open text is
 \ a range of a chunk, which grows in place while it ends at the chunk's
 \ used end and fits, else goes on at the used end: copied there when no
@@ -26,7 +26,7 @@ private
 MUTUAL piece cte rel texts
 STRUCTURE piece DERIVE addr
    FIELD text str
-   FIELD rel ^rel  \ NULL-PTR for a text piece
+   FIELD rel ^rel  \ NULL-PTR for none
    FIELD next ^piece  \ NULL-PTR at the end of its list
 ;STRUCTURE
 STRUCTURE cte DERIVE addr
@@ -116,20 +116,18 @@ STRUCTURE ctes DERIVE addr
    last NULL-PTR = if p r REL-FIRST ! else p last PIECE-NEXT ! then
    p r REL-LAST ! ;
 
-\ Turns non-empty open text into a text piece of its range and leaves
-\ the rel with none, so its next byte starts a new range.
-: END-OPEN ( ^rel -- )
+\ Leaves the rel with no open text, so its next byte starts a new range.
+: CLEAR-OPEN ( ^rel -- )
    {: r:^ :}
-   r OPEN? 0= if exit then
-   r r OPEN$ NULL-PTR LINK-PIECE 0 r REL-LEN !
-   r REL-TEXTS @ {: ts:^ :}
+   0 r REL-LEN ! r REL-TEXTS @ {: ts:^ :}
    ts TEXTS-LAST @ r = if NULL-PTR ts TEXTS-LAST ! then ;
 
-\ Appends a piece of the text and child rel to the rel's pieces, after
-\ its open text.
-: +PIECE ( ^rel str ^rel -- )
-   {: r:^ t:str c:^ :}
-   r END-OPEN r t c LINK-PIECE ;
+\ Links one piece of the rel's open text and the child, NULL-PTR for
+\ none, and leaves no open text; no piece when both are empty.
+: END-OPEN ( ^rel ^rel -- )
+   {: r:^ c:^ :}
+   r OPEN? if r r OPEN$ c LINK-PIECE r CLEAR-OPEN exit then
+   c NULL-PTR <> if r s" " c LINK-PIECE then ;
 
 : USED-END ( ^texts -- ^u8 )
    {: ts:^ :} ts TEXTS-BASE @ ts TEXTS-USED @ + ;
@@ -160,7 +158,7 @@ STRUCTURE ctes DERIVE addr
 \ Goes on with the rel's open text at the used end, room for n more bytes.
 : MOVE-OPEN ( ^rel n -- )
    {: r:^ k:n :}
-   r SHORT? 0= if r END-OPEN then r k COPY-OPEN ;
+   r SHORT? 0= if r NULL-PTR END-OPEN then r k COPY-OPEN ;
 
 \ Answers n new bytes, zero, at the end of the rel's open text.
 : OPEN-BYTES ( ^rel n -- ^u8 )
@@ -182,23 +180,29 @@ STRUCTURE ctes DERIVE addr
 \ Appends the text to the rel's. The piece holds the string, which must
 \ outlive the write: a literal, arena bytes, or the bytes of a vector
 \ nothing appends to afterwards, since an append may move its block.
-: +TEXT ( ^rel str -- ) NULL-PTR +PIECE ;
+: +TEXT ( ^rel str -- )
+   {: r:^ t:str :}
+   r NULL-PTR END-OPEN r t NULL-PTR LINK-PIECE ;
 
 \ Appends the child rel, its WITH and text, to the rel's pieces.
-: +REL ( ^rel ^rel -- )
-   {: r:^ c:^ :}
-   r s" " c +PIECE ;
+: +REL ( ^rel ^rel -- ) END-OPEN ;
 
 \ Whether the rel is only its open text: no piece and no WITH.
 : LEAF? ( ^rel -- bool )
    {: r:^ :} r REL-FIRST @ NULL-PTR = r REL-WITH @ NULL-PTR = and ;
 
-\ Appends the child's text: a leaf's open text as copied bytes, with its
-\ copies, any other rel as a piece, which nothing may append to afterwards.
+\ Whether the rel's open text takes more bytes than two pieces, the most
+\ linking it as a text piece makes.
+: LONG? ( ^rel -- bool ) REL-LEN @ [type] piece width>n 2 * > ;
+
+\ Appends the child's text: a leaf's open text, with its copies, copied
+\ unless LONG?, else as a text piece of its bytes, which never move; any
+\ other rel as a piece, which nothing may append to afterwards.
 : +SPLICE ( ^rel ^rel -- )
    {: r:^ c:^ :}
    c LEAF? 0= if r c +REL exit then
    c REL-COPIES @ r REL-COPIES +!
+   c LONG? if r c OPEN$ +TEXT exit then
    c OPEN? if r c OPEN$ +SQL then ;
 
 : EMPTY? ( ^rel -- bool )
@@ -217,7 +221,7 @@ STRUCTURE ctes DERIVE addr
 \ piece; text appended later is not in it: a piece changes only in its next.
 : VIEW ( ^rel -- ^rel )
    {: r:^ :}
-   r END-OPEN r REL-TEXTS @ NEW-REL {: v:^ :}
+   r NULL-PTR END-OPEN r REL-TEXTS @ NEW-REL {: v:^ :}
    r REL-FIRST @ v REL-FIRST ! r REL-LAST @ v REL-LAST !
    r REL-COPIES @ v REL-COPIES ! v ;
 
