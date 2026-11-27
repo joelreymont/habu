@@ -13,7 +13,8 @@
 \ newest block it could grow in place, gives back an older block's bytes when
 \ it shrinks, or loses a block's bytes or leaves stale ones in it when its
 \ allocator resizes it; copies a span's bytes wrongly or outside it, or
-\ allocates for an empty one.
+\ allocates for an empty one; or whose CUT leaves bytes, a later chunk or the
+\ position above its mark, runs an action twice or one from before the mark.
 
 require src/lib/test/assert.f
 require src/lib/span.f
@@ -243,13 +244,22 @@ public
    r ROOTS-RELEASE ;
 
 
-\ 10. RESET unmaps a later chunk, RELEASE a parent's first chunk once its 64
-\ children fill the spares, and TRIM a spare once 64 held arenas have taken the
-\ rest: a subject child touching any of them exits 110.
+\ 10. RESET and CUT unmap a later chunk, RELEASE a parent's first chunk once
+\ its 64 children fill the spares, and TRIM a spare once 64 held arenas have
+\ taken the rest: a subject child touching any of them exits 110.
 : RESET-TOUCH ( -- )
    ARENA:NEW {: a:^ :}
    a 40000 ARENA:ALLOC drop {: p:^ :}
    a ARENA:RESET
+   p c@ drop ;
+
+
+: CUT-TOUCH ( -- )
+   ARENA:NEW {: a:^ :}
+   a ARENA:MARK {: mark:n :}
+   a 20000 ARENA:ALLOC 2drop
+   a 40000 ARENA:ALLOC drop {: p:^ :}
+   a mark ARENA:CUT
    p c@ drop ;
 
 
@@ -287,6 +297,7 @@ CAP BUFFER: CAP-ERR
 : UNMAPPED ( -- )
    s" unmapped" T-LABEL
    s" ARENA-TEST:RESET-TOUCH" EXPECT-FAULT
+   s" ARENA-TEST:CUT-TOUCH" EXPECT-FAULT
    s" ARENA-TEST:RELEASE-TOUCH" EXPECT-FAULT
    s" ARENA-TEST:TRIM-TOUCH" EXPECT-FAULT ;
 
@@ -382,12 +393,37 @@ TASK:MIN-STACK TASK:TASK HALT-TASK
    a 1 ARENA:ALLOC drop c STR:DATA - 8 T=
    a ARENA:RELEASE ;
 
+
+\ 14. CUT back across two chunk boundaries: the position is the mark's, the
+\ action since it ran once, the bytes before it kept and those after zeroed.
+: CUTS ( -- )
+   s" cut" T-LABEL
+   0 ORDER !
+   ARENA:NEW {: a:^ :}
+   a 1 TAGGED
+   a 8 ARENA:ALLOC >str FILL-FF
+   a ARENA:MARK {: mark:n :}
+   a 64 ARENA:ALLOC {: p:^ pn:n :}
+   p pn >str FILL-FF
+   a 20000 ARENA:ALLOC >str FILL-FF
+   a 40000 ARENA:ALLOC >str FILL-FF
+   a 2 TAGGED
+   a mark ARENA:CUT
+   a ARENA:MARK mark T=
+   ORDER @ 2 T=
+   p 8 - c@ $FF T=
+   a 64 ARENA:ALLOC {: q:^ qn:n :}
+   q p = TTRUE
+   q qn >str ZEROED? TTRUE
+   a ARENA:RELEASE
+   ORDER @ 21 T= ;
+
 public
 
 : RUN ( -- )
    T-RESET
    MANY LARGE ACTIONS-ONCE RESET-ZEROES CHILDREN WITH-RELEASES ACTION-THROWS
-   EDGES HELD UNMAPPED HALTED RESIZES COPIES
+   EDGES HELD UNMAPPED HALTED RESIZES COPIES CUTS
    T-REPORT ;
 
 RUN

@@ -2907,12 +2907,12 @@ STRUCTURE pruning DERIVE addr
    {: plan items:^ node:n :}
    plan TREE {: state :}
    plan AL 0 [type] relation VEC:NEW {: branches:^ :}
-   state node N-UNION N-UNION SPINE {: spine:n leaf:n :}
+   state node N-UNION N-UNION SPINE {: spine:^ leaf:n :}
    plan branches leaf +GROUP
-   spine begin dup 0<> while
-      {: list:n :}
-      plan branches state state list NODE-A@ NODE-B@ +GROUP
-      state list NODE-B@
+   spine begin dup NULL-PTR <> while
+      {: at:^ :}
+      plan branches state at LINK-NODE @ NODE-B@ +GROUP
+      at LINK-NEXT @
    repeat drop
    plan items branches UNION-CHILD ;
 

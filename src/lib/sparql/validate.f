@@ -84,15 +84,21 @@ defer QUERY-SCOPE ( ^syntax n -- ^var-set )
       state current NODE-B@
    repeat drop names ;
 
+STRUCTURE link DERIVE addr FIELD node n FIELD next ^link ;STRUCTURE
+
 \ The left spine below node n through nodes of the two kinds: those nodes
-\ as a list, deepest first, and the node below the deepest.
-: SPINE ( ^syntax n n n -- n n )
+\ as a list in the syntax's work arena, deepest first, and the node below
+\ the deepest.
+: SPINE ( ^syntax n n n -- ^link n )
    {: state top:n first:n second:n :}
-   0 top begin
+   state SYNTAX-WORK @ ARENA:ALLOCATOR {: al:^ :}
+   NULL-PTR top begin
       state over NODE-K dup first = swap second = or
    while
-      {: list:n node:n :}
-      state node list CONS state node NODE-A@
+      {: list:^ node:n :}
+      al [type] link ALLOC:NEW {: at:^ :}
+      node at LINK-NODE !  list at LINK-NEXT !
+      at state node NODE-A@
    repeat ;
 
 : BLANK-LABEL ( ^syntax n n -- )
@@ -117,7 +123,9 @@ defer QUERY-SCOPE ( ^syntax n -- ^var-set )
 \ walked next unless 0, then a call's ORDER BY conditions.
 : WALK ( R ^syntax n [ R ^syntax n -- R n ] -- R )
    {: state expression:n action :}
-   state expression N-BINARY N-ALIAS SPINE {: spine:n leaf:n :}
+   state SYNTAX-WORK @ {: work:^ :}
+   work ARENA:MARK {: mark:n :}
+   state expression N-BINARY N-ALIAS SPINE {: spine:^ leaf:n :}
    state leaf NODE-K N-LIST = if
       leaf begin dup 0<> while
          {: list:n :}
@@ -133,12 +141,13 @@ defer QUERY-SCOPE ( ^syntax n -- ^var-set )
          then
       then
    then
-   spine begin dup 0<> while
-      {: list:n :} state list NODE-A@ {: node:n :}
+   spine begin dup NULL-PTR <> while
+      {: at:^ :} at LINK-NODE @ {: node:n :}
       state node NODE-K N-BINARY = if
          state state node NODE-B@ action recurse
-      then state list NODE-B@
-   repeat drop ;
+      then at LINK-NEXT @
+   repeat drop
+   work mark ARENA:CUT ;
 
 : AGGREGATE-CALL? ( ^syntax n -- bool )
    {: state leaf:n :}
@@ -240,14 +249,16 @@ defer QUERY-SCOPE ( ^syntax n -- ^var-set )
 
 : UNION-SCOPE ( ^syntax n -- ^var-set )
    {: state pattern:n :}
-   state pattern N-UNION N-UNION SPINE {: spine:n leaf:n :}
+   state SYNTAX-WORK @ {: work:^ :}
+   work ARENA:MARK {: mark:n :}
+   state pattern N-UNION N-UNION SPINE {: spine:^ leaf:n :}
    state leaf SCOPE {: names :}
-   spine begin dup 0<> while
-      {: list:n :}
-      names state state state list NODE-A@ NODE-B@ SCOPE
-         SCOPE-UNION
-      state list NODE-B@
-   repeat drop names ;
+   spine begin dup NULL-PTR <> while
+      {: at:^ :}
+      names state state at LINK-NODE @ NODE-B@ SCOPE SCOPE-UNION
+      at LINK-NEXT @
+   repeat drop
+   work mark ARENA:CUT names ;
 
 : GRAPH-SCOPE ( ^syntax n -- ^var-set )
    {: state pattern:n :}

@@ -115,6 +115,7 @@ STRUCTURE interns DERIVE addr
 \ set with it. No name from position to word-end has a colon.
 STRUCTURE syntax DERIVE addr
    FIELD arena ^ARENA:arena
+   FIELD work ^ARENA:arena  \ a child of arena that frames cut back
    FIELD nodes ^segs<node>
    FIELD previous token
    FIELD current token
@@ -412,6 +413,7 @@ STRUCTURE syntax DERIVE addr
    arena ARENA:ALLOCATOR [type] syntax ALLOC:NEW
       {: state :}
    arena state SYNTAX-ARENA !
+   arena ARENA:NEW-IN state SYNTAX-WORK !
    state SYNTAX-INTERNS arena INTERNS-INIT
    state SYNTAX-NAMES arena INTERNS-INIT
    text state SYNTAX-SOURCE !

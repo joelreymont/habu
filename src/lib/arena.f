@@ -1,7 +1,8 @@
 \ arena.f - an arena a program holds by pointer: zeroed allocations that never
-\ move, release actions and child arenas, all released together. The arena's
-\ header sits at the start of its first chunk; each later chunk is the larger
-\ of a request with its chunk header and twice the chunk before it. No lock:
+\ move, release actions and child arenas, all released together, or those
+\ since a MARK by CUT. The arena's header sits at the start of its first
+\ chunk; each later chunk is the larger of a request with its chunk header
+\ and twice the chunk before it. No lock:
 \ one task uses an arena at a time. A handle used after RELEASE is undefined,
 \ as a HEAP record's is. An arena provides an allocator whose free does nothing
 \ and whose resize leaves a moved block's old bytes in place. RELEASE keeps up
@@ -18,33 +19,41 @@ require src/lib/allocator.f
 package ARENA
 private
 
-\ A release action and the allocation it receives, newest first.
+\ A release action and the allocation it receives, newest first; `born` is the
+\ arena's MARK before its bump.
 STRUCTURE action DERIVE addr
    FIELD next ^action
+   FIELD born n
    FIELD alloc ^u8
    FIELD run [ ^u8 -- ]
 ;STRUCTURE
 
-\ A chunk after the first: the chunk before it, newest first, and its bytes.
-STRUCTURE chunk DERIVE addr FIELD prev ^chunk FIELD size n ;STRUCTURE
+\ A chunk after the first: the chunk before it, newest first, its bytes, and
+\ the arena's MARK when it was mapped, where the chunk before it ends.
+STRUCTURE chunk DERIVE addr
+   FIELD prev ^chunk
+   FIELD size n
+   FIELD start n
+;STRUCTURE
 
 public
 
 STRUCTURE arena OPAQUE DERIVE addr
    FIELD top n
-   FIELD first-top n
    FIELD chunks ^chunk
    FIELD actions ^action
    FIELD parent ^arena
    FIELD kids ^arena
    FIELD older ^arena
    FIELD newer ^arena
+   FIELD born n        \ the parent's MARK before NEW-IN
    FIELD allocator ALLOC:allocator
 ;STRUCTURE
 
 private
 
 $4000 constant FIRST-BYTES         \ the first chunk, header included
+ARENA-BYTES constant EMPTY         \ an empty arena's MARK
 
 \ Each cell is 0 or a zeroed first chunk no arena holds. A task takes or gives
 \ one by a compare-and-swap of its cell, so each kept chunk goes to one NEW.
@@ -72,8 +81,24 @@ CAST: >ACTION ( ^u8 -- ^action )
    c BYTE-VIEW c CHUNK-SIZE @ ;
 
 
-\ `first-top` keeps the first chunk's top while a later chunk is newest. A
-\ failed mapping throws E-MEM-MAP before the arena changes.
+\ The MARK at the newest chunk's first byte.
+: START ( ^arena -- n )
+   {: a:^ :}
+   a ARENA-CHUNKS @ {: c:^ :}
+   c NULL-PTR = if 0 exit then
+   c CHUNK-START @ ;
+
+public
+
+\ The arena's position: the bytes below its chunks' tops, headers included.
+: MARK ( ^arena -- n )
+   {: a:^ :}
+   a START a ARENA-TOP @ + ;
+
+private
+
+
+\ A failed mapping throws E-MEM-MAP before the arena changes.
 : GROW ( ^arena n -- )
    {: a:^ need:n :}
    a NEWEST nip {: last:n :}
@@ -81,7 +106,7 @@ CAST: >ACTION ( ^u8 -- ^action )
    size MEM-ALLOC-PTR {: c:^chunk :}
    a ARENA-CHUNKS @ c CHUNK-PREV !
    size c CHUNK-SIZE !
-   a ARENA-CHUNKS @ NULL-PTR = if a ARENA-TOP @ a ARENA-FIRST-TOP ! then
+   a MARK c CHUNK-START !
    CHUNK-BYTES a ARENA-TOP !
    c a ARENA-CHUNKS ! ;
 
@@ -101,11 +126,30 @@ CAST: >ACTION ( ^u8 -- ^action )
    [: act ACTION-ALLOC @ act ACTION-RUN @ execute ;] catch ;
 
 
-\ Each action leaves the list before it runs, so a run cut short and repeated
-\ runs none twice. Answers the first code an action threw, 0 when none.
-: RUN-ACTIONS ( ^arena -- n )
-   {: a:^ :}
-   0 begin a ARENA-ACTIONS @ dup NULL-PTR <> while
+\ The newest action registered at or after `mark`, else NULL-PTR.
+: ACTION-SINCE ( ^arena n -- ^action )
+   {: a:^ mark:n :}
+   a ARENA-ACTIONS @ {: act:^ :}
+   act NULL-PTR = if act exit then
+   act ACTION-BORN @ mark >= if act exit then
+   NULL-PTR ;
+
+
+\ The newest child made at or after `mark`, else NULL-PTR.
+: KID-SINCE ( ^arena n -- ^arena )
+   {: a:^ mark:n :}
+   a ARENA-KIDS @ {: kid:^ :}
+   kid NULL-PTR = if kid exit then
+   kid ARENA-BORN @ mark >= if kid exit then
+   NULL-PTR ;
+
+
+\ The actions registered since `mark`. Each leaves the list before it runs,
+\ so a run cut short and repeated runs none twice. Answers the first code an
+\ action threw, 0 when none.
+: RUN-ACTIONS ( ^arena n -- n )
+   {: a:^ mark:n :}
+   0 begin a mark ACTION-SINCE dup NULL-PTR <> while
       dup ACTION-NEXT @ a ARENA-ACTIONS !
       RUN-ACTION FIRST-ERROR
    repeat drop ;
@@ -133,22 +177,25 @@ CAST: >ACTION ( ^u8 -- ^action )
    c BYTE-VIEW c CHUNK-SIZE @ munmap 0< if E-MEM-UNMAP else 0 then ;
 
 
-\ The arena forgets its later chunks before any is unmapped; every one is tried.
-: DROP-CHUNKS ( ^arena -- n )
+\ The arena forgets its newest chunk, then unmaps it.
+: POP-CHUNK ( ^arena -- n )
    {: a:^ :}
-   a ARENA-CHUNKS @ {: newest:^ :}
-   newest NULL-PTR = if 0 exit then
-   a ARENA-FIRST-TOP @ a ARENA-TOP !
-   NULL-PTR a ARENA-CHUNKS !
-   0 newest begin dup NULL-PTR <> while
-      UNMAP-CHUNK rot swap FIRST-ERROR swap
-   repeat drop ;
+   a ARENA-CHUNKS @ {: c:^ :}
+   c CHUNK-PREV @ a ARENA-CHUNKS !
+   c CHUNK-START @ a START - a ARENA-TOP !
+   c UNMAP-CHUNK nip ;
 
 
-: ZERO-FIRST ( ^arena -- )
-   {: a:^ :}
-   0 a BYTE-VIEW ARENA-BYTES + a ARENA-TOP @ ARENA-BYTES - SPAN:MAKE SPAN:FILL
-   ARENA-BYTES a ARENA-TOP ! ;
+\ The chunks mapped since `mark` are unmapped, every one tried, and the
+\ bytes above it zeroed. A block shrunk in place leaves the top below a
+\ MARK taken before the shrink, and the bytes between are zero.
+: CHOP ( ^arena n -- n )
+   {: a:^ mark:n :}
+   0 begin mark a START <= while a POP-CHUNK FIRST-ERROR repeat
+   mark a START - {: off:n :}
+   a NEWEST drop off + {: above:^ :}
+   0 above a ARENA-TOP @ off - 0 max SPAN:MAKE SPAN:FILL
+   off a ARENA-TOP ! ;
 
 
 \ Spare `i`'s cell.
@@ -186,16 +233,17 @@ CAST: >ACTION ( ^u8 -- ^action )
    a UNMAP-FIRST ;
 
 
-\ Children end before this arena's actions run, so a child's action may use
-\ what a parent's action frees. Answers the first action or unmap code, else 0.
-: SETTLE ( ^arena bool -- n )
-   {: a:^ keep:bool :}
-   0 begin a ARENA-KIDS @ dup NULL-PTR <> while
-      false RECURSE FIRST-ERROR
+\ The arena back to `mark`, released unless kept. Children made since end
+\ before the actions registered since run, so a child's action may use what
+\ a parent's action frees. Answers the first action or unmap code, else 0.
+: SETTLE ( ^arena n bool -- n )
+   {: a:^ mark:n keep:bool :}
+   0 begin a mark KID-SINCE dup NULL-PTR <> while
+      EMPTY false RECURSE FIRST-ERROR
    repeat drop
-   a RUN-ACTIONS FIRST-ERROR
-   a DROP-CHUNKS FIRST-ERROR
-   keep if a ZERO-FIRST exit then
+   a mark RUN-ACTIONS FIRST-ERROR
+   a mark CHOP FIRST-ERROR
+   keep if exit then
    a UNLINK
    a GIVE-BACK FIRST-ERROR ;
 
@@ -233,7 +281,7 @@ CAST: >ACTION ( ^u8 -- ^action )
    more 0 <= if block exit then
    a oe more + BUMP {: moved:^ :}
    block moved old BYTE-COPY moved ;
-\ An arena frees its bytes together, at RESET or RELEASE.
+\ An arena frees its bytes together, at CUT, RESET or RELEASE.
 : SELF-FREE ( ^u8 ^u8 -- ) drop drop ;
 
 \ A spare first chunk, else a new mapping.
@@ -252,9 +300,14 @@ public
    a ;
 
 
+\ The cell bumped from the parent puts a MARK taken after NEW-IN above the
+\ child's `born`, so a CUT to it keeps the child.
 : NEW-IN ( ^arena -- ^arena )
    {: parent:^ :}
+   parent MARK {: at:n :}
+   parent CELL BUMP drop
    NEW {: a:^ :}
+   at a ARENA-BORN !
    parent ARENA-KIDS @ {: older:^ :}
    parent a ARENA-PARENT !
    older a ARENA-OLDER !
@@ -286,18 +339,26 @@ public
 : ALLOC-DISPOSE ( ^arena n [ ^u8 -- ] -- ^u8 n )
    {: a:^ len:n run :}
    len EXTENT {: bytes:n :}
+   a MARK {: at:n :}
    a bytes ACTION-BYTES + BUMP {: p:^ :}
    p bytes + >ACTION {: act:^ :}
    p act ACTION-ALLOC !
+   at act ACTION-BORN !
    run act ACTION-RUN !
    a ARENA-ACTIONS @ act ACTION-NEXT !
    act a ARENA-ACTIONS !
    p len ;
 
 
-\ Each action caught; the first code one threw is rethrown after the rest.
-: RESET ( ^arena -- ) true SETTLE RETHROW ;
-: RELEASE ( ^arena -- ) dup NULL-PTR = if drop exit then false SETTLE RETHROW ;
+\ The children made and actions registered since `mark` end as RELEASE ends
+\ them, the chunks mapped since are unmapped and the bytes above it zeroed.
+\ Bytes above the mark are undefined after CUT, a block grown across it
+\ included, as after RESET. Each action caught; the first code one threw is
+\ rethrown after the rest.
+: CUT ( ^arena n -- ) true SETTLE RETHROW ;
+: RESET ( ^arena -- ) EMPTY CUT ;
+: RELEASE ( ^arena -- )
+   dup NULL-PTR = if drop exit then EMPTY false SETTLE RETHROW ;
 
 
 \ Each spare a task has not taken is unmapped; the first rejection is rethrown
