@@ -137,30 +137,6 @@ $1FFFFF constant TARGET-MASK
    text at SCALAR@ {: cp:n next:n :}
    next text at next cp mode MAPPED TARGET true ;
 
-: SCALAR-LENGTH ( n -- n )
-   {: cp:n :}
-   cp $80 < if 1 exit then
-   cp $800 < if 2 exit then
-   cp $10000 < if 3 exit then
-   4 ;
-
-: LEAD ( n -- n )
-   {: length:n :}
-   length 2 = if $C0 exit then
-   length 3 = if $E0 exit then
-   $F0 ;
-
-\ Writes a scalar's UTF-8 and answers the address after it.
-: SCALAR! ( n ^u8 -- ^u8 )
-   {: cp:n out:^ :}
-   cp SCALAR-LENGTH {: length:n :}
-   length 1 = if cp out c! out 1+ exit then
-   cp length 1- 6 * rshift length LEAD or out c!
-   length 1 ?do
-      cp length 1- i - 6 * rshift $3F and $80 or out i + c!
-   loop
-   out length + ;
-
 \ The UTF-8 length of a valid span's walk.
 : WALK-LENGTH ( str n -- n )
    {: text:str mode:n :}
@@ -168,7 +144,7 @@ $1FFFFF constant TARGET-MASK
       {: size:n at:n rest:n :}
       at rest text mode NEXT {: next:n left:n cp:n more:bool :}
       more 0= if size exit then
-      size cp SCALAR-LENGTH + next left
+      size cp UTF8:SCALAR-WIDTH + next left
    again ;
 
 : WALK-WRITE ( str n ^u8 -- )
@@ -177,7 +153,7 @@ $1FFFFF constant TARGET-MASK
       {: to:^ at:n rest:n :}
       at rest text mode NEXT {: next:n left:n cp:n more:bool :}
       more 0= if exit then
-      cp to SCALAR! next left
+      cp to UTF8:SCALAR! next left
    again ;
 
 \ Writes a span's walk only when the destination holds all of it.

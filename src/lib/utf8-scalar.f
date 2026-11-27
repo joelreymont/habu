@@ -6,7 +6,8 @@
 \ SUBPART-END answers the end of the longest prefix of a well-formed sequence at
 \ a cursor (Unicode 3.9, Table 3-7), at least the cursor's byte. CUT? is true
 \ when the bytes from a cursor to the end, at least one, are a proper prefix of
-\ a well-formed sequence. APPEND-SCALAR appends a scalar's shortest UTF-8 to a
+\ a well-formed sequence. SCALAR-WIDTH answers a scalar's UTF-8 byte count,
+\ SCALAR! writes that UTF-8 at an address and APPEND-SCALAR appends it to a
 \ vector.
 \ Negative lengths, caps and cursors are E-STR-BOUNDS. STORAGE CLASS. CALLER-OWNED.
 
@@ -211,25 +212,37 @@ $8F constant F4-SECOND-MOST
    lead index at STR:DATA index + c@ TRAIL-OK? 0= if index exit then
    at lead index 1+ recurse ;
 
-\ A lead byte holding the scalar's high bits, then TAIL continuation bytes of
-\ six bits each, highest first.
-: APPEND-ENCODED ( n n n ^VEC:vector<u8> -- )
-   {: scalar:n lead:n tail:n v:^ :}
-   scalar tail CONTINUATION-SHIFT * rshift lead or v VEC:PUSH c!
-   tail 0 ?do
-      scalar tail 1- i - CONTINUATION-SHIFT * rshift
-      CONTINUATION-PAYLOAD-MASK and CONTINUATION-TAG or v VEC:PUSH c!
-   loop ;
+\ The lead byte's tag for a sequence of 2 to 4 bytes.
+: WIDTH-LEAD ( n -- n ) {: width:n :}
+   width TWO-WIDTH = if TWO-LEAD-FIRST exit then
+   width THREE-WIDTH = if THREE-LEAD-FIRST exit then
+   FOUR-LEAD-FIRST ;
 
 public
 
-\ The caller passes a scalar (0 to U+10FFFF, no surrogate); nothing checks it.
+\ The caller passes a scalar (0 to U+10FFFF, no surrogate) and, to SCALAR!,
+\ room for its bytes; nothing checks either.
+: SCALAR-WIDTH ( n -- n ) {: scalar:n :}
+   scalar TWO-MINIMUM < if 1 exit then
+   scalar THREE-MINIMUM < if TWO-WIDTH exit then
+   scalar FOUR-MINIMUM < if THREE-WIDTH exit then
+   FOUR-WIDTH ;
+
+\ A lead byte holding the scalar's high bits, then continuation bytes of six
+\ bits each, highest first.
+: SCALAR! ( n ^u8 -- ^u8 ) {: scalar:n out:^ :}
+   scalar SCALAR-WIDTH {: width:n :}
+   width 1 = if scalar out c! out 1+ exit then
+   scalar width 1- CONTINUATION-SHIFT * rshift width WIDTH-LEAD or out c!
+   width 1 ?do
+      scalar width 1- i - CONTINUATION-SHIFT * rshift
+      CONTINUATION-PAYLOAD-MASK and CONTINUATION-TAG or out i + c!
+   loop
+   out width + ;
+
 : APPEND-SCALAR ( n ^VEC:vector<u8> -- )
    {: scalar:n v:^ :}
-   scalar TWO-MINIMUM < if scalar v VEC:PUSH c! exit then
-   scalar THREE-MINIMUM < if scalar TWO-LEAD-FIRST 1 v APPEND-ENCODED exit then
-   scalar FOUR-MINIMUM < if scalar THREE-LEAD-FIRST 2 v APPEND-ENCODED exit then
-   scalar FOUR-LEAD-FIRST 3 v APPEND-ENCODED ;
+   scalar v scalar SCALAR-WIDTH VEC:EXTEND SPAN:$ STR:DATA SCALAR! drop ;
 
 : NEXT ( str n -- scalar-step ) {: source:str cursor:n :}
    source cursor LEAD@ {: lead:n :}

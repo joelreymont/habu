@@ -108,23 +108,6 @@ private
    state at AT-BYTE -1 = if -1 exit then
    state state SYNTAX-SOURCE @ at SPAN-SCALAR drop ;
 
-: CODEPOINT! ( n ^u8 -- n )
-   {: point:n out :}
-   point $80 < if point out c! 1 exit then
-   point $800 < if
-      point 6 rshift $C0 or out c!
-      point $3F and $80 or out 1+ c! 2 exit
-   then
-   point $10000 < if
-      point 12 rshift $E0 or out c!
-      point 6 rshift $3F and $80 or out 1+ c!
-      point $3F and $80 or out 2 + c! 3 exit
-   then
-   point 18 rshift $F0 or out c!
-   point 12 rshift $3F and $80 or out 1+ c!
-   point 6 rshift $3F and $80 or out 2 + c!
-   point $3F and $80 or out 3 + c! 4 ;
-
 : HEX-DIGITS ( ^syntax n -- n )
    {: state count:n :}
    0 count 0 ?do
@@ -168,7 +151,7 @@ private
       {: used:n :}
       state ESCAPE-DIGITS 0<> {: escape:bool :}
       state ESCAPED-SCALAR {: point:n next:n :}
-      point out used + CODEPOINT! used + {: wrote:n :}
+      point out used + UTF8:SCALAR! out - {: wrote:n :}
       escape if
          shifts VEC:PUSH {: pair :}
          wrote pair ESCAPE-DECODED ! next pair ESCAPE-ORIGINAL !

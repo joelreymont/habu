@@ -1,6 +1,7 @@
 \ write.f - XML escaping.
 
 require src/lib/xml/scalar.f
+require src/lib/utf8-scalar.f
 require src/lib/vector.f
 require src/lib/xml/reject.f
 
@@ -31,7 +32,7 @@ private
 : ESCAPED-LEN ( n bool -- n )
    {: scalar:n attr:bool :}
    scalar attr ESCAPED$ STR:LEN
-   dup 0= if drop scalar SCALAR-WIDTH then ;
+   dup 0= if drop scalar UTF8:SCALAR-WIDTH then ;
 
 : ESCAPED-SIZE ( str bool -- n )
    {: source:str attr:bool :}
@@ -48,7 +49,7 @@ private
 : WRITE-ESCAPED ( n bool ^u8 -- ^u8 )
    {: scalar:n attr:bool destination :}
    scalar attr ESCAPED$ {: escaped:str :}
-   escaped STR:LEN 0= if scalar destination PUT-SCALAR exit then
+   escaped STR:LEN 0= if scalar destination UTF8:SCALAR! exit then
    escaped STR:DATA destination escaped STR:LEN >LEN BYTE-COPY-LEN
    destination escaped STR:LEN + ;
 

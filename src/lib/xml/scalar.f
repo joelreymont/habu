@@ -223,11 +223,6 @@ $7FFFFFFFFFFFFFFF constant MAX-SIZE
    then
    source mode source at cursor SCALAR-AT NORMALIZED ;
 
-: SCALAR-WIDTH ( n -- n )
-   dup $80 < if drop 1 exit then
-   dup $800 < if drop 2 exit then
-   $10000 < if 3 else 4 then ;
-
 : DECODED-SIZE ( str n -- n )
    {: source:str mode:n :}
    source SPAN-CHECK
@@ -236,7 +231,7 @@ $7FFFFFFFFFFFFFFF constant MAX-SIZE
       {: total:n cursor:n :}
       source WHOLE cursor mode DECODE-AT
       {: scalar:n next:n :}
-      total scalar SCALAR-WIDTH + next
+      total scalar UTF8:SCALAR-WIDTH + next
    repeat
    drop ;
 
@@ -245,29 +240,6 @@ $7FFFFFFFFFFFFFFF constant MAX-SIZE
    byte destination c!
    destination 1+ ;
 
-: PUT-CONTINUATION ( n ^u8 -- ^u8 )
-   {: value:n destination :}
-   value $3F and $80 or destination PUT-BYTE ;
-
-: PUT-SCALAR ( n ^u8 -- ^u8 )
-   {: scalar:n destination :}
-   scalar $80 < if scalar destination PUT-BYTE exit then
-   scalar $800 < if
-      scalar scalar 6 rshift $C0 or destination PUT-BYTE
-      PUT-CONTINUATION exit
-   then
-   scalar $10000 < if
-      scalar 12 rshift $E0 or destination PUT-BYTE
-   else
-      scalar 18 rshift $F0 or destination PUT-BYTE
-      {: next :}
-      scalar 12 rshift next PUT-CONTINUATION
-   then
-   {: next :}
-   scalar 6 rshift next PUT-CONTINUATION
-   {: last :}
-   scalar last PUT-CONTINUATION ;
-
 : DECODE-WRITE ( str n ^u8 -- )
    {: source:str mode:n destination :}
    destination 0
@@ -275,7 +247,7 @@ $7FFFFFFFFFFFFFFF constant MAX-SIZE
       {: next-output cursor:n :}
       source WHOLE cursor mode DECODE-AT
       {: scalar:n next:n :}
-      scalar next-output PUT-SCALAR next
+      scalar next-output UTF8:SCALAR! next
    repeat
    2drop ;
 

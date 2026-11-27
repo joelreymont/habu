@@ -15,6 +15,7 @@
 \ and the target `xml` lowercase (XML 1.0 section 4.3.3). Anything else, UTF-32
 \ included, is E-ENCODING; bad surrogates are E-UTF16.
 require src/lib/xml/scalar.f
+require src/lib/utf8-scalar.f
 require src/lib/vector.f
 require src/lib/allocator.f
 require src/lib/xml/reject.f
@@ -287,7 +288,7 @@ LINEAR: SRC-ERASE ( XML:source -- ^header )
       {: total:n cursor:n :}
       source cursor encoding SRC-NEXT
       {: scalar:n next:n :}
-      scalar SCALAR-WIDTH {: width:n :}
+      scalar UTF8:SCALAR-WIDTH {: width:n :}
       width MAX-SIZE total - > if E-CAPACITY throw then
       total width + next
    repeat
@@ -324,7 +325,7 @@ LINEAR: SRC-ERASE ( XML:source -- ^header )
       state mark target output - cursor SRC-MARKS {: marked:n :}
       original cursor encoding SRC-NEXT
       {: scalar:n next:n :}
-      scalar target PUT-SCALAR next marked
+      scalar target UTF8:SCALAR! next marked
    repeat
    {: target cursor:n mark:n :}
    state mark target output - cursor SRC-MARKS drop ;
