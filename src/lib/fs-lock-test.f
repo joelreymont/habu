@@ -4,7 +4,8 @@
 \ leaves a hold behind; an exec child prolongs the parent's hold; an invalid
 \ descriptor is mistaken for contention; a regular file is opened as a directory;
 \ WAIT returns while another process still holds the lock, or without taking it;
-\ RELEASE leaves the lock held while its descriptor stays open.
+\ RELEASE leaves the lock held while its descriptor stays open; a failed open
+\ leaves an older errno in FS:ERRNO.
 
 require src/lib/test/assert.f
 require src/lib/fs-mutate.f
@@ -147,19 +148,24 @@ variable HELD-FD
    FILE-PATH u >str s" x" FS:WRITE-ALL
    FILE-PATH u >str FS-LOCK:OPEN-DIR FD>N close ;
 
-\ The quotation, run on a closed descriptor, throws E-FS-IO with EBADF in
-\ FS:ERRNO; the cause is cleared first, so a stale one cannot pass.
-: BAD-EBADF ( [ -- ] -- )
+\ The quotation throws want with errno in FS:ERRNO; the cause is cleared
+\ first, so a stale one cannot pass.
+: BAD-CAUSE ( [ -- ] n n -- ) {: want:n errno:n :}
    FS:CAUSE-CLEAR
    catch FS:ERRNO {: code:n cause:n :}
-   code E-FS-IO T=
-   cause FS:EBADF T= ;
+   code want T=
+   cause errno T= ;
+
+: MISSING-DIR ( -- )
+   ROOT$ s" missing" FILE-PATH FS:JOIN-PATH {: u:n :}
+   [: FILE-PATH u >str FS-LOCK:OPEN-DIR FD>N close ;] E-FS-OPEN FS:ENOENT BAD-CAUSE ;
 
 : ERRORS ( -- )
-   [: BAD-FD ;] BAD-EBADF
-   [: BAD-WAIT ;] BAD-EBADF
-   [: BAD-RELEASE ;] BAD-EBADF
-   [: BAD-DIR ;] E-FS-OPEN TTHROWSQ ;
+   [: BAD-FD ;] E-FS-IO FS:EBADF BAD-CAUSE
+   [: BAD-WAIT ;] E-FS-IO FS:EBADF BAD-CAUSE
+   [: BAD-RELEASE ;] E-FS-IO FS:EBADF BAD-CAUSE
+   [: BAD-DIR ;] E-FS-OPEN TTHROWSQ
+   MISSING-DIR ;
 
 : RUN ( -- )
    T-RESET SETUP

@@ -5,7 +5,7 @@
 \ forked child's copy) stays open. None owns or closes the descriptor.
 \ OPEN-DIR's descriptor is O_CLOEXEC so an exec child cannot prolong ownership.
 \ Other flock failures are E-FS-IO with their errno in FS:ERRNO; an OPEN-DIR
-\ failure is E-FS-OPEN.
+\ failure is E-FS-OPEN with its errno in FS:ERRNO.
 \ STORAGE CLASS. CALLER-OWNED: the held descriptor; no module state.
 
 require src/lib/error.f
@@ -45,7 +45,7 @@ public
 
 : OPEN-DIR ( str -- fd )
    FS:>PATHZ OPEN-FLAGS OPEN-CALL {: opened:n :}
-   opened 0 < if E-FS-OPEN throw then
+   opened 0 < if FFI:ERRNO FS:CAUSE! E-FS-OPEN throw then
    opened >FD ;
 
 : TRY ( fd -- bool )
