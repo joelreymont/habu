@@ -59,19 +59,83 @@ private
 4 constant F-STAR
 32 constant F-DESC
 
-\ A term (IRI, literal, variable, blank node, UNDEF) has no parts. Any other
-\ node's a, b, c and d hold node indexes or 0, and value its other number.
+\ A term (IRI, literal, variable, blank node, UNDEF) has no parts; its
+\ fields hold its head, datatype, language and number. Any other node's
+\ a, b, c and d hold node indexes or 0, and value its other number.
+\ A node is three cells: a packed cell, then a and b. The packed cell
+\ holds, from bit 0, the decoded offset of the token the node was read
+\ at (32 bits), its text's length (11) and start less that offset (6,
+\ signed), a bit for a side text, a bit for extra cells, flags (7) and
+\ kind (6). A text that is no slice of the decoded source, or does not
+\ fit, is a side text. Cells a and b hold a kind's first two fields
+\ below; once a later field or a side text is set, b holds the index of
+\ the node's extra cells: the second field, the later ones in order,
+\ then the side text's index.
+\   IRI: c d value              literal: a value b
+\   variable, blank node, prefix, LIMIT, OFFSET: value
+\   call, triple: a b c         list: a b value d
+\   unary, binary, path: a b    SELECT, ASK: a b d value
+\   query info: a b c value     every other kind: a b c d value
 STRUCTURE node DERIVE addr
-   FIELD kind n
-   FIELD flags n
-   FIELD text str
+   FIELD packed n
    FIELD a n
    FIELD b n
-   FIELD c n
-   FIELD d n
-   FIELD value n
-   FIELD token n  \ the decoded offset of the token it was read at
 ;STRUCTURE
+
+\ Each packed field's first bit and width.
+: OFFSET-BITS ( -- n n ) 0 32 ;
+: LENGTH-BITS ( -- n n ) 32 11 ;
+: DELTA-BITS ( -- n n ) 43 6 ;
+: SIDE-BITS ( -- n n ) 49 1 ;
+: EXTRA-BITS ( -- n n ) 50 1 ;
+: FLAGS-BITS ( -- n n ) 51 7 ;
+: KIND-BITS ( -- n n ) 58 6 ;
+
+0 constant PART-A
+1 constant PART-B
+2 constant PART-C
+3 constant PART-D
+4 constant PART-VALUE
+
+\ Where a kind keeps a field: nowhere, cell a, cell b or else the first
+\ extra cell, or the next extra cells.
+0 constant IN-NONE
+1 constant IN-A
+2 constant IN-B
+3 constant IN-X1
+4 constant IN-X2
+5 constant IN-X3
+
+\ Per kind, the place of each field in 4 bits from field a's, and from
+\ bit 20 how many extra cells its fields take.
+N-QUERY-INFO 1+ TYPED-BUFFER LAYOUTS n
+
+: LAYOUT! ( n n n n n n -- )
+   {: kind:n a:n b:n c:n d:n value:n :}
+   a b max c max d max value max 1- 0 max 20 lshift
+   value 16 lshift or d 12 lshift or c 8 lshift or
+   b 4 lshift or a or kind LAYOUTS ! ;
+
+: VALUE-ONLY ( n -- )
+   IN-NONE IN-NONE IN-NONE IN-NONE IN-A LAYOUT! ;
+
+: INSTALL-LAYOUTS ( -- )
+   N-QUERY-INFO 1+ 1 ?do i IN-A IN-B IN-X1 IN-X2 IN-X3 LAYOUT! loop
+   N-IRI IN-NONE IN-NONE IN-A IN-B IN-X1 LAYOUT!
+   N-LITERAL IN-A IN-X1 IN-NONE IN-NONE IN-B LAYOUT!
+   N-VAR VALUE-ONLY N-BNODE VALUE-ONLY N-PREFIX VALUE-ONLY
+   N-LIMIT VALUE-ONLY N-OFFSET VALUE-ONLY
+   N-CALL IN-A IN-B IN-X1 IN-NONE IN-NONE LAYOUT!
+   N-TRIPLE IN-A IN-B IN-X1 IN-NONE IN-NONE LAYOUT!
+   N-LIST IN-A IN-B IN-NONE IN-X2 IN-X1 LAYOUT!
+   N-UNARY IN-A IN-B IN-NONE IN-NONE IN-NONE LAYOUT!
+   N-BINARY IN-A IN-B IN-NONE IN-NONE IN-NONE LAYOUT!
+   N-PATH IN-A IN-B IN-NONE IN-NONE IN-NONE LAYOUT!
+   N-SELECT IN-A IN-B IN-NONE IN-X1 IN-X2 LAYOUT!
+   N-ASK IN-A IN-B IN-NONE IN-X1 IN-X2 LAYOUT!
+   N-QUERY-INFO IN-A IN-B IN-X1 IN-NONE IN-X2 LAYOUT! ;
+
+INSTALL-LAYOUTS
 
 STRUCTURE token DERIVE addr
    FIELD kind n
@@ -117,6 +181,8 @@ STRUCTURE syntax DERIVE addr
    FIELD arena ^ARENA:arena
    FIELD work ^ARENA:arena  \ a child of arena that frames cut back
    FIELD nodes ^segs<node>
+   FIELD extras ^segs<n>  \ the nodes' extra cells
+   FIELD side ^segs<str>  \ the side texts
    FIELD previous token
    FIELD current token
    FIELD next token
@@ -242,58 +308,200 @@ STRUCTURE syntax DERIVE addr
 : NODE ( ^syntax n -- ^node )
    swap SYNTAX-NODES @ swap SEG-AT ;
 
+: PACKED@ ( ^node n n -- n )
+   {: node at:n width:n :}
+   node NODE-PACKED @ at rshift 1 width lshift 1- and ;
+
+: PACKED! ( ^node n n n -- )
+   {: node value:n at:n width:n :}
+   1 width lshift 1- at lshift {: mask:n :}
+   node NODE-PACKED @ mask invert and
+   value at lshift mask and or node NODE-PACKED ! ;
+
+: SIDE? ( ^node -- bool ) SIDE-BITS PACKED@ 0<> ;
+: EXTRA? ( ^node -- bool ) EXTRA-BITS PACKED@ 0<> ;
+
+\ The text's start less the offset, sign extended.
+: DELTA@ ( ^node -- n )
+   DELTA-BITS PACKED@ dup 1 DELTA-BITS nip 1- lshift >= if
+      1 DELTA-BITS nip lshift -
+   then ;
+
+: NODE-K ( ^syntax n -- n ) NODE KIND-BITS PACKED@ ;
+
+: LAYOUT ( ^syntax n -- n ) NODE-K LAYOUTS @ ;
+
+\ Where node n's kind keeps the field.
+: PLACE-OF ( ^syntax n n -- n )
+   {: state index:n part:n :}
+   state index LAYOUT part 4 * rshift 15 and ;
+
+\ How many extra cells node n's fields take.
+: FIELD-CELLS ( ^syntax n -- n ) LAYOUT 20 rshift ;
+
+\ Extra cell n of the node.
+: EXTRA ( ^syntax ^node n -- ^n )
+   {: state node slot:n :}
+   state SYNTAX-EXTRAS @ node NODE-B @ slot + SEG-AT ;
+
+: PART@ ( ^syntax n n -- n )
+   {: state index:n part:n :}
+   state index NODE {: node :}
+   state index part PLACE-OF {: place:n :}
+   place IN-NONE = if 0 exit then
+   place IN-A = if node NODE-A @ exit then
+   node EXTRA? if state node place IN-B - EXTRA @ exit then
+   place IN-B = if node NODE-B @ else 0 then ;
+
+\ Gives node n n new extra cells holding its fields' extra cells, or
+\ else its cell b.
+: MOVE-EXTRAS ( ^syntax n n -- )
+   {: state index:n size:n :}
+   state index NODE {: node :}
+   state SYNTAX-EXTRAS @ {: cells:^ :}
+   cells SEG-COUNT {: at:n :}
+   cells at size + SEG-ENSURE
+   node EXTRA? if
+      state index FIELD-CELLS 0 ?do
+         state node i EXTRA @ cells at i + SEG-AT !
+      loop
+   else node NODE-B @ cells at SEG-AT ! then
+   at node NODE-B ! node 1 EXTRA-BITS PACKED! ;
+
+\ A kind keeps only the fields its row in INSTALL-LAYOUTS names: a write
+\ to any other field is lost, so code that sets a new field of a kind
+\ names it in that row first.
+: PART! ( ^syntax n n n -- )
+   {: state index:n part:n value:n :}
+   state index NODE {: node :}
+   state index part PLACE-OF {: place:n :}
+   place IN-NONE = if exit then
+   place IN-A = if value node NODE-A ! exit then
+   node EXTRA? 0= if
+      place IN-B = if value node NODE-B ! exit then
+      value 0= if exit then
+      state index state index FIELD-CELLS MOVE-EXTRAS
+   then value state node place IN-B - EXTRA ! ;
+
+\ The node's side text's cell in the side array.
+: SIDE ( ^syntax n -- ^str )
+   {: state index:n :}
+   state SYNTAX-SIDE @
+   state state index NODE state index FIELD-CELLS EXTRA @
+   SEG-AT ;
+
 : TEXT$ ( ^syntax n -- str )
-   NODE NODE-TEXT @ ;
+   {: state index:n :}
+   state index NODE {: node :}
+   node SIDE? if state index SIDE @ exit then
+   state SYNTAX-SOURCE @ str> drop
+   node OFFSET-BITS PACKED@ + node DELTA@ +
+   node LENGTH-BITS PACKED@ >str ;
 
-: NODE-K ( ^syntax n -- n ) NODE NODE-KIND @ ;
-: NODE-A@ ( ^syntax n -- n ) NODE NODE-A @ ;
-: NODE-B@ ( ^syntax n -- n ) NODE NODE-B @ ;
-: NODE-C@ ( ^syntax n -- n ) NODE NODE-C @ ;
-: NODE-D@ ( ^syntax n -- n ) NODE NODE-D @ ;
-: NODE-FLAGS@ ( ^syntax n -- n ) NODE NODE-FLAGS @ ;
-: NODE-VALUE@ ( ^syntax n -- n ) NODE NODE-VALUE @ ;
-: NODE-TOKEN@ ( ^syntax n -- n ) NODE NODE-TOKEN @ ;
+\ The text's start less the node's offset, and whether the node holds
+\ the text as a slice of the decoded source.
+: SLICE ( ^syntax ^node str -- n bool )
+   {: state node text:str :}
+   text str> {: start length:n :}
+   length 0= if 0 true exit then
+   state SYNTAX-SOURCE @ str> {: base size:n :}
+   start base - {: at:n :}
+   at node OFFSET-BITS PACKED@ - {: delta:n :}
+   1 DELTA-BITS nip 1- lshift {: reach:n :}
+   delta at 0 >= at length + size <= and
+   delta reach negate >= and delta reach < and
+   length 1 LENGTH-BITS nip lshift < and ;
 
-: NODE-KIND! ( ^syntax n n -- ) rot rot NODE NODE-KIND ! ;
-: NODE-FLAGS! ( ^syntax n n -- ) rot rot NODE NODE-FLAGS ! ;
-: NODE-A! ( ^syntax n n -- ) rot rot NODE NODE-A ! ;
-: NODE-B! ( ^syntax n n -- ) rot rot NODE NODE-B ! ;
-: NODE-C! ( ^syntax n n -- ) rot rot NODE NODE-C ! ;
-: NODE-D! ( ^syntax n n -- ) rot rot NODE NODE-D ! ;
-: NODE-VALUE! ( ^syntax n n -- ) rot rot NODE NODE-VALUE ! ;
-: NODE-TOKEN! ( ^syntax n n -- ) rot rot NODE NODE-TOKEN ! ;
+: TEXT! ( ^syntax n str -- )
+   {: state index:n text:str :}
+   state index NODE {: node :}
+   state SYNTAX-SIDE @ {: side:^ :}
+   node SIDE? 0= if
+      state node text SLICE if
+         node swap DELTA-BITS PACKED!
+         node text str> nip LENGTH-BITS PACKED! exit
+      then drop
+      state index FIELD-CELLS {: slot:n :}
+      state index slot 1+ MOVE-EXTRAS
+      side SEG-COUNT state node slot EXTRA !
+      side SEG-PUSH drop node 1 SIDE-BITS PACKED!
+   then text state index SIDE ! ;
+
+: NODE-A@ ( ^syntax n -- n ) PART-A PART@ ;
+: NODE-B@ ( ^syntax n -- n ) PART-B PART@ ;
+: NODE-C@ ( ^syntax n -- n ) PART-C PART@ ;
+: NODE-D@ ( ^syntax n -- n ) PART-D PART@ ;
+: NODE-VALUE@ ( ^syntax n -- n ) PART-VALUE PART@ ;
+: NODE-FLAGS@ ( ^syntax n -- n ) NODE FLAGS-BITS PACKED@ ;
+: NODE-TOKEN@ ( ^syntax n -- n ) NODE OFFSET-BITS PACKED@ ;
+
+: NODE-A! ( ^syntax n n -- ) PART-A swap PART! ;
+: NODE-B! ( ^syntax n n -- ) PART-B swap PART! ;
+: NODE-C! ( ^syntax n n -- ) PART-C swap PART! ;
+: NODE-D! ( ^syntax n n -- ) PART-D swap PART! ;
+: NODE-VALUE! ( ^syntax n n -- ) PART-VALUE swap PART! ;
+: NODE-FLAGS! ( ^syntax n n -- )
+   rot rot NODE swap FLAGS-BITS PACKED! ;
+
+\ A slice text is held again from the new offset.
+: NODE-TOKEN! ( ^syntax n n -- )
+   {: state index:n at:n :}
+   state index TEXT$ {: text:str :}
+   state index NODE {: node :}
+   node at OFFSET-BITS PACKED!
+   node SIDE? 0= if state index text TEXT! then ;
+
+\ The node's fields and text are placed again as the kind keeps them.
+: NODE-KIND! ( ^syntax n n -- )
+   {: state index:n kind:n :}
+   state index NODE {: node :}
+   state index TEXT$ {: text:str :}
+   state index NODE-A@ {: a:n :}
+   state index NODE-B@ {: b:n :}
+   state index NODE-C@ {: c:n :}
+   state index NODE-D@ {: d:n :}
+   state index NODE-VALUE@ {: value:n :}
+   node OFFSET-BITS PACKED@ {: at:n :}
+   node FLAGS-BITS PACKED@ {: flags:n :}
+   0 node NODE-PACKED ! 0 node NODE-A ! 0 node NODE-B !
+   node kind KIND-BITS PACKED! node at OFFSET-BITS PACKED!
+   node flags FLAGS-BITS PACKED!
+   state index a NODE-A! state index b NODE-B!
+   state index c NODE-C! state index d NODE-D!
+   state index value NODE-VALUE! state index text TEXT! ;
 
 : ADD-NODE ( ^syntax n -- n )
    {: state kind:n :}
    state SYNTAX-NODES @ SEG-COUNT {: index:n :}
    state SYNTAX-NODES @ SEG-PUSH {: node :}
-   kind node NODE-KIND !
-   state SYNTAX-CURSOR @ node NODE-TOKEN ! index ;
+   node kind KIND-BITS PACKED!
+   node state SYNTAX-CURSOR @ OFFSET-BITS PACKED! index ;
 
 \ Only query forms carry this node: trailing VALUES, aggregates and projected
 \ names, read by validation and emission; the offset of a projection's `*`
 \ token places its rejection.
-: QUERY-INFO ( ^syntax n -- ^node )
-   over swap NODE NODE-VALUE @ NODE ;
+: QUERY-INFO ( ^syntax n -- n ) NODE-VALUE@ ;
 
 : NEW-QUERY ( ^syntax n -- n )
    {: state kind:n :}
    state kind ADD-NODE {: query:n :}
-   state N-QUERY-INFO ADD-NODE state query NODE NODE-VALUE ! query ;
+   state N-QUERY-INFO ADD-NODE {: info:n :}
+   state query info NODE-VALUE! query ;
 
-: QUERY-VALUES@ ( ^syntax n -- n ) QUERY-INFO NODE-A @ ;
-: QUERY-AGGREGATES ( ^syntax n -- n ) QUERY-INFO NODE-B @ ;
-: QUERY-NAMES ( ^syntax n -- n ) QUERY-INFO NODE-C @ ;
-: QUERY-STAR ( ^syntax n -- n ) QUERY-INFO NODE-VALUE @ ;
-: QUERY-VALUES! ( ^syntax n n -- ) rot rot QUERY-INFO NODE-A ! ;
-: QUERY-AGGREGATES! ( ^syntax n n -- ) rot rot QUERY-INFO NODE-B ! ;
-: QUERY-NAMES! ( ^syntax n n -- ) rot rot QUERY-INFO NODE-C ! ;
-: QUERY-STAR! ( ^syntax n n -- ) rot rot QUERY-INFO NODE-VALUE ! ;
+: QUERY-VALUES@ ( ^syntax n -- n ) over swap QUERY-INFO NODE-A@ ;
+: QUERY-AGGREGATES ( ^syntax n -- n ) over swap QUERY-INFO NODE-B@ ;
+: QUERY-NAMES ( ^syntax n -- n ) over swap QUERY-INFO NODE-C@ ;
+: QUERY-STAR ( ^syntax n -- n ) over swap QUERY-INFO NODE-VALUE@ ;
 
-: TEXT! ( ^syntax n str -- )
-   {: state index:n text:str :}
-   state index NODE {: node :}
-   text node NODE-TEXT ! ;
+: QUERY-VALUES! ( ^syntax n n -- )
+   {: state query:n x:n :} state state query QUERY-INFO x NODE-A! ;
+: QUERY-AGGREGATES! ( ^syntax n n -- )
+   {: state query:n x:n :} state state query QUERY-INFO x NODE-B! ;
+: QUERY-NAMES! ( ^syntax n n -- )
+   {: state query:n x:n :} state state query QUERY-INFO x NODE-C! ;
+: QUERY-STAR! ( ^syntax n n -- )
+   {: state query:n x:n :}
+   state state query QUERY-INFO x NODE-VALUE! ;
 
 : TEXT-NODE ( ^syntax n str -- n )
    {: state kind:n text:str :}
@@ -380,15 +588,15 @@ STRUCTURE syntax DERIVE addr
 : CONS ( ^syntax n n -- n )
    {: state item:n tail:n :}
    state N-LIST ADD-NODE {: index:n :}
-   item state index NODE NODE-A !
-   tail state index NODE NODE-B ! index ;
+   state index item NODE-A!
+   state index tail NODE-B! index ;
 
 : REVERSE ( ^syntax n -- n )
    {: state list:n :}
    0 list begin dup 0<> while
       {: result:n current:n :}
       state current NODE-B@ {: next:n :}
-      result state current NODE NODE-B !
+      state current result NODE-B!
       current next
    repeat drop ;
 
@@ -401,12 +609,12 @@ STRUCTURE syntax DERIVE addr
 : UNARY-NODE ( ^syntax n n -- n )
    {: state kind:n operand:n :}
    state kind ADD-NODE {: index:n :}
-   operand state index NODE NODE-A ! index ;
+   state index operand NODE-A! index ;
 
 : BINARY-NODE ( ^syntax n n n -- n )
    {: state kind:n left:n right:n :}
    state kind left UNARY-NODE {: index:n :}
-   right state index NODE NODE-B ! index ;
+   state index right NODE-B! index ;
 
 : SYNTAX-NEW ( str ^ARENA:arena -- ^syntax )
    {: text:str arena :}
@@ -420,6 +628,8 @@ STRUCTURE syntax DERIVE addr
    text state SYNTAX-ORIGINAL !
    arena ARENA:ALLOCATOR 0 [type] escape VEC:NEW
       state SYNTAX-ESCAPES !
+   arena ARENA:ALLOCATOR [type] n SEG-NEW state SYNTAX-EXTRAS !
+   arena ARENA:ALLOCATOR [type] str SEG-NEW state SYNTAX-SIDE !
    arena ARENA:ALLOCATOR [type] node SEG-NEW {: nodes:^ :}
    nodes 1 SEG-ENSURE  nodes state SYNTAX-NODES ! state ;
 
