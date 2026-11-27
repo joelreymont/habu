@@ -78,6 +78,14 @@
 \ A record that is no object is rejected. V2 and V4 bodies of the same
 \ records give the same members; a value both versions write in one JSON form
 \ gives the same bytes.
+\ EACH-EXPANDED calls a quotation with each record a record's expanded
+\ navigation holds, in order: none for an absent or null member or a V2
+\ `{"__deferred":...}`, the object of a to-one navigation, and each element of
+\ a to-many one's array of records or of a V2 one's `{"results":[...]}`. A
+\ member holding anything else, an element that is no object included, is
+\ rejected with the text COPY-ENTITY gives it, after the calls for the
+\ elements before it; a record given that is no object is rejected as `an
+\ object for the record`.
 \ KEY appends to a vector an entity's key predicate from its key values'
 \ text, each checked against its property's type and written in the version's
 \ literal form, a V4 enumeration value as the type's qualified name and the

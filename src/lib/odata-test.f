@@ -9,8 +9,9 @@
 \ in a key, keyed by it; a record copied as sets whose types share a member
 \ name with types they do not derive from; a navigation of another type
 \ leading to no set; sets and properties hidden by each rule, in listings and
-\ copies; the hidden names found in a query option's text; and properties and
-\ navigations looked up by name.
+\ copies; the hidden names found in a query option's text; properties and
+\ navigations looked up by name; and the records of expanded navigations
+\ given in order, or rejected with COPY-ENTITY's texts.
 \ Run: bin/hb --load src/lib/odata-test.f
 
 require src/lib/string.f
@@ -594,6 +595,90 @@ TYPED-VARIABLE LINK ^VEC:vector<u8>  \ and this one
    t records PLAIN s\" [{\"Orders\":null}]" T$=
    a ARENA:RELEASE ;
 
+: NAV-NAMED ( ^ODATA:entity-type str -- ^ODATA:navigation )
+   ODATA:NAVIGATION MATCH nullable
+      none OF s" odata-test: no such navigation" 1 die ENDOF
+      some OF ENDOF
+   ;MATCH ;
+
+\ The texts of the records EACH-EXPANDED gives for the navigation NAV of BODY,
+\ a record of SET, each followed by `;`.
+: EXPANDED$ ( ^ODATA:metadata str str str -- str )
+   {: m:^ set:str nav:str body:str :}
+   0 DESC-LEN !
+   body JSON:PARSE m set SET-TYPE nav NAV-NAMED
+   [: JSON:TEXT$ ADD s" ;" ADD ;] ODATA:EACH-EXPANDED
+   DESC$ ;
+
+\ EACH-EXPANDED rejects the navigation NAV of a record of the page at PATH,
+\ of SET, as WANT says; the records array is parsed alone, as COPY-REJECTS
+\ parses it.
+: EXPANDED-REJECTS ( str str str str str -- )
+   {: xml:str set:str nav:str path:str want:str :}
+   ARENA:NEW {: a:^ :}
+   a xml MODEL {: m:^ :}
+   m set SET-TYPE nav NAV-NAMED {: n:^ :}
+   m path BODY JSON:PARSE RECORDS JSON:TEXT$ JSON:PARSE {: records :}
+   [: records [: n [: drop ;] ODATA:EACH-EXPANDED ;] JSON:EACH ;]
+   ODATA:E-RESPONSE TTHROWSQ
+   want SAID
+   a ARENA:RELEASE ;
+
+: TWO$ ( -- str )
+   s\" {\"Orders\":{\"results\":[{\"OrderID\":\"1\"},{\"OrderID\":\"2\"}]}}" ;
+: TWO-GIVEN$ ( -- str )
+   s\" {\"OrderID\":\"1\"};{\"OrderID\":\"2\"};" ;
+: ONE$ ( -- str ) s\" {\"Orders\":[{\"OrderID\":\"1\"}]}" ;
+: ONE-GIVEN$ ( -- str ) s\" {\"OrderID\":\"1\"};" ;
+: BUYER-ONE$ ( -- str ) s\" {\"Buyer\":{\"PartyID\":\"C1\"}}" ;
+: DEFERRED$ ( -- str ) s\" {\"Orders\":{\"__deferred\":{\"uri\":\"u\"}}}" ;
+
+\ The records of an expanded navigation, given in order.
+: TEST-EXPANDED-CALLS ( -- )
+   ARENA:NEW {: a:^ :}
+   a V2$ MODEL {: v2:^ :}
+   a V4$ MODEL {: v4:^ :}
+   v2 s" Customers" s" Orders" TWO$ EXPANDED$ TWO-GIVEN$ T$=
+   v2 s" Customers" s" Orders" ONE$ EXPANDED$ ONE-GIVEN$ T$=
+   v2 s" Customers" s" Orders" DEFERRED$ EXPANDED$ s" " T$=
+   v4 s" Customers" s" Orders" ONE$ EXPANDED$ ONE-GIVEN$ T$=
+   v4 s" Orders" s" Buyer" BUYER-ONE$ EXPANDED$
+   s\" {\"PartyID\":\"C1\"};" T$=
+   v4 s" Customers" s" Orders" s\" {\"Orders\":null}" EXPANDED$ s" " T$=
+   v4 s" Customers" s" Orders" s" {}" EXPANDED$ s" " T$=
+   a ARENA:RELEASE ;
+
+\ EACH-EXPANDED rejects what COPY-ENTITY rejects, with its texts.
+: TEST-EXPANDED ( -- )
+   V4$ s" Customers" s" Orders" s" test/fixtures/odata/number-navigation.json"
+   s" 1:12: expected null or an array of records for navigation `Orders`, found `5`; write that kind of value here"
+   EXPANDED-REJECTS
+   V2$ s" Customers" s" Orders" s" test/fixtures/odata/empty-results.json"
+   s" 1:12: expected the member `results` in a results object, found `{`; add the member to the object"
+   EXPANDED-REJECTS
+   V4$ s" Customers" s" Orders" s" test/fixtures/odata/number-in-records.json"
+   s" 1:13: expected a record object in an array of records, found `5`; write that kind of value here"
+   EXPANDED-REJECTS
+   V4$ s" Orders" s" Buyer" s" test/fixtures/odata/array-navigation.json"
+   s" 1:11: expected null or a record for navigation `Buyer`, found `[`; write that kind of value here"
+   EXPANDED-REJECTS
+   V2$ s" Customers" s" Orders" s" test/fixtures/odata/number-results.json"
+   s" 1:23: expected an array of records for member `results`, found `5`; write that kind of value here"
+   EXPANDED-REJECTS
+   V4$ s" Customers" s" Orders" s" test/fixtures/odata/object-navigation.json"
+   s" 1:12: expected null or an array of records for navigation `Orders`, found `{`; write that kind of value here"
+   EXPANDED-REJECTS ;
+
+\ EACH-EXPANDED rejects a value that is no record, placed at the value.
+: TEST-EXPANDED-RECORD ( -- )
+   ARENA:NEW {: a:^ :}
+   a V4$ MODEL s" Customers" SET-TYPE s" Orders" NAV-NAMED {: n:^ :}
+   [: s" [1]" JSON:PARSE [: n [: drop ;] ODATA:EACH-EXPANDED ;] JSON:EACH ;]
+   ODATA:E-RESPONSE TTHROWSQ
+   s" 1:2: expected an object for the record, found `1`; write that kind of value here"
+   SAID
+   a ARENA:RELEASE ;
+
 TYPED-VARIABLE KEY-OUT ^VEC:vector<u8>
 PTR-VARIABLE VALUE-AT
 variable VALUE-LEN
@@ -941,6 +1026,9 @@ variable VALUE-LEN
    TEST-RESPONSE-REJECTIONS
    TEST-RESPONSE-SITE-TEXTS
    TEST-NULL-NAVIGATION
+   TEST-EXPANDED-CALLS
+   TEST-EXPANDED
+   TEST-EXPANDED-RECORD
    TEST-ENTITY-REJECTION
    TEST-DEEP-RECORD
    TEST-KEYS

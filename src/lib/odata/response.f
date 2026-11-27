@@ -1,5 +1,5 @@
-\ response.f - PAGE, RECORD and COPY-ENTITY; part of package ODATA
-\ (src/lib/odata.f), which states the contract.
+\ response.f - PAGE, COUNT-OPTION$, EACH-EXPANDED, RECORD and COPY-ENTITY; part
+\ of package ODATA (src/lib/odata.f), which states the contract.
 \ COPY-ENTITY uses no recursion: JSON:WALK gives the record's events in text
 \ order, and each open container is a frame on a stack that starts in the
 \ call's scratch and doubles into a mapping. A name sets the innermost frame's
@@ -470,6 +470,18 @@ CAST: >FRAMES ( ^u8 -- ^frame )
    v n NAV-WANT s"  for navigation `" n NAVIGATION-NAME @ s" `"
    KIND-FIX$ JOINED-REJECT ;
 
+: RESULTS-REJECT ( JSON:value -- )
+   s" an array of records for member `results`" KIND-FIX$
+   RESPONSE-REJECT ;
+
+: RECORD-REJECT ( JSON:value -- )
+   s" a record object in an array of records" KIND-FIX$
+   RESPONSE-REJECT ;
+
+: NO-RESULTS ( JSON:value -- )
+   s" the member `results` in a results object" MISSING-FIX$
+   RESPONSE-REJECT ;
+
 : COMPLEX-WANT ( ^property -- str )
    PROPERTY-MANY @ if s" null or an array of records" exit then
    s" null or a record" ;
@@ -486,14 +498,8 @@ CAST: >FRAMES ( ^u8 -- ^frame )
       dated OF v f FRAME-PROPERTY @ DATE-REJECT ENDOF
       complex OF v f FRAME-PROPERTY @ COMPLEX-REJECT ENDOF
       nav OF v f FRAME-NAVIGATION @ NAV-REJECT ENDOF
-      results OF
-         v s" an array of records for member `results`" KIND-FIX$
-         RESPONSE-REJECT
-      ENDOF
-      record OF
-         v s" a record object in an array of records" KIND-FIX$
-         RESPONSE-REJECT
-      ENDOF
+      results OF v RESULTS-REJECT ENDOF
+      record OF v RECORD-REJECT ENDOF
       root OF ENDOF
       plain OF ENDOF
       element OF ENDOF
@@ -677,8 +683,7 @@ CAST: >FRAMES ( ^u8 -- ^frame )
 : RESULTS-END ( JSON:value ^frame -- )
    {: v f:^ :}
    f FRAME-DONE @ if exit then
-   v s" the member `results` in a results object" MISSING-FIX$
-   RESPONSE-REJECT ;
+   v NO-RESULTS ;
 
 : EXPANDED-END ( ^JSON:writer JSON:value ^copy -- ^JSON:writer )
    {: v c:^ :}
@@ -734,6 +739,57 @@ CAST: >FRAMES ( ^u8 -- ^frame )
    room t NEW-COPY {: c:^ :}
    [: v [: c COPY-EVENT ;] JSON:WALK ;] [: c DROP-FRAMES ;] finally ;
 
+: ONE-RECORD ( JSON:value [ JSON:value -- ] -- )
+   {: v body :}
+   v JSON:OBJECT? 0= if v RECORD-REJECT then
+   v body execute ;
+
+: EACH-RECORD ( JSON:value [ JSON:value -- ] -- )
+   {: v body :}
+   v [: body ONE-RECORD ;] JSON:EACH ;
+
+: EACH-RESULT ( JSON:value [ JSON:value -- ] -- )
+   {: v body :}
+   v s" results" JSON:FIND MATCH option
+      none OF v NO-RESULTS ENDOF
+      some OF
+         {: r :}
+         r JSON:ARRAY? 0= if r RESULTS-REJECT then
+         r body EACH-RECORD
+      ENDOF
+   ;MATCH ;
+
+: V2-NAV? ( ^navigation -- bool ) NAVIGATION-TARGET-TYPE @ TYPE-V2? ;
+
+\ An object whose first member is named `__deferred`.
+: DEFERRED? ( JSON:value -- bool )
+   false swap [: drop s" __deferred" JSON:STRING= nip false ;]
+   JSON:EACH-MEMBER-WHILE ;
+
+: UNEXPANDED? ( JSON:value ^navigation -- bool )
+   {: v n:^ :}
+   v JSON:NULL? if true exit then
+   v JSON:OBJECT? n V2-NAV? and if v DEFERRED? exit then
+   false ;
+
+: EXPANDED-ONE ( JSON:value ^navigation [ JSON:value -- ] -- )
+   {: v n:^ body :}
+   v JSON:OBJECT? 0= if v n NAV-REJECT then
+   v body execute ;
+
+: EXPANDED-MANY ( JSON:value ^navigation [ JSON:value -- ] -- )
+   {: v n:^ body :}
+   v JSON:ARRAY? if v body EACH-RECORD exit then
+   v JSON:OBJECT? n V2-NAV? and if v body EACH-RESULT exit then
+   v n NAV-REJECT ;
+
+\ The navigation's member value, read as COPY-ENTITY reads it.
+: EXPANDED ( JSON:value ^navigation [ JSON:value -- ] -- )
+   {: v n:^ body :}
+   v n UNEXPANDED? if exit then
+   n TO-MANY? if v n body EXPANDED-MANY exit then
+   v n body EXPANDED-ONE ;
+
 public
 
 \ The records array of a collection response, the decoded next link written
@@ -743,6 +799,16 @@ public
    link 0 VEC:RESIZE
    ENVELOPE-CELLS cells MEM:BYTES-ALLOC-LEN
    [: drop m body link PAGE-IN ;] MEM:WITH-BYTES ;
+
+\ Calls the quotation with each record the record's expanded navigation
+\ holds, in order.
+: EACH-EXPANDED ( JSON:value ^navigation [ JSON:value -- ] -- )
+   {: v n:^ body :}
+   v JSON:OBJECT? 0= if v s" the record" s" an object" UNEXPECTED then
+   v n NAVIGATION-NAME$ JSON:FIND MATCH option
+      none OF ENDOF
+      some OF n body EXPANDED ENDOF
+   ;MATCH ;
 
 \ The query option that asks the service for the count PAGE answers.
 : COUNT-OPTION$ ( ^metadata -- str )
