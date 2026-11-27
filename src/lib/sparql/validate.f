@@ -26,9 +26,10 @@ defer QUERY-SCOPE ( ^syntax n -- ^var-set )
 
 : VAR-COUNT ( ^syntax -- n ) SYNTAX-VARIABLES @ ;
 
+\ A set lives in the work arena; ADD-SCOPE cuts a child's sets once unioned.
 : NEW-SET ( ^syntax -- ^var-set )
    {: state :}
-   state SYNTAX-ARENA @ {: arena :}
+   state SYNTAX-WORK @ {: arena :}
    arena ARENA:ALLOCATOR [type] var-set ALLOC:NEW {: set :}
    state VAR-COUNT 64 / 1+ {: span:n :}
    arena span cells ARENA:ALLOC drop CELL-VIEW set VAR-SET-BITS !
@@ -228,6 +229,14 @@ STRUCTURE link DERIVE addr FIELD node n FIELD next ^link ;STRUCTURE
    state state binding NODE-A@ false EXPRESSION-CHECK
    state names state binding NODE-B@ FRESH-VAR ;
 
+\ Adds pattern n's scope to the set and frees the sets that made it.
+: ADD-SCOPE ( ^syntax ^var-set n -- )
+   {: state names pattern:n :}
+   state SYNTAX-WORK @ {: work:^ :}
+   work ARENA:MARK {: mark:n :}
+   names state pattern SCOPE SCOPE-UNION
+   work mark ARENA:CUT ;
+
 : GROUP-SCOPE ( ^syntax n -- ^var-set )
    {: state group:n :}
    state NEW-SET {: names :}
@@ -242,7 +251,7 @@ STRUCTURE link DERIVE addr FIELD node n FIELD next ^link ;STRUCTURE
          kind N-BIND = if
             state pattern names BIND-SCOPE 0
          else
-            names state pattern SCOPE SCOPE-UNION
+            state names pattern ADD-SCOPE
             kind N-FILTER = if bgp else 0 then
          then
       then state list NODE-B@
@@ -250,13 +259,14 @@ STRUCTURE link DERIVE addr FIELD node n FIELD next ^link ;STRUCTURE
 
 : UNION-SCOPE ( ^syntax n -- ^var-set )
    {: state pattern:n :}
+   state NEW-SET {: names :}
    state SYNTAX-WORK @ {: work:^ :}
    work ARENA:MARK {: mark:n :}
    state pattern N-UNION N-UNION SPINE {: spine:^ leaf:n :}
-   state leaf SCOPE {: names :}
+   state names leaf ADD-SCOPE
    spine begin dup NULL-PTR <> while
       {: at:^ :}
-      names state state at LINK-NODE @ NODE-B@ SCOPE SCOPE-UNION
+      state names state at LINK-NODE @ NODE-B@ ADD-SCOPE
       at LINK-NEXT @
    repeat drop
    work mark ARENA:CUT names ;
