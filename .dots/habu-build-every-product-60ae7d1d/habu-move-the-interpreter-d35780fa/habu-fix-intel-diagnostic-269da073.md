@@ -1,9 +1,10 @@
 ---
 title: Fix Intel diagnostic positions
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-10-23T13:58:07.634973+00:00"
+closed-at: "2026-11-27T21:51:43.163407+01:00"
 ---
 
 Problem: on x86-64, test/diag-position-test.f (a checker diagnostic must locate its token in the checked file; suite diag-position, test/gate-stdlib-cases.f:46) was reported failing seven of its cases, among them one that gives E-UNDEFINED where E-MISMATCH is required. The report did not name the cases, so which cases fail on master, and why, is unknown. It is an acceptance case of its parent, habu-move-the-interpreter-d35780fa: fix it in the code that stays, never in the machinery the parent replaces.
