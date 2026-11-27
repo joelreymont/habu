@@ -1791,6 +1791,13 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    \ compare those columns.
    s" SELECT ?x WHERE { ?x (t:71|t:80)+ t:1 }" s" p.an = w.e" s" w.n"
    s" {'head':{'vars':['x']},'results':{'bindings':[{'x':{'type':'uri','value':'urn:test:40'}},{'x':{'type':'uri','value':'urn:test:43'}}]}}"
+   FACT-TYPED-ALONE
+   \ So do those of a longer alternation, however its `|` nests.
+   s" SELECT ?x WHERE { ?x (t:71|t:80|t:70)+ t:1 }" s" p.an = w.e" s" w.n"
+   s" {'head':{'vars':['x']},'results':{'bindings':[{'x':{'type':'uri','value':'urn:test:40'}},{'x':{'type':'uri','value':'urn:test:42'}},{'x':{'type':'uri','value':'urn:test:43'}}]}}"
+   FACT-TYPED-ALONE
+   s" SELECT ?x WHERE { ?x (t:71|(t:80|t:70))+ t:1 }" s" p.an = w.e" s" w.n"
+   s" {'head':{'vars':['x']},'results':{'bindings':[{'x':{'type':'uri','value':'urn:test:40'}},{'x':{'type':'uri','value':'urn:test:42'}},{'x':{'type':'uri','value':'urn:test:43'}}]}}"
    FACT-TYPED-ALONE ;
 
 : SESSION ( -- )

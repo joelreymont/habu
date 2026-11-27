@@ -123,10 +123,10 @@
 \
 \ A triple whose verb is a path expands before shape inference: `^p`
 \ swaps subject and object, `p/q` is two triples joined on a fresh
-\ variable, which no column carries once both are folded, `p|q` a UNION
-\ of the two; `!(...)` matches the sources whose predicate is none of its
-\ IRIs, its inverse members with subject and object swapped, a UNION when
-\ it has both. `p+`, `p*` and `p?` are walks,
+\ variable, which no column carries once both are folded, `p|q|r` one
+\ UNION of its members, however `|` nests; `!(...)` matches the sources
+\ whose predicate is none of its IRIs, its inverse members with subject
+\ and object swapped, a UNION when it has both. `p+`, `p*` and `p?` are walks,
 \ each folded after the joined items up to the next OPTIONAL, MINUS or
 \ BIND, or, with an end the solutions so far bind always, before the
 \ first of those items, in connected order, that shares no variable
@@ -3155,12 +3155,25 @@ STRUCTURE pruning DERIVE addr
    plan items plan at s fwd o TRIPLE-NODE plan at o inv s TRIPLE-NODE
    ALTERNATIVE ;
 
+\ Union u, 0 for none, and the groups of s m o for each member m of
+\ path's `|` chain, in written order, nested left as a written UNION.
+: PATH-UNION ( ^plan n n n n n -- n )
+   {: plan u:n at:n s:n path:n o:n :}
+   plan TREE {: state :}
+   state path s" |" OPERATOR? if
+      plan u at s state path NODE-A@ o RECURSE {: v:n :}
+      plan v at s state path NODE-B@ o RECURSE exit
+   then
+   plan plan at s path o TRIPLE-NODE GROUP-NODE {: g:n :}
+   u 0= if g exit then
+   state N-UNION u g BINARY-NODE ;
+
 \ A `+`, `*` or `?` triple, a walk the group joins after its joined items.
 : WALK-ITEM ( ^plan ^VEC:vector<item> n -- )
    NEW-ITEM N-PATH swap ITEM-MODE ! ;
 
 \ s path o expanded into items: `^` swaps s and o, `/` joins two triples
-\ on a fresh variable, which the plan records, `|` is a UNION of the two.
+\ on a fresh variable, which the plan records, a `|` chain is one UNION.
 : EXPAND ( ^plan ^VEC:vector<item> n n n n -- )
    {: plan items:^ at:n s:n path:n o:n :}
    plan TREE {: state :}
@@ -3177,8 +3190,7 @@ STRUCTURE pruning DERIVE addr
       plan plan PLAN-FRESH @ plan f VAR +INDEX plan PLAN-FRESH ! exit
    then
    state path s" |" OPERATOR? if
-      plan items plan at s x o TRIPLE-NODE plan at s y o TRIPLE-NODE
-      ALTERNATIVE exit
+      plan items plan 0 at s path o PATH-UNION UNION-ITEM exit
    then
    state path NEGATED? if plan items at s path o NEGATED-ITEM exit then
    plan items plan at s path o TRIPLE-NODE WALK-ITEM ;
