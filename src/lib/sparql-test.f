@@ -1715,6 +1715,11 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    s" SELECT ?m ?y WHERE { t:60 t:26 ?m . ?m t:26* ?y }"
    s" {'head':{'vars':['m','y']},'results':{'bindings':[{'m':{'type':'uri','value':'urn:test:61'},'y':{'type':'uri','value':'urn:test:61'}},{'m':{'type':'uri','value':'urn:test:61'},'y':{'type':'uri','value':'urn:test:62'}}]}}"
    ALIKE
+   \ The walk from ?x folds before ?s a t:11, which shares no variable
+   \ with ?x a t:10.
+   s" SELECT ?x ?s WHERE { ?x a t:10 . ?s t:20+ ?x . ?s a t:11 }"
+   s" {'head':{'vars':['x','s']},'results':{'bindings':[{'x':{'type':'uri','value':'urn:test:1'},'s':{'type':'uri','value':'urn:test:3'}},{'x':{'type':'uri','value':'urn:test:1'},'s':{'type':'uri','value':'urn:test:5'}},{'x':{'type':'uri','value':'urn:test:2'},'s':{'type':'uri','value':'urn:test:4'}}]}}"
+   EXPECT
    \ A walk of a GRAPH's group steps in that graph, from the solutions of
    \ the group the GRAPH is in.
    s" SELECT ?x ?y WHERE { t:3 t:20 ?x GRAPH t:7 { ?x t:23+ ?y } }"

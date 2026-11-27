@@ -128,8 +128,11 @@
 \ IRIs, its inverse members with subject and object swapped, a UNION when
 \ it has both. `p+`, `p*` and `p?` are walks,
 \ each folded after the joined items up to the next OPTIONAL, MINUS or
-\ BIND: a WITH RECURSIVE CTE of p's steps from its seeds, UNION
-\ (distinct) so a cycle ends. The seeds are a constant end or one the
+\ BIND, or, with an end the solutions so far bind always, before the
+\ first of those items, in connected order, that shares no variable
+\ with them, whose cross product the seeds would read: a WITH
+\ RECURSIVE CTE of p's steps from its seeds, UNION (distinct) so a
+\ cycle ends. The seeds are a constant end or one the
 \ substitution binds always, its value, else the distinct values of
 \ an end the solutions so far bind always, which are then written once as
 \ a CTE both read, else every subject of p's steps for `+` and every
@@ -4085,7 +4088,8 @@ STRUCTURE walk DERIVE addr
    plan state triple NODE-C@ var VAR-IS? or ;
 
 \ Whether an item of the walk's graph binds var to a node there: one before
-\ index at, or a joined triple before to, since a run joins triples first.
+\ index at, or a joined triple before to, which the run joins too, so a
+\ solution whose var is no node there drops out.
 : NODE? ( ^plan ^VEC:vector<item> n n n -- bool )
    {: plan items:^ var:n at:n to:n :}
    items at VEC:AT ITEM-GRAPH @ {: graph:str :}
@@ -4288,17 +4292,38 @@ STRUCTURE walk DERIVE addr
    plan a cols r JOIN-TABLE
    w WALK-REST @ if plan w r WRAP then ;
 
-\ Folds the walks among items from..to, each under its item's graph.
-: WALKS ( ^plan ^VEC:vector<item> n n ^relation -- )
-   {: plan items:^ from:n to:n r:^ :}
+\ Whether the walk item has an end r binds always.
+: BOUND-END? ( ^plan ^item ^relation -- bool )
+   {: plan it:^ r:^ :}
+   plan TREE {: state :}
+   it ITEM-NODE @ {: triple:n :}
+   plan r state triple NODE-A@ BOUND?
+   plan r state triple NODE-C@ BOUND? or ;
+
+\ Whether the item is a walk done does not hold and, unless all, one
+\ with an end r binds always.
+: DUE? ( ^plan ^item n ^VEC:vector<n> bool ^relation -- bool )
+   {: plan it:^ at:n done:^ all:bool r:^ :}
+   it ITEM-MODE @ N-PATH <> if false exit then
+   done at INDEXED? if false exit then
+   all if true exit then
+   plan it r BOUND-END? ;
+
+\ Folds each walk among items from..to that DUE? takes, under its
+\ item's graph; answers done with their indexes added.
+: WALKS ( ^plan ^VEC:vector<item> n n ^VEC:vector<n> bool ^relation
+      -- ^VEC:vector<n> )
+   {: plan items:^ from:n to:n done:^ all:bool r:^ :}
    plan PLAN-GRAPH @ {: outer:str :}
-   to from ?do
+   done to from ?do
+      {: now:^ :}
       items i VEC:AT {: it:^ :}
-      it ITEM-MODE @ N-PATH = if
+      plan it i now all r DUE? if
          it ITEM-GRAPH @ plan PLAN-GRAPH !
          plan items i to r WALK-STEP
          outer plan PLAN-GRAPH !
-      then
+         plan now i +INDEX
+      else now then
    loop ;
 
 \ Whether the item is a joined triple whose live choices come from
@@ -4503,9 +4528,9 @@ STRUCTURE walk DERIVE addr
    plan it KEYED? if run else plan 0 NEW-BINDINGS then {: keys:^ :}
    plan it keys r UNION-SQL ;
 
-\ Folds the unions among items from..to, then the walks.
-: LATE ( ^plan ^VEC:vector<item> n n ^relation -- )
-   {: plan items:^ from:n to:n r:^ :}
+\ Folds the unions among items from..to, then the walks done does not hold.
+: LATE ( ^plan ^VEC:vector<item> n n ^VEC:vector<n> ^relation -- )
+   {: plan items:^ from:n to:n done:^ r:^ :}
    to from ?do
       items i VEC:AT {: it:^ :}
       it ITEM-UNION @ if plan it BRANCHES then
@@ -4515,7 +4540,7 @@ STRUCTURE walk DERIVE addr
       items i VEC:AT {: it:^ :}
       it ITEM-UNION @ if plan it keys r UNION-STEP then
    loop
-   plan items from to r WALKS ;
+   plan items from to done true r WALKS drop ;
 
 \ Marks each variable the list binds always.
 : +ALWAYS ( ^VEC:vector<binding> ^VEC:vector<bool> -- )
@@ -4616,20 +4641,35 @@ STRUCTURE walk DERIVE addr
       then
    loop ;
 
-\ Folds items from..to, a maximal run of joined items and walks.
+\ Whether the item shares no variable with r's bindings so far.
+: UNLINKED? ( ^plan ^item ^relation -- bool )
+   {: plan it:^ r:^ :}
+   it plan r BOUND-NOW SHARES? 0= ;
+
+\ Folds items from..to, a maximal run of joined items and walks, in
+\ connected order. Before a driver UNLINKED? holds of, each walk with
+\ an end r binds always folds: it seeds from r before the driver
+\ multiplies r's rows. LATE folds the unions and the walks left.
 : RUN ( ^plan ^VEC:vector<item> n n ^relation -- )
    {: plan items:^ from:n to:n r:^ :}
    plan items from to r CONNECT
-   to from ?do
+   INDEXES to from ?do
+      {: done:^ :}
       items i VEC:AT {: it:^ :}
-      it DRIVER? if plan it r JOIN-STEP then
-   loop
-   plan items from to r LATE ;
+      it DRIVER? if
+         plan it r UNLINKED? if
+            plan items from to done false r WALKS
+         else done then
+         plan it r JOIN-STEP
+      else done then
+   loop {: folded:^ :}
+   plan items from to folded r LATE ;
 
-\ The items folded run by run, a run's unions and then its walks after
-\ its other joined items: joins commute, and a union's keys read those
-\ other items; a left join, a minus and an Extend read the solutions so
-\ far.
+\ The items folded run by run, a run's unions and walks after its other
+\ joined items, a walk with an end bound before a joined item sharing
+\ none of the variables bound: joins commute, and a union's keys read
+\ those other items; a left join, a minus and an Extend read the
+\ solutions so far.
 : FOLD-ALL ( ^plan ^VEC:vector<item> ^relation ^VEC:vector<n>
       -- )
    {: plan items:^ r:^ filters:^ :}
