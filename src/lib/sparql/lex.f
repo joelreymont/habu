@@ -152,16 +152,16 @@ private
 
 \ Decodes from the first escape, at the position, into a copy holding the
 \ bytes before it. Read only original input; an emitted backslash is never
-\ rescanned. Each escape's end is recorded, so a rejection places itself in
-\ the original.
+\ rescanned. Each escape's end is recorded and kept with the copy, so a
+\ rejection places itself in the original, during this pass too.
 : DECODE-ESCAPES ( ^syntax -- )
    {: state :}
    state SYNTAX-SOURCE @ str> {: text size:n :}
-   state SYNTAX-ARENA @ ARENA:ALLOCATOR size ALLOC:BYTES drop
-      {: out :}
+   state SYNTAX-ARENA @ ARENA:ALLOCATOR {: alloc :}
+   alloc size ALLOC:BYTES drop {: out :}
    state SYNTAX-POSITION @ {: start:n :}
    text out start BYTE-COPY
-   state SYNTAX-ESCAPES @ {: shifts :}
+   alloc 0 [type] escape VEC:NEW {: shifts :}
    start begin state PEEK -1 <> while
       {: used:n :}
       state ESCAPE-DIGITS 0<> {: escape:bool :}
@@ -172,7 +172,8 @@ private
          wrote pair ESCAPE-DECODED ! next pair ESCAPE-ORIGINAL !
       then
       next state SYNTAX-POSITION ! wrote
-   repeat out swap >str state SYNTAX-SOURCE ! ;
+   repeat out swap >str state SYNTAX-SOURCE !
+   shifts state SYNTAX-ESCAPES ! ;
 
 \ SPARQL 1.1 section 19.2 precedes the grammar, even in comments.
 : CODEPOINT-ESCAPES ( ^syntax -- )

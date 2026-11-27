@@ -1491,6 +1491,10 @@ DOTTED-AUTHORITY
    s\" ASK { ?s ?p \"\\uD800\" }"
    s\" 1:14: expected a Unicode scalar value: at most 10FFFF, not D800 to DFFF, found `\\uD800`; write the character itself or one \\U escape, as in \\U0001F600\n1 | ASK { ?s ?p \"\\uD800\" }\n                 ^"
       REJECTS
+   \ A bad escape after good ones, placed as written.
+   s\" ASK { ?s ?p \"\\u00E9\\U0001F600\\uD800\" }"
+   s\" 1:30: expected a Unicode scalar value: at most 10FFFF, not D800 to DFFF, found `\\uD800`; write the character itself or one \\U escape, as in \\U0001F600\n1 | ASK { ?s ?p \"\\u00E9\\U0001F600\\uD800\" }\n                                 ^"
+      REJECTS
    \ A percent escape without two hex digits.
    s\" ASK { ?s ?p ex:a%2x }"
    s\" 1:17: expected a hex digit after %, found `%`; write % as \\% or follow it with two hex digits\n1 | ASK { ?s ?p ex:a%2x }\n                    ^"
