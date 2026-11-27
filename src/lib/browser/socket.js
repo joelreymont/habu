@@ -1,6 +1,6 @@
 // socket.js - a view's WebSocket to its server, which carries the module's
-// tools/call rpcs, one at a time and in order, and brings the server's
-// notifications. view.js imports it from a blob: URL; it imports nothing.
+// tools/call rpcs, each sent at once and answered as its response arrives,
+// matched by id, and brings the server's notifications. view.js imports it from a blob: URL; it imports nothing.
 //
 //   open({ request, notify, onCode, carried }) -> socket
 //   request(method, params)  the host's, as view.js's start receives it: the
@@ -18,11 +18,12 @@
 //   socket.call(method, params)
 //                            -> Promise of {response, binary}: the response
 //                            message, as the host's request resolves, and the
-//                            ArrayBuffers the server sent before that response
-//                            while the call was the sent one, [] for every
-//                            answer the shell gives itself; the server sends a
-//                            call's binary messages first, then the response
-//                            that closes them. The promise rejects a response
+//                            bytes that followed the response's JSON in its
+//                            binary message, [] when it came as text or the
+//                            shell answered itself; a response with bytes is
+//                            one binary message, a u64 little-endian n, the n
+//                            bytes of its JSON in UTF-8, then the call's
+//                            bytes. The promise rejects a response
 //                            holding neither or both of result and error. A
 //                            call sent and unanswered when its socket closes
 //                            is answered {error: {code: -32000, message: "the
@@ -41,7 +42,7 @@
 // states are
 //   asking    tools/call view_socket {} is with the host
 //   opening   a WebSocket(url) is connecting
-//   open      the socket is open; calls are sent
+//   open      the socket is open; every call is sent at once
 //   waiting   backing off after a close or failure: 1 s, doubling to 30 s,
 //             reset to 1 s once a socket proves itself, by its first
 //             answered call or its first view/alive, never by opening
@@ -66,19 +67,21 @@
 //   asking   asked: resting when hidden and idle, else opening
 //            ask-failed: ended, reason the tool error's text or the host
 //            error's message
-//   opening  opened: open, which notifies view/open and sends the first
-//            waiting call
+//   opening  opened: open, which notifies view/open and sends every waiting
+//            call
 //            closed: waiting; under 4403 the session is unknown or expired,
 //            so it is forgotten and the next connect asks
 //   open     message: liveness, then a notification, a response or a server
-//            request, which is answered -32601; a response sends the next
-//            call, or rests when hidden and idle; a response to the sent
-//            call or a view/alive resets the backoff to 1 s
-//            binary: liveness, then kept for the sent call; with no call
-//            sent, logged and dropped
+//            request, which is answered -32601; a response answers the sent
+//            call of its id, then rests when hidden and idle; a response to
+//            a sent call or a view/alive resets the backoff to 1 s
+//            binary: liveness, then a response and its call's bytes,
+//            answered as a message's response is; a frame too short for its
+//            n, whose JSON does not parse or that holds no response is
+//            logged and dropped
 //            closed: waiting, as in opening
 //            silent: waiting, closing the socket (4000)
-//            call: queued, and sent when none is
+//            call: sent
 //   waiting  waited: resting when hidden and idle, else connecting
 //   resting  visible: connecting
 //            call: queued, then connecting
@@ -87,7 +90,7 @@
 // In asking, opening and waiting a call is queued. In opening, open and
 // waiting, hidden rests when idle, closing the socket (1000). Every state but
 // ended goes to ended on dispose, reason "the view's socket closed". Leaving
-// open answers its sent call "the view's socket closed". Leaving a socket
+// open answers every sent call "the view's socket closed". Leaving a socket
 // removes its handlers and closes it, and leaving a state clears its timers,
 // so only the current socket's and state's inputs arrive; every other pairing
 // in the table is one that cannot arrive or changes nothing, named none.
@@ -100,6 +103,7 @@ const SOCKET_TOOL = "view_socket";
 const FIRST_DELAY = 1000;
 const LAST_DELAY = 30000;
 const SILENCE = 40000;
+const UTF8 = new TextDecoder("utf-8", { fatal: true });
 
 export function open({ request, notify, onCode, carried }) {
   const s = {
@@ -112,12 +116,12 @@ export function open({ request, notify, onCode, carried }) {
     silence: null, // open's silent timer
     lastId: 0,
     waiting: [], // calls not yet sent
-    sent: null, // the call sent and unanswered
+    sent: new Map(), // id -> the call sent and unanswered
     reason: CLOSED_TEXT, // ended's answer to every call
   };
 
   const hidden = () => document.visibilityState === "hidden";
-  const idle = () => s.sent === null && s.waiting.length === 0;
+  const idle = () => s.sent.size === 0 && s.waiting.length === 0;
   const failed = (id, message) => ({ jsonrpc: "2.0", id, error: { code: CLOSED, message } });
   // A callback's throw is logged; it never stops a transition.
   const tell = (fn, ...args) => { try { fn(...args); } catch (e) { console.error(e); } };
@@ -127,8 +131,8 @@ export function open({ request, notify, onCode, carried }) {
     clearTimeout(s.silence);
     s.backoff = s.silence = null;
   };
-  // Leaves the socket, if any: its handlers go, it closes under code, and its
-  // sent call is answered.
+  // Leaves the socket, if any: its handlers go, it closes under code, and
+  // every sent call is answered.
   const drop = (code = 1000) => {
     clear();
     if (s.ws) {
@@ -136,23 +140,22 @@ export function open({ request, notify, onCode, carried }) {
       s.ws.close(code);
       s.ws = null;
     }
-    if (s.sent) {
-      const { id, resolve } = s.sent;
-      s.sent = null;
-      resolve({ response: failed(id, CLOSED_TEXT), binary: [] });
-    }
+    const calls = [...s.sent.values()];
+    s.sent.clear();
+    for (const { id, resolve } of calls) resolve({ response: failed(id, CLOSED_TEXT), binary: [] });
   };
   const listen = () => {
     clearTimeout(s.silence);
     s.silence = setTimeout(() => step("silent"), SILENCE);
   };
   const send = (message) => s.ws.send(JSON.stringify({ jsonrpc: "2.0", ...message }));
-  // The first waiting call goes out once nothing is sent.
+  // Every waiting call goes out.
   const pump = () => {
-    if (s.sent || s.waiting.length === 0) return;
-    s.sent = s.waiting.shift();
-    const { id, method, params } = s.sent;
-    send({ id, method, params });
+    for (const call of s.waiting.splice(0)) {
+      const { id, method, params } = call;
+      s.sent.set(id, call);
+      send({ id, method, params });
+    }
   };
 
   const asking = () => {
@@ -219,16 +222,35 @@ export function open({ request, notify, onCode, carried }) {
     waiting();
   };
 
+  // A frame's JSON-RPC message, or null, logged, when text is not one.
+  const parsed = (text) => {
+    let m;
+    try { m = JSON.parse(text); } catch (e) { console.error(e); return null; }
+    if (m === null || typeof m !== "object" || m.jsonrpc !== "2.0") {
+      console.error(new Error(`the view's socket sent ${text.slice(0, 200)}`));
+      return null;
+    }
+    return m;
+  };
+  // A response answers the sent call of its id with binary.
+  const answered = (m, binary) => {
+    const call = s.sent.get(m.id);
+    if (call === undefined) {
+      console.error(new Error(`the view's socket answered ${JSON.stringify(m.id)}, which is no sent call`));
+      return;
+    }
+    s.sent.delete(m.id);
+    s.delay = FIRST_DELAY;
+    if (("result" in m) === ("error" in m)) call.reject(new Error(`${m.id}: the message is not a JSON-RPC response`));
+    else call.resolve({ response: m, binary });
+    rest();
+  };
   // open's text frame: liveness, then a notification, a response or a server
   // request, which is answered -32601.
   const received = (data) => {
     listen();
-    let m;
-    try { m = JSON.parse(data); } catch (e) { console.error(e); return; }
-    if (m === null || typeof m !== "object" || m.jsonrpc !== "2.0") {
-      console.error(new Error(`the view's socket sent ${data.slice(0, 200)}`));
-      return;
-    }
+    const m = parsed(data);
+    if (m === null) return;
     if (typeof m.method === "string") {
       if ("id" in m) { send({ id: m.id, error: { code: NOT_FOUND, message: "Method not found" } }); return; }
       if (m.method === "view/code") tell(onCode, m.params?.code);
@@ -236,25 +258,29 @@ export function open({ request, notify, onCode, carried }) {
       else tell(notify, m.method, JSON.stringify(m.params ?? {}));
       return;
     }
-    if (s.sent === null || m.id !== s.sent.id) {
-      console.error(new Error(`the view's socket answered ${JSON.stringify(m.id)}, which is not the sent call`));
-      return;
-    }
-    const { resolve, reject, binary } = s.sent;
-    s.sent = null;
-    s.delay = FIRST_DELAY;
-    if (("result" in m) === ("error" in m)) reject(new Error(`${m.id}: the message is not a JSON-RPC response`));
-    else resolve({ response: m, binary });
-    if (hidden() && idle()) resting();
-    else pump();
+    answered(m, []);
   };
-  const kept = (data) => {
+  // open's binary frame: liveness, then a response as a u64 little-endian n,
+  // the n bytes of its JSON in UTF-8, then its call's bytes, which are not
+  // copied.
+  const decoded = (data) => {
     listen();
-    if (s.sent === null) {
-      console.error(new Error(`the view's socket sent ${data.byteLength} binary bytes with no call sent`));
+    const size = data.byteLength;
+    const n = size < 8 ? -1 : new DataView(data).getBigUint64(0, true);
+    if (n < 0 || n > BigInt(size - 8)) {
+      console.error(new Error(`the view's socket sent ${size} binary bytes, which do not hold the length they name`));
       return;
     }
-    s.sent.binary.push(data);
+    const end = 8 + Number(n);
+    let text;
+    try { text = UTF8.decode(new Uint8Array(data, 8, end - 8)); } catch (e) { console.error(e); return; }
+    const m = parsed(text);
+    if (m === null) return;
+    if (typeof m.method === "string") {
+      console.error(new Error(`the view's socket sent ${m.method} in a binary message, which holds only a response`));
+      return;
+    }
+    answered(m, end === size ? [] : [new Uint8Array(data, end)]);
   };
   const queue = (call) => { s.waiting.push(call); };
 
@@ -285,7 +311,7 @@ export function open({ request, notify, onCode, carried }) {
     open: {
       asked: none, "ask-failed": none, opened: none,
       message: received,
-      binary: kept,
+      binary: decoded,
       closed,
       silent: () => waiting(SILENT),
       waited: none,
@@ -329,7 +355,7 @@ export function open({ request, notify, onCode, carried }) {
   connect();
   return {
     call(method, params) {
-      return new Promise((resolve, reject) => step("call", { id: ++s.lastId, method, params, binary: [], resolve, reject }));
+      return new Promise((resolve, reject) => step("call", { id: ++s.lastId, method, params, resolve, reject }));
     },
     resume(params) { s.resume = params; },
     carried() { return { resume: s.resume, session: s.session }; },

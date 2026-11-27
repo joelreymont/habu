@@ -13,8 +13,8 @@
 //   rpc    a module's tools/call rpc goes over the socket (socket.call), its
 //          view/resume P is kept by the socket and answered {} at once, and
 //          every other method is host.request(method, params); the response's
-//          result or error answers the record, and a tools/call's binary
-//          messages follow it
+//          result or error answers the record, and the bytes a tools/call's
+//          answer carried after its JSON follow it
 //   notify each server notification but view/code and view/alive, which are
 //          the shell's own, and view/open each time the socket opens, reaches
 //          the module as the viewport's notify, the path host

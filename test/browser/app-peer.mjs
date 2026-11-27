@@ -8,8 +8,9 @@
 // sends a tool-input and a tool-result notification before it answers
 // ui/initialize, so the view holds both until its start turn. /view is a
 // WebSocket endpoint: it sends view/code {code} first, answers each tools/call
-// as the table does, and on the test's cue pushes a notification, view/alive
-// among them, or closes the socket; for a session told to, it closes each of
+// as the table does, a response with bytes as one binary message, and on the
+// test's cue pushes a notification, view/alive among them, keeps a call's
+// answer until the next call is answered, or closes the socket; for a session told to, it closes each of
 // its first sockets right after it opens, or answers view_code with a tool
 // error.
 // Headless Chrome then checks the handshake, whose ui/initialize declares the
@@ -35,14 +36,15 @@
 // the socket while the host sees only view_code and
 // view_socket, neither view/code nor a pushed view/alive reaches the module
 // and a pushed notification does, view/resume is kept and answered {}, a
-// close answers the outstanding call -32000, the binary message the server
-// sent for it reaching no module, and the view reopens after its
+// close answers the outstanding call -32000, its bytes reaching no module,
+// and the view reopens after its
 // backoff, a view/code naming other code fetches view_code over the socket,
 // then notifies the old module view/restart and, once that turn has settled,
 // restarts the view through app.js, carrying the resume the module told in it
 // and the session, the new canvas has the focus the old one had, the
-// restarted module gets a call's binary messages after its response's JSON,
-// in the order sent, a file dropped on the restarted view reaches its module
+// restarted module gets the bytes after a response's JSON in its binary
+// message after that JSON, two calls sent at once are answered later one
+// first, each by its own id, a file dropped on the restarted view reaches its module
 // once and no listener of the old view throws, and a close under 4403 makes
 // the view ask view_socket again before it reopens, and the restarted view
 // asks for no display mode. An eighth frame's sockets are closed
@@ -76,6 +78,8 @@ const PARAMS = { structuredContent: { name: "Zürich ✓" } };
 const STRANGER = { structuredContent: { name: "stranger" } };
 const LATER = { structuredContent: { name: "after the stranger" } };
 const TOOL_RESULT = { content: [{ type: "text", text: "project" }] };
+// A kept call's and its successor's results name their ids, so a mismatch shows.
+const CALL_RESULT = (id) => ({ content: [{ type: "text", text: `call ${id}` }] });
 const NO_SOCKET = "the server has no view socket";
 const SOCKET_ERROR = { content: [{ type: "text", text: NO_SOCKET }], isError: true };
 const CODE_ERROR = { content: [{ type: "text", text: "the view's code could not be read" }], isError: true };
@@ -237,7 +241,8 @@ window.addLive = (name, failure, context) => {
 // messages, its open socket, its opens, the ask its last open's url names, the
 // times of its last open and of the last close the peer made, the code
 // view/code names, whether the next tools/call closes the socket
-// unanswered, and the binary messages it sends before its answer; for the
+// unanswered, the bytes the next answer carries, whether the next tools/call's
+// answer is kept until another call is answered, and that kept call; for the
 // sessions named, how many more sockets close right after
 // they open, the ms from each close the peer made to the next open, and the
 // tool error view_code is answered with.
@@ -246,10 +251,22 @@ const view = { requests: 0, log: { main: [], live: [], flaky: [], erring: [] }, 
   codes: { main: meta.code, live: meta.code, flaky: meta.code, erring: meta.code },
   hold: { main: false, live: false, flaky: false, erring: false },
   binary: { main: [], live: [], flaky: [], erring: [] },
+  defer: { main: false, live: false, flaky: false, erring: false }, kept: {},
   shut: { flaky: 2 }, reopens: { flaky: [] }, codeErrors: { erring: CODE_ERROR } };
 const drop = (session) => {
   view.closedAt[session] = performance.now();
   view.sockets[session].close(4000, "dropped");
+};
+// A response goes as text, or with the session's bytes as one binary message:
+// a u64 little-endian length, the response's JSON, then the bytes.
+const respond = (ws, session, response) => {
+  const text = JSON.stringify(response);
+  const pieces = view.binary[session].splice(0);
+  if (pieces.length === 0) { ws.send(text); return; }
+  const json = Buffer.from(text);
+  const head = Buffer.alloc(8);
+  head.writeBigUInt64LE(BigInt(json.length));
+  ws.send(Buffer.concat([head, json, ...pieces]));
 };
 const push = (session, method, params) =>
   view.sockets[session].send(JSON.stringify({ jsonrpc: "2.0", method, params }));
@@ -273,11 +290,18 @@ const websocket = {
       ws.send(JSON.stringify({ jsonrpc: "2.0", id: m.id, error: { code: -32601, message: "Method not found" } }));
       return;
     }
-    for (const piece of view.binary[session].splice(0)) ws.send(piece);
-    if (view.hold[session]) { view.hold[session] = false; drop(session); return; }
-    const result = m.params.name !== "view_code" ? TOOL_RESULT :
+    if (view.hold[session]) {
+      view.hold[session] = false;
+      drop(session);
+      return;
+    }
+    if (view.defer[session]) { view.defer[session] = false; view.kept[session] = m; return; }
+    const kept = view.kept[session];
+    delete view.kept[session];
+    const result = kept ? CALL_RESULT(m.id) : m.params.name !== "view_code" ? TOOL_RESULT :
       view.codeErrors[session] ?? { content: [], _meta: { ...meta, code: view.codes[session] } };
-    ws.send(JSON.stringify({ jsonrpc: "2.0", id: m.id, result }));
+    respond(ws, session, { jsonrpc: "2.0", id: m.id, result });
+    if (kept) respond(ws, session, { jsonrpc: "2.0", id: kept.id, result: CALL_RESULT(kept.id) });
   },
   close(ws) {
     if (view.sockets[ws.data.session] === ws) delete view.sockets[ws.data.session];
@@ -599,7 +623,6 @@ try {
   assert.equal((await evaluate("live.log")).length, posted, "view/resume does not reach the host");
   console.log("Headless Chrome: socket: view/resume is kept and answered {} at once");
 
-  view.binary.live = [Buffer.from("kept")];
   view.hold.live = true;
   const closedError = { code: -32000, message: "the view's socket closed" };
   await liveTyped("live", "rpc", `answered 2 1 ${JSON.stringify(closedError)}`);
@@ -608,7 +631,7 @@ try {
   const gap = view.openedAt.live - view.closedAt.live;
   assert.ok(gap >= 1000, `the view reopened ${gap} ms after the close, inside its 1 s backoff`);
   assert.deepEqual(await hostTools("live"), ["view_code", "view_socket"], "a reopen within the session asks the host nothing");
-  console.log(`Headless Chrome: socket: a close answers the outstanding call ${JSON.stringify(closedError)}, and the binary message the server sent for it reaches no module; the view reopens ${Math.round(gap)} ms later and the module gets view/open again`);
+  console.log(`Headless Chrome: socket: a close answers the outstanding call ${JSON.stringify(closedError)}; the view reopens ${Math.round(gap)} ms later and the module gets view/open again`);
 
   view.codes.live = CODE_B;
   const before = (await liveShown()).length;
@@ -644,7 +667,18 @@ try {
 
   view.binary.live = [Buffer.from("ab"), Buffer.from("cd")];
   await liveTyped("live", "rpc", `${rpcAnswer} abcd`);
-  console.log("Headless Chrome: socket: the module gets the server's binary messages for a call after its response's JSON, in the order sent");
+  console.log("Headless Chrome: socket: the module gets the bytes after a response's JSON in its binary message after that JSON");
+
+  view.defer.live = true;
+  const beforeTwo = (await liveShown()).length;
+  await evaluate(`(() => { const f = live.frame.contentDocument.querySelector('form input');
+    f.value = "two"; f.form.requestSubmit(); })()`);
+  await until(async () => (await liveShown()).length >= beforeTwo + 2);
+  const [early, late] = view.log.live.slice(-2).map((m) => m.id);
+  assert.deepEqual((await liveShown()).slice(beforeTwo),
+    [`answered 1 2 ${JSON.stringify(CALL_RESULT(late))}`, `answered 1 1 ${JSON.stringify(CALL_RESULT(early))}`],
+    "two calls sent at once are answered as the server answers them, the second first, each by its own id");
+  console.log(`Headless Chrome: socket: two calls sent at once, ${early} and ${late}, are both out before either is answered; the server answers ${late} first and the module gets each answer under its own id`);
 
   // A drop on the restarted page reaches only the new view's listener; an old
   // view's would hand the file to its disposed viewport, which throws.

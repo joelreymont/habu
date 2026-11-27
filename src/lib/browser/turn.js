@@ -31,8 +31,8 @@
 //     transport failure is status 0 with String(error) as its body; a legacy
 //     post's d, buttons and mods are 0. For an rpc, a, b name a u64 length n,
 //     the n bytes of JSON (the result when c is 1, the error when c is 2,
-//     String(error) when c is 0), then the bytes of the call's binary
-//     messages, joined in the order sent
+//     String(error) when c is 0), then the bytes the call's answer carried
+//     after its JSON
 //   wheel: a, b signed device-pixel deltas, x, y the pointer's position as
 //     pointer's a, b give it; resize: a the page's
 //     devicePixelRatio, device pixels per CSS pixel (the screen's density
@@ -419,8 +419,9 @@ export class Module {
   // id is an optional diagnostic argument for the CLI.
   // rpc(method, params, id) -> Promise of { text, binary }: text the
   // response's JSON text, {"result":…} or {"error":…}, and binary an array of
-  // ArrayBuffers whose bytes follow the JSON in the module's delivery, []
-  // when there are none; params is the record's JSON text.
+  // byte pieces, each an ArrayBuffer or a Uint8Array, whose bytes follow the
+  // JSON in the module's delivery, [] when there are none; params is the
+  // record's JSON text.
   // after(ms, token) runs tick(token) once ms have passed. read(file, offset,
   // length) -> Promise<Uint8Array> of the numbered file's bytes.
   // pick(x, y, id) -> Promise of [instance, face, depthBits], numbers as
