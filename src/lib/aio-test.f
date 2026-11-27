@@ -816,6 +816,118 @@ TASK:MIN-STACK TASK:TASK FAN7
    file FD>N close
    path FS:REMOVE-FILE ;
 
+\ ---- POLL-INTO: another task arms into a held group --------------------------
+1 constant HOLD-TAG
+7 constant INTO-TAG
+1000 constant HOLD-MS                \ the holder's own timer, past every case
+2000 constant LATE-MS                \ past HOLD-MS, so a lost arm still ends
+20 constant INTO-DUE-MS
+9 constant ERR-BADF
+
+AIO-TEST-ALIGN8
+variable INTO-FD
+variable INTO-MS
+variable INTO-T0
+variable INTO-T1
+variable INTO-BLOCKED
+variable HOLDER-HELD
+variable HOLDER-GO
+TYPED-VARIABLE HOLD-TICKET AIO:ticket SCRATCH-ONLY
+TYPED-VARIABLE INTO-TICKET AIO:ticket SCRATCH-ONLY
+AIO:GROUP INTO-GROUP
+TASK:MIN-STACK TASK:TASK INTO-TASK
+TASK:MIN-STACK TASK:TASK HOLDER-TASK
+
+\ Main holds the group with a timer, so a POLL-INTO into it has a holder.
+: INTO-HOLD ( -- )
+   HOLD-MS >MS AIO:TIMEOUT dup HOLD-TICKET ! HOLD-TAG INTO-GROUP AIO:GROUP+ ;
+
+: INTO-UNHOLD ( -- )
+   HOLD-TICKET @ AIO:CANCEL
+   INTO-GROUP AIO:AWAIT-ANY OUTCOME>N MARK-CANCELLED T=
+   HOLD-TAG T= ;
+
+\ Waits first until main is in its kernel wait, so the arm lands there.
+: INTO-WORK ( -- )
+   [: INTO-BLOCKED @ TEST-WAIT:EPOLL-BLOCKED < ;] TEST-WAIT:POLL
+   mono-ns INTO-T0 !
+   INTO-FD @ >FD AIO:READABLE INTO-MS @ >MS INTO-TAG INTO-GROUP
+   AIO:POLL-INTO drop ;
+
+\ INTO-TASK POLL-INTOs fd with deadline ms into main's group: the tag and
+\ outcome main's AWAIT-ANY took.
+: INTO-RUN ( n n -- n n ) {: fd:n ms:n :}
+   fd INTO-FD !  ms INTO-MS !
+   INTO-HOLD
+   TEST-WAIT:EPOLL-BLOCKED INTO-BLOCKED !
+   ['] INTO-WORK INTO-TASK TASK:ACTIVATE
+   INTO-GROUP AIO:AWAIT-ANY OUTCOME>N
+   mono-ns INTO-T1 !
+   INTO-TASK AWAIT-END
+   INTO-TASK TASK:THROW@ 0 T=
+   INTO-TASK TASK:KILL
+   INTO-UNHOLD ;
+
+: CASE-INTO-READY ( -- )
+   P-R P-W PIPE-OPEN
+   P-W @ POKE
+   P-R @ LATE-MS INTO-RUN
+   AIO:READABLE and AIO:READABLE T=
+   INTO-TAG T=
+   P-R P-W PIPE-CLOSE ;
+
+\ The worker's arm fails, so the holder arms the record itself at adoption and
+\ ends it rejected. Nothing opens a descriptor between the close and the arm.
+: CASE-INTO-REJECTED ( -- )
+   P-R P-W PIPE-OPEN
+   P-R @ {: fd:n :}
+   P-R P-W PIPE-CLOSE
+   fd LATE-MS INTO-RUN
+   ERR-BADF negate T=
+   INTO-TAG T= ;
+
+\ The holder sleeps toward its own later timer; the deadline still ends the
+\ record on time.
+: CASE-INTO-DEADLINE ( -- )
+   P-R P-W PIPE-OPEN
+   P-R @ INTO-DUE-MS INTO-RUN
+   MARK-TIMED-OUT T=
+   INTO-TAG T=
+   INTO-T1 @ INTO-T0 @ - HOLD-MS 2 / NS-PER-MS * <= TTRUE
+   P-R P-W PIPE-CLOSE ;
+
+: INTO-EMPTY ( -- )
+   P-R @ >FD AIO:READABLE -1 >MS INTO-TAG INTO-GROUP AIO:POLL-INTO drop ;
+
+\ No task holds the group: the record claimed goes back.
+: CASE-INTO-EMPTY ( -- )
+   P-R P-W PIPE-OPEN
+   AIO-TEST:FREE-COUNT {: before:n :}
+   [: INTO-EMPTY ;] E-AIO-GROUP TTHROWSQ
+   AIO-TEST:FREE-COUNT before T=
+   P-R P-W PIPE-CLOSE ;
+
+\ Holds the group, then ends without a wait once main has armed into it.
+: HOLDER-WORK ( -- )
+   HOLD-MS >MS AIO:TIMEOUT HOLD-TAG INTO-GROUP AIO:GROUP+
+   1 HOLDER-HELD atomic!
+   [: HOLDER-GO atomic@ 0<> ;] TEST-WAIT:POLL ;
+
+\ The holder never adopts main's record; its exit cleanup frees it.
+: CASE-INTO-EXIT ( -- )
+   0 HOLDER-HELD !  0 HOLDER-GO !
+   P-R P-W PIPE-OPEN
+   ['] HOLDER-WORK HOLDER-TASK TASK:ACTIVATE
+   HOLDER-HELD 1 HOLDER-TASK TEST-WAIT:FOR-CELL
+   P-R @ >FD AIO:READABLE -1 >MS INTO-TAG INTO-GROUP AIO:POLL-INTO
+   INTO-TICKET !
+   1 HOLDER-GO atomic!
+   HOLDER-TASK AWAIT-END
+   HOLDER-TASK TASK:THROW@ 0 T=
+   HOLDER-TASK TASK:KILL
+   INTO-TICKET @ AIO-TEST:FREE? TTRUE
+   P-R P-W PIPE-CLOSE ;
+
 : AIO-TEST-TYPES ( -- )
    s" AIO-POLL-OK ( fd n ms -- AIO:ticket ) AIO:POLL"
       CHECK-QUIET-CANDIDATE! -1 T=
@@ -861,6 +973,11 @@ TASK:MIN-STACK TASK:TASK FAN7
    CASE-REGULAR-FILE
    CASE-KILLED-AWAIT
    CASE-HALTED-AWAIT
+   CASE-INTO-EMPTY
+   CASE-INTO-READY
+   CASE-INTO-REJECTED
+   CASE-INTO-DEADLINE
+   CASE-INTO-EXIT
    T-REPORT ;
 
 AIO-TEST-RUN

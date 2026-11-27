@@ -1,7 +1,7 @@
 \ aio/linux.f - AIO's host layer on Linux, loaded by src/lib/aio.f before its
-\ shared code: the calling task's epoll queue (TASK:QUEUE), armed one-shot per
-\ descriptor and waited on into a task-local event buffer. Contract:
-\ src/lib/aio.f.
+\ shared code: Q-ARM arms the epoll queue it is given, one-shot per descriptor;
+\ Q-DISARM and Q-WAIT use the calling task's (TASK:QUEUE), Q-WAIT into a
+\ task-local event buffer. Contract: src/lib/aio.f.
 \ STORAGE CLASS. TASK-LOCAL: the event buffers, TASK:+USERS rows.
 HB-TARGET-LINUX? ?TARGET
 require src/lib/error.f
@@ -25,6 +25,8 @@ $40000000 constant EV-ONESHOT
 1 constant ERR-PERM
 2 constant ERR-NOENT
 4 constant ERR-INTR
+12 constant ERR-NOMEM
+17 constant ERR-EXIST
 1 constant F-GETFD
 
 \ Q-ARM's answer for a descriptor epoll does not watch, a regular file: it is
@@ -54,18 +56,20 @@ EV-MAX 16 * TASK:+USERS EVENTS u8
    errno LOG:INT+
    LOG:;LINE ;
 
-: CTL ( n n -- n ) {: op:n fd:n :}
-   TASK:QUEUE op fd 0 CTL-EVENT EPOLL-CTL-CALL
+: CTL ( n n n -- n ) {: q:n op:n fd:n :}
+   q op fd 0 CTL-EVENT EPOLL-CTL-CALL
    0 < if FFI:ERRNO exit then
    0 ;
 
-\ Arms fd one-shot for the events in n under event data id, re-arming a
-\ registration this queue keeps, else adding one: 0 or the errno.
-: Q-ARM ( n n n -- n ) {: fd:n events:n id:n :}
+\ Arms fd one-shot in queue q for the events in n under event data id,
+\ re-arming a registration q keeps, else adding one: 0 or the errno. An ADD
+\ that finds a registration another task added since is a MOD.
+: Q-ARM ( n n n n -- n ) {: q:n fd:n events:n id:n :}
    events EV-ONESHOT or 0 CTL-EVENT LE:U32!
    id 0 CTL-EVENT EV-DATA + LE:U64!
-   CTL-MOD fd CTL dup ERR-NOENT <> if exit then drop
-   CTL-ADD fd CTL ;
+   q CTL-MOD fd CTL dup ERR-NOENT <> if exit then drop
+   q CTL-ADD fd CTL dup ERR-EXIST <> if exit then drop
+   q CTL-MOD fd CTL ;
 
 \ 0 when the process has the descriptor open, else F_GETFD's errno.
 : FD-ERRNO ( n -- n )
@@ -74,8 +78,8 @@ EV-MAX 16 * TASK:+USERS EVENTS u8
 
 \ A closed descriptor has left the queue unless a duplicate keeps its file open;
 \ then its registration stays and can fire once for the number's next record.
-: Q-DISARM ( n -- )
-   CTL-DEL swap CTL drop ;
+: Q-DISARM ( n -- ) {: fd:n :}
+   TASK:QUEUE CTL-DEL fd CTL drop ;
 
 \ Waits up to ms, -1 for no bound, and answers the events taken. A signal
 \ answers none.

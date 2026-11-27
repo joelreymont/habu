@@ -71,28 +71,25 @@ TASK:SEMAPHORE START-READY
 \ next request in its slot's input (SERVE-UNTIL-CLOSED):
 \   served - a worker's SERVING row. PARK-CONNECTION parks it, or closes it
 \            plainly when every row is taken or the listener takes none.
-\   parked - a row below, the slot's no more: handed, until the wake it pokes
-\            has the listener poll it to the row's deadline, IDLE-MS past
-\            the answer; polled, from then. Readable, it is queued, waiting
-\            for ROOM as an accepted connection does; past its deadline it is
-\            closed plainly. The listener closes every parked one as it
-\            leaves, and STOP closes those of a listener it killed.
+\   parked - a row below, the slot's no more, polled into the listener's group
+\            by the worker to IDLE-MS past the answer. Readable, it is queued,
+\            waiting for ROOM as an accepted connection does; past its
+\            deadline it is closed plainly. The listener closes every parked
+\            one as it leaves, and STOP closes those of a listener it killed.
 \   queued - a connection job: a worker takes it and it is served again, or
 \            a stop closes it unserved.
 \   closed - its descriptor given back.
 \ A row's phase is written under PARK-LOCK; only the listener writes a row
 \ that is not vacant, and only it reads a polled row's ticket.
-ENUM parking vacant handed polled ;ENUM
+ENUM parking vacant polled ;ENUM
 
 PARK-SLOTS TYPED-BUFFER PARK-PHASE parking SCRATCH-ONLY
 PARK-SLOTS TYPED-BUFFER PARK-CONN TCP4:connection SCRATCH-ONLY
-PARK-SLOTS TYPED-BUFFER PARK-DUE n SCRATCH-ONLY \ mono-ns past which the row is closed
 PARK-SLOTS TYPED-BUFFER PARK-TICKET AIO:ticket SCRATCH-ONLY
 TASK:FACILITY PARK-LOCK
 SCRATCH-VARIABLE PARK-OPEN        \ set while the listener takes rows; under PARK-LOCK
 
-\ What a worker wakes once it has handed a row, and STOP once it has raised the
-\ flag; the listener polls it.
+\ What STOP wakes once it has raised the flag; the listener polls it.
 TYPED-VARIABLE WAKER AIO:waker SCRATCH-ONLY
 SCRATCH-VARIABLE PIPED            \ set while the waker is open
 
@@ -492,7 +489,6 @@ private
    PARK-PHASE @
    MATCH parking
       vacant OF true ENDOF
-      handed OF false ENDOF
       polled OF false ENDOF
    ;MATCH ;
 
@@ -507,17 +503,24 @@ private
    -1 ;
 
 
-\ Under PARK-LOCK: true once the connection is a handed row and no longer the
-\ slot's; false while the listener takes no rows or every row is taken.
+\ The row's poll, armed by the worker into the listener's group.
+: ROW-POLL ( n -- AIO:ticket ) {: at:n :}
+   at PARK-CONN @ TCP4:CONNECTION-FD AIO:READABLE IDLE-MS @ >MS at LISTENING
+   AIO:POLL-INTO ;
+
+
+\ Under PARK-LOCK: true once the connection is a polled row and no longer the
+\ slot's. PARK-CONN is stored before the poll: UNPARK reads it once that fires.
 : PARK-PUT ( TCP4:connection n -- bool ) {: conn:TCP4:connection idx:n :}
    PARK-OPEN @ 0= if false exit then
    FREE-ROW {: at:n :}
    at 0 < if false exit then
    conn at PARK-CONN !
-   IDLE-MS @ DEADLINE-AT at PARK-DUE !
-   construct parking handed at PARK-PHASE !
+   at [: ROW-POLL ;] catch {: code:n :}
+   code 0<> if drop false exit then
+   at PARK-TICKET !
+   construct parking polled at PARK-PHASE !
    0 idx SERVING-LIVE !
-   WAKER AIO:WAKE
    true ;
 
 
@@ -869,39 +872,6 @@ variable EXIT-HOOK-N
    1 WAKE-ARMED ! ;
 
 
-: HANDED? ( n -- bool )
-   PARK-PHASE @
-   MATCH parking
-      vacant OF false ENDOF
-      handed OF true ENDOF
-      polled OF false ENDOF
-   ;MATCH ;
-
-
-\ The row's poll, its ticket kept in the row.
-: ROW-POLL ( n -- n ) {: at:n :}
-   at PARK-CONN @ TCP4:CONNECTION-FD AIO:READABLE
-   at PARK-DUE @ REMAINING AIO:POLL at PARK-TICKET !
-   at ;
-
-
-\ Under PARK-LOCK: the row polled until it is readable or its deadline passes.
-\ A POLL that throws (no memory for its record) closes the row's connection and
-\ vacates the row, as ROW-HEARD does for a rejected poll, and the listener goes
-\ on.
-: ARM-ROW ( n -- ) {: at:n :}
-   at [: ROW-POLL ;] catch {: code:n :} drop
-   code 0 <> if at PARK-CONN @ CLOSE-CONNECTION at VACATE exit then
-   at PARK-TICKET @ at LISTENING AIO:GROUP+
-   construct parking polled at PARK-PHASE ! ;
-
-
-\ Under PARK-LOCK, after AIO:WOKE: every row handed so far is polled, or closed
-\ when its poll is rejected.
-: ARM-HANDED ( -- )
-   PARK-SLOTS 0 ?do i HANDED? if i ARM-ROW then loop ;
-
-
 : READY? ( AIO:outcome -- bool )
    MATCH AIO:outcome
       ready OF drop true ENDOF
@@ -911,13 +881,11 @@ variable EXIT-HOOK-N
    ;MATCH ;
 
 
-\ Any end of the wake poll but ready would leave the listener deaf to the rows
-\ handed to it, so it stops as a broken listener does.
+\ Any end of the wake poll but ready would leave the listener deaf to STOP, so
+\ it stops as a broken listener does.
 : WOKEN ( AIO:outcome -- )
    READY? 0= if 1 STOPPING atomic-add drop exit then
-   WAKER AIO:WOKE
-   PARK-LOCK TASK:GET
-   [: ARM-HANDED ;] [: PARK-UNLOCK ;] finally ;
+   WAKER AIO:WOKE ;
 
 
 \ The row vacated, its connection read out first: a worker may take the row
@@ -984,20 +952,25 @@ variable EXIT-HOOK-N
    at PARK-PHASE @
    MATCH parking
       vacant OF exit ENDOF
-      handed OF ENDOF
       polled OF at PARK-TICKET @ UNWAIT ENDOF
    ;MATCH
    at PARK-CONN @ CLOSE-CONNECTION
    at VACATE ;
 
 
+\ No worker polls a row into the listener once this returns: PARK-PUT polls
+\ under PARK-LOCK, PARK-OPEN read first.
+: CLOSE-PARKING ( -- )
+   PARK-LOCK TASK:GET
+   0 PARK-OPEN !
+   PARK-UNLOCK ;
+
+
 \ The listener's last act, however its loop ended short of a halt (STOP's
 \ DRAIN-PARKED covers that): it takes no more rows, its waits are awaited and
 \ every parked connection is closed.
 : UNLISTEN ( -- )
-   PARK-LOCK TASK:GET
-   0 PARK-OPEN !
-   PARK-UNLOCK
+   CLOSE-PARKING
    ACCEPT-ARMED @ 0 <> if 0 ACCEPT-ARMED ! ACCEPT-TICKET @ UNWAIT then
    WAKE-ARMED @ 0 <> if 0 WAKE-ARMED ! WAKE-TICKET @ UNWAIT then
    PARK-SLOTS 0 ?do i CLOSE-ROW loop ;
@@ -1233,7 +1206,6 @@ MEM-MAX-N NS-PER-MS / constant MAX-DEADLINE-MS
 \ Every row left once no task is: those of a listener the stop killed, whose
 \ polls AIO gave back as that task ended.
 : DRAIN-PARKED ( -- )
-   0 PARK-OPEN !
    PARK-SLOTS 0 ?do
       i VACANT? 0= if i PARK-CONN @ CLOSE-CONNECTION i VACATE then
    loop ;
@@ -1523,6 +1495,7 @@ public
    JOB-LOCK TASK:GET
    [: STOP-QUEUE ;] [: JOB-UNLOCK ;] finally
    AWAIT-TASKS
+   CLOSE-PARKING
    KILL-TASKS
    DRAIN-JOBS
    DRAIN-PARKED

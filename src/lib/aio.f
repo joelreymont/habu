@@ -4,13 +4,19 @@
 \ TASK:QUEUE through the host layer (src/lib/aio/linux.f), and a record ends
 \ only inside its owner's wait, which also serves a TASK:HALT posted to that
 \ queue.
-\ RECORD STATES. FREE, ARMED, DONE. FREE->ARMED: POLL or TIMEOUT by the owner.
-\ ARMED->DONE: in the owner's wait, on its event (ready, with the revents), its
-\ passed deadline (timed-out), or the owner's CANCEL (cancelled); at the arm,
-\ for a failed arm (rejected, with the errno); for every record on the chain
-\ when its re-arm fails (rejected). A halt that unwinds a wait cancels that
-\ wait's record or group. DONE->FREE: the owner's AWAIT or AWAIT-ANY. Any->FREE
-\ at the owner's exit, which disarms what is still armed.
+\ RECORD STATES. FREE, ARMED, DONE. FREE->ARMED: POLL or TIMEOUT by the owner,
+\ or POLL-INTO by another task, the worker: its record is pushed, owner -2
+\ minus the worker's id, and goes back FREE if the group has no holder; else
+\ it goes onto the group's inbox, is armed in the holder's queue and, once
+\ that arm held, confirmed (OWNER-CONFIRMED). The holder adopts it in its wait,
+\ its owner the holder's id, and arms it again if it was still pushed; a room
+\ or arm failure there ends it rejected. ARMED->DONE: in the owner's wait, on
+\ its event (ready, with the revents), its passed deadline (timed-out), or the
+\ owner's CANCEL (cancelled); at the arm, for a failed arm (rejected, with the
+\ errno); for every record on the chain when its re-arm fails (rejected). A
+\ halt that unwinds a wait cancels that wait's record or group. DONE->FREE:
+\ the owner's AWAIT or AWAIT-ANY. Any->FREE at the owner's exit, which
+\ disarms what is still armed, unadopted records of its groups included.
 \ ONE REGISTRATION PER DESCRIPTOR. The queue keeps one registration per
 \ descriptor, so a task's armed records on one descriptor share it: they form
 \ a chain, its first in the task's descriptor table and each next in
@@ -22,22 +28,33 @@
 \ THE OWNER'S WAIT. It hands out a DONE record if its target is one: the
 \ record, or for AWAIT-ANY the group's done list. Else it waits in the queue
 \ until the earliest deadline the task has armed, a min-heap per task, rounded
-\ up to a millisecond. An event ends DONE ready, with the revents, each record
-\ on its descriptor's chain whose events it meets, or every one on an error or
+\ up to a millisecond; a task that holds a group also sleeps no later than
+\ FLOOR, the deadline of the record whose event last ended a wait, while that
+\ is still ahead. An event ends DONE ready, with the revents, each record on
+\ its descriptor's chain whose events it meets, or every one on an error or
 \ hang-up, moving each to its group's done list, and re-arms the rest's union.
 \ Then each record whose deadline has passed goes DONE timed-out, disarmed;
 \ and the wait goes round. The kernel wait's timeout is the only timer.
-\ GROUPS. A group's entry holds its ticket count, the task that holds it and its
-\ done list. The entries live in a chain of chunks of GROUPS-FIRST each, the
-\ first static; a chunk is appended when a group past the chain is first used,
-\ without the facility, so the chunks are one size and an append that loses a
-\ race is only spare room. The task whose GROUP+ finds a group empty takes
-\ G.OWNER and holds the group until its count is back to zero; until then only
-\ it may GROUP+, GROUP- or AWAIT-ANY on it.
+\ GROUPS. A group's entry holds its ticket count, the task that holds it, that
+\ task's queue and sleep end, its inbox and its done list. The entries live in a
+\ chain of chunks of GROUPS-FIRST each, the first static; a chunk is appended
+\ when a group past the chain is first used, without the facility, so the chunks
+\ are one size and an append that loses a race is only spare room. A group is
+\ held while its count is above zero: the task whose GROUP+ finds it at zero
+\ takes G.OWNER and links it on its HELD list, and holds it until the count is
+\ back to zero; until then only it may GROUP+, GROUP- or AWAIT-ANY on it.
+\ Another task may arm into a held group through POLL-INTO, which raises the
+\ count only while it is above zero; the holder adopts the group's inbox in its
+\ own wait, before and after the kernel wait, and in CANCEL, AWAIT and GROUP- of
+\ a record not yet adopted. Before each kernel wait the holder publishes its
+\ sleep end in G.END, fences, then reads its inboxes again; a POLL-INTO pushes,
+\ arms, fences and reads G.END, so one of the two sees the other, and it wakes
+\ the holder only when its arm failed or its deadline is earlier than G.END.
 \ STORAGE CLASS. PROCESS-WIDE: the record and group chunks, a record claimed
-\ under AIO-LOCK; SINK, which every waker's task writes and none reads.
-\ TASK-LOCAL: AIO-REGISTERED, AIO-PARKED, the deadline heap and the descriptor
-\ table (TASK:+USER rows), and the host layer's event buffers.
+\ under AIO-LOCK; G.INBOX, written by any task, lock-free; G.END, written by
+\ its holder only; SINK, which every waker's task writes and none reads.
+\ TASK-LOCAL: AIO-REGISTERED, AIO-PARKED, HELD, FLOOR, the deadline heap and
+\ the descriptor table (TASK:+USER rows), and the host layer's event buffers.
 
 require src/lib/error.f
 require src/lib/memory.f
@@ -76,13 +93,19 @@ CAST: TICKET>REC ( ticket -- ^n )
 CAST: >GROUP ( n -- group )
 CAST: GROUP>N ( group -- n )
 
-\ A record, a chunk, a heap row or a table, which this module names by address
-\ as n: 0 is none.
+\ A record, a chunk, a heap row, a table or a task's TCB, which this module
+\ names by address as n: 0 is none, or for a TCB the main thread.
 CAST: AIO-N>PTR ( n -- ^n )
 
 1 constant EV-READABLE              \ POLLIN
 4 constant EV-WRITABLE              \ POLLOUT
 $7D constant ERR-CANCELED
+
+\ REC.OWNER of a POLL-INTO record whose worker's arm held, until adopted.
+-1 constant OWNER-CONFIRMED
+
+\ The end of a wait with no deadline.
+$7FFFFFFFFFFFFFFF constant END-NEVER
 
 1000000 constant NS-PER-MS
 
@@ -100,15 +123,18 @@ $7D constant ERR-CANCELED
 BEGIN-STRUCTURE REC-BYTES
    CELL +FIELD REC.STATE
    CELL +FIELD REC.IDX              \ set when its chunk is made
-   CELL +FIELD REC.OWNER            \ the arming task's TASK:SELF-N
+   CELL +FIELD REC.OWNER            \ the arming task's TASK:SELF-N; below 0
+                                    \ for a POLL-INTO record until adopted
    CELL +FIELD REC.FD               \ -1 for none
    CELL +FIELD REC.EVENTS
    CELL +FIELD REC.FD-NEXT          \ its chain's next record, index plus 1, or 0
-   CELL +FIELD REC.DEADLINE         \ mono-ns, while REC.HEAP-POS is a row
+   CELL +FIELD REC.DEADLINE         \ mono-ns, while REC.HEAP-POS is a row; a
+                                    \ POLL-INTO record's from its claim, or -1
    CELL +FIELD REC.HEAP-POS         \ its row in the owner's heap, or -1
    CELL +FIELD REC.GROUP            \ its group plus 1, 0 for none
    CELL +FIELD REC.TAG
-   CELL +FIELD REC.NEXT             \ the next on its group's done list, or 0
+   CELL +FIELD REC.NEXT             \ the next on its group's done list or
+                                    \ inbox, or 0
    CELL +FIELD REC.OUT
    CELL +FIELD REC.RES
 END-STRUCTURE
@@ -118,20 +144,25 @@ END-STRUCTURE
 $40 constant RECS-FIRST
 CELL constant CHUNK-HEAD
 
-\ A group's entry; only its holder writes it.
+\ A group's entry; only its holder writes it, but for a POLL-INTO's raise of
+\ G.COUNT and its push onto G.INBOX.
 $10 constant GROUPS-FIRST
 
 BEGIN-STRUCTURE G-BYTES
    CELL +FIELD G.COUNT              \ the tickets the group holds
-   \ The holding task's region, TASK:SELF-CONTEXT, or 0 while empty. Not
-   \ TASK:SELF-N: the main thread's is 0.
-   CELL +FIELD G.OWNER
+   CELL +FIELD G.OWNER              \ the holder's TASK:SELF-N while G.COUNT > 0
+   CELL +FIELD G.QUEUE              \ the holder's TASK:QUEUE while G.COUNT > 0
+   CELL +FIELD G.HELD               \ the holder's next held group, plus 1, or 0
+   CELL +FIELD G.INBOX              \ POLL-INTO records not yet adopted, or 0
+   CELL +FIELD G.END                \ the holder's sleep end, mono-ns, or
+                                    \ END-NEVER
    CELL +FIELD G.HEAD               \ its DONE records, oldest first, or 0
    CELL +FIELD G.TAIL
 END-STRUCTURE
 
 \ SCRATCH-BUFFER: rounds the address to a cell, as the atomic words need for a
-\ link cell and G.OWNER. AIO-RECS is the chain's link cell, 0 with no chunk.
+\ link cell and an entry's cells. AIO-RECS is the chain's link cell, 0 with no
+\ chunk.
 CHUNK-HEAD SCRATCH-BUFFER: AIO-RECS
 CHUNK-HEAD GROUPS-FIRST G-BYTES * + SCRATCH-BUFFER: AIO-GROUPS
 
@@ -163,6 +194,13 @@ TASK:+USER HEAP-CAP n
 \ holding its chain's first record, index plus 1, or 0 for none.
 TASK:+USER FD-BASE n
 TASK:+USER FD-CAP n
+
+\ The first group the task holds, plus 1, or 0; each next in G.HELD.
+TASK:+USER HELD n
+
+\ The deadline of the record whose event last ended a wait, mono-ns: a later
+\ POLL-INTO's deadline is past it, so a holder that sleeps to it is not woken.
+TASK:+USER FLOOR n
 
 : CHAIN-HEAD ( -- n )
    AIO-RECS CELL-VIEW FFI:>CELL ;
@@ -261,24 +299,76 @@ TASK:+USER FD-CAP n
    p 0= if nx e G.HEAD ! else nx p AIO-N>PTR REC.NEXT ! then
    e G.TAIL @ r FFI:>CELL = if p e G.TAIL ! then ;
 
-: G-DISOWN-EMPTY ( ^n -- ) {: e:^ :}
-   e G.COUNT @ 0= if 0 e G.OWNER atomic! then ;
+: HELD-LINK ( n ^n -- ) {: g:n e:^ :}
+   HELD @ e G.HELD !
+   g 1 + HELD ! ;
+
+\ Takes g off the list, nx the group after it, read while g was held: once
+\ its count is zero another task may take it and rewrite G.HELD.
+: HELD-UNLINK ( n n -- ) {: g:n nx:n :}
+   HELD @ g 1 + = if nx HELD ! exit then
+   HELD @
+   begin dup 0<> while
+      1 - G-ENTRY
+      dup G.HELD @ g 1 + = if nx swap G.HELD ! exit then
+      G.HELD @
+   repeat
+   drop ;
 
 \ The record leaves its group, and its done list if it is on it.
 : G-LEAVE ( ^n -- ) {: r:^ :}
    r REC-G {: e:^ :}
+   r REC.GROUP @ 1 - {: g:n :}
    e r DONE-UNLINK
    0 r REC.GROUP !
-   e G.COUNT @ 1 - e G.COUNT !
-   e G-DISOWN-EMPTY ;
+   e G.HELD @ {: nx:n :}
+   -1 e G.COUNT atomic-add 1 = if g nx HELD-UNLINK then ;
 
+\ Owner, queue and the HELD link are stored before the count makes the group
+\ held, so a POLL-INTO that raises the count reads them.
 : G-ADD ( n ^n n -- ) {: g:n r:^ tag:n :}
    g G-ENTRY {: e:^ :}
-   e G.COUNT @ 0= if TASK:SELF-CONTEXT e G.OWNER atomic! then
+   e G.COUNT atomic@ 0= if
+      TASK:SELF-N e G.OWNER atomic!
+      TASK:QUEUE e G.QUEUE atomic!
+      g e HELD-LINK
+   then
    g 1 + r REC.GROUP !
    tag r REC.TAG !
-   e G.COUNT @ 1 + e G.COUNT !
+   1 e G.COUNT atomic-add drop
    r DONE? if e r DONE-PUSH then ;
+
+\ Raises the count only while it is above zero, answering whether it did: a
+\ group with no holder stays empty.
+: G-PIN ( ^n -- bool ) {: e:^ :}
+   e G.COUNT atomic@
+   begin
+      dup 0= if drop false exit then
+      dup dup 1 + e G.COUNT atomic-cas
+      2dup <> while nip
+   repeat
+   2drop true ;
+
+\ A retry follows a push or a take that changed the head since it was read.
+: INBOX-PUSH ( ^n ^n -- ) {: e:^ r:^ :}
+   r FFI:>CELL {: rn:n :}
+   e G.INBOX atomic@
+   begin
+      dup r REC.NEXT !
+      dup rn e G.INBOX atomic-cas
+      2dup <> while nip
+   repeat
+   2drop ;
+
+\ The whole inbox, its head as n or 0; a CAS loop, as no word exchanges a cell.
+: INBOX-TAKE ( ^n -- n ) {: e:^ :}
+   e G.INBOX atomic@
+   begin
+      dup 0= if exit then
+      dup 0 e G.INBOX atomic-cas
+      2dup <> while nip
+   repeat
+   drop ;
 
 : G-REGISTER ( -- n )
    GROUP-N @ dup 1 + GROUP-N ! ;
@@ -488,7 +578,7 @@ TASK:+USER FD-CAP n
 
 \ Arms the descriptor one-shot for its chain's union and the events in n.
 : FD-ARM ( n n -- n ) {: fd:n events:n :}
-   fd fd FD-HEAD CHAIN-EVENTS events or fd 1 + Q-ARM ;
+   TASK:QUEUE fd fd FD-HEAD CHAIN-EVENTS events or fd 1 + Q-ARM ;
 
 : CHAIN-REARM ( n -- ) {: fd:n :}
    fd 0 FD-ARM {: rc:n :}
@@ -525,12 +615,67 @@ TASK:+USER FD-CAP n
    mono-ns ms NS-PER-MS * + r REC.DEADLINE !
    r H-PUSH ;
 
-: ARM-FD ( ^n -- ) {: r:^ :}
+: CHAIN-JOIN ( ^n -- ) {: r:^ :}
    r REC.FD @ {: fd:n :}
-   fd r REC.EVENTS @ FD-ARM {: rc:n :}
-   rc 0<> if r rc ARM-FAILED exit then
    fd FD-HEAD r REC.FD-NEXT !
    r REC-LINK fd FD-SLOT ! ;
+
+: ARM-FD ( ^n -- ) {: r:^ :}
+   r REC.FD @ r REC.EVENTS @ FD-ARM {: rc:n :}
+   rc 0<> if r rc ARM-FAILED exit then
+   r CHAIN-JOIN ;
+
+\ ---- adoption ----------------------------------------------------------------
+\ The record becomes the holder's, answering whether the holder must arm it:
+\ it was still pushed, so the worker's arm had not held when the CAS won.
+: ADOPT-OWNER ( ^n -- bool ) {: r:^ :}
+   TASK:SELF-N {: me:n :}
+   r REC.OWNER atomic@ {: o:n :}
+   o OWNER-CONFIRMED <> if
+      o me r REC.OWNER atomic-cas o = if true exit then
+   then
+   me r REC.OWNER atomic!
+   false ;
+
+\ Only the holder can grow its own tables, so the room is made here: 0, or
+\ FD-ROOM's errno for a number that names no open descriptor.
+: ADOPT-ROOM ( ^n -- n ) {: r:^ :}
+   H-ROOM
+   r REC.FD @ FD-ROOM ;
+
+\ One record of a taken inbox, answering the next: REC.NEXT is read first, as
+\ FINISH rewrites it. A failed room ends it rejected, out of the queue. One
+\ ended here wakes the task's queue: its wait looked for a done record before.
+: ADOPT-ONE ( n -- n ) {: rn:n :}
+   rn AIO-N>PTR {: r:^ :}
+   r REC.NEXT @ {: nx:n :}
+   r ADOPT-OWNER {: arm:bool :}
+   [: r ADOPT-ROOM ;] catch {: code:n :}
+   code 0<> if drop ERR-NOMEM then {: rc:n :}
+   rc 0<> if
+      r REC.FD @ Q-DISARM
+      r OUT-REJECTED rc FINISH
+   else
+      r REC.DEADLINE @ 0 >= if r H-PUSH then
+      arm if r ARM-FD else r CHAIN-JOIN then
+   then
+   r DONE? if TASK:SELF TASK:QUEUE-WAKE then
+   nx ;
+
+: G-ADOPT ( ^n -- )
+   INBOX-TAKE begin dup 0<> while ADOPT-ONE repeat drop ;
+
+\ Every group the task holds; before EVENTS-TAKE, which drops an event of a
+\ descriptor with no chain.
+: ADOPT-HELD ( -- )
+   HELD @
+   begin dup 0<> while
+      1 - G-ENTRY dup G-ADOPT G.HELD @
+   repeat
+   drop ;
+
+: ADOPT-OF ( ^n -- ) {: r:^ :}
+   r REC.OWNER atomic@ 0 < if r REC-G G-ADOPT then ;
 
 : OUTCOME-OF ( ^n -- outcome ) {: r:^ :}
    r REC.RES @ {: res:n :}
@@ -547,11 +692,40 @@ TASK:+USER FD-CAP n
    STATE-FREE r REC.STATE atomic! ;
 
 \ ---- the owner's wait ---------------------------------------------------------
-\ The ms the kernel wait may take: until the earliest armed deadline, rounded
-\ up, or -1 with none.
-: WAIT-MS ( -- n )
-   HEAP-LEN @ 0= if -1 exit then
-   0 H-KEY mono-ns - {: left:n :}
+\ The end of the next kernel wait, END-NEVER with no deadline armed.
+: WAIT-END ( -- n )
+   HEAP-LEN @ 0= if END-NEVER else 0 H-KEY then {: end:n :}
+   HELD @ 0= if end exit then
+   FLOOR @ {: floor:n :}
+   floor mono-ns <= if end exit then
+   end floor min ;
+
+\ The end the holder sleeps to, published in each held group's G.END.
+: SLEEP-END ( -- n )
+   begin
+      ADOPT-HELD
+      WAIT-END
+      HELD @ 0= if exit then
+      HELD @
+      begin dup 0<> while
+         1 - G-ENTRY 2dup G.END atomic! G.HELD @
+      repeat
+      drop
+      fence
+      false HELD @
+      begin dup 0<> while
+         1 - G-ENTRY dup G.INBOX atomic@ 0<> rot or swap G.HELD @
+      repeat
+      drop
+   while
+      drop
+   repeat ;
+
+\ The ms the kernel wait may take until the end n: -1 for END-NEVER, 0 once
+\ it has passed, else rounded up, at most $7FFFFFFF.
+: WAIT-MS ( n -- n ) {: end:n :}
+   end END-NEVER = if -1 exit then
+   end mono-ns - {: left:n :}
    left 0 <= if 0 exit then
    left NS-PER-MS 1 - + NS-PER-MS / $7FFFFFFF min ;
 
@@ -570,7 +744,7 @@ $18 constant EV-FAULT
    r REC.FD-NEXT @ {: nx:n :}
    r revents EV-MEETS? if
       0 r REC.FD-NEXT !
-      r REC.HEAP-POS @ 0 >= if r H-REMOVE then
+      r REC.HEAP-POS @ 0 >= if r REC.DEADLINE @ FLOOR ! r H-REMOVE then
       r OUT-READY revents FINISH
    else
       fd FD-HEAD r REC.FD-NEXT !
@@ -611,7 +785,9 @@ $18 constant EV-FAULT
 : WAIT-PASS ( -- )
    TASK:QUEUE drop fence
    0 TASK:HALT-UNWIND
-   WAIT-MS Q-WAIT EVENTS-TAKE
+   SLEEP-END WAIT-MS Q-WAIT
+   ADOPT-HELD
+   EVENTS-TAKE
    EXPIRE
    if 0 TASK:HALT-UNWIND then ;
 
@@ -659,28 +835,37 @@ $18 constant EV-FAULT
    REC-CAP 0 ?do i g 1 + me GIVE-BACK-IF loop ;
 
 : AWAIT-GROUP ( n -- n outcome ) {: g:n :}
-   g G-ENTRY G.COUNT @ 0= if E-AIO-GROUP throw then
+   g G-ENTRY G.COUNT atomic@ 0= if E-AIO-GROUP throw then
    -1 AIO-PARKED !
    g [: GROUP-WAIT ;] [: GROUP-GIVE-BACK ;] finally
    g G-ENTRY G.HEAD @ AIO-N>PTR {: r:^ :}
    r REC.TAG @ r TAKE ;
 
 \ ---- the cleanup a submitting task registers ---------------------------------
-: G-RELEASE-HELD ( ^n n -- ) {: e:^ me:n :}
-   e G.OWNER atomic@ me <> if exit then
-   0 e G.COUNT !  0 e G.HEAD !  0 e G.TAIL !
-   0 e G.OWNER atomic! ;
-
-\ The ending task's groups go back empty, so the next task in its region
-\ inherits no hold; the walk covers linked chunks only.
-: GROUPS-RELEASE ( -- )
-   TASK:SELF-CONTEXT {: me:n :}
-   GROUPS-HEAD
+\ The group's unadopted records become the ending task's, for SCRUB-ONE to
+\ disarm and free.
+: INBOX-DRAIN ( ^n -- )
+   TASK:SELF-N {: me:n :}
+   INBOX-TAKE
    begin dup 0<> while
-      GROUPS-FIRST 0 ?do dup i G-AT me G-RELEASE-HELD loop
-      CHUNK-NEXT
+      AIO-N>PTR me over REC.OWNER atomic! REC.NEXT @
    repeat
    drop ;
+
+\ The ending task's held groups go back empty and off its list, so no group
+\ stays held by a task that is gone. The count goes to zero last: from then
+\ another task may take the group and rewrite its cells.
+: GROUPS-RELEASE ( -- )
+   HELD @
+   begin dup 0<> while
+      1 - G-ENTRY
+      dup G.HELD @ swap
+      dup INBOX-DRAIN
+      0 over G.HEAD !  0 over G.TAIL !
+      0 swap G.COUNT atomic!
+   repeat
+   drop
+   0 HELD ! ;
 
 : SCRUB-ONE ( n n -- ) {: idx:n me:n :}
    idx REC {: r:^ :}
@@ -707,6 +892,31 @@ $18 constant EV-FAULT
 \ The fd as the kernel's int reads it: its low 32 bits, sign-extended.
 : FD-INT ( fd -- n )
    FD>N FFI:>I32 ;
+
+\ ---- arming into another task's group ----------------------------------------
+\ FREE->ARMED, unpublished. The owner is pushed, -2 minus the worker's id, so
+\ its CAS cannot match the record once freed and claimed again.
+: INTO-CLAIM ( n n n n n -- ^n )
+   {: fd:n events:n ms:n gn:n tag:n :}
+   REC-CLAIM {: r:^ :}
+   fd r REC.FD !  events r REC.EVENTS !
+   gn 1 + r REC.GROUP !  tag r REC.TAG !
+   ms 0 < if -1 else mono-ns ms NS-PER-MS * + then r REC.DEADLINE !
+   -2 TASK:SELF-N - r REC.OWNER !
+   r ;
+
+\ Pushed before armed, as the holder drops an event of a descriptor with no
+\ chain; all it needs of the record is read first, as the holder may free it.
+: INTO-PUBLISH ( ^n ^n n n -- ) {: e:^ r:^ fd:n events:n :}
+   e G.QUEUE atomic@ {: q:n :}
+   e G.OWNER atomic@ AIO-N>PTR {: h:^ :}
+   r REC.OWNER @ {: pushed:n :}
+   r REC.DEADLINE @ {: due:n :}
+   e r INBOX-PUSH
+   q fd events fd 1 + Q-ARM {: rc:n :}
+   rc 0= if pushed OWNER-CONFIRMED r REC.OWNER atomic-cas drop then
+   fence
+   rc 0<>  due 0 >= due e G.END atomic@ < and  or if h TASK:QUEUE-WAKE then ;
 
 public
 
@@ -751,13 +961,13 @@ public
 \ Ends that operation as cancelled unless it has ended already; the ticket
 \ still has to be AWAITed. Only the task that submitted it may cancel it.
 : CANCEL ( ticket -- )
-   TICKET>REC dup ARMED? if CANCEL-REC else drop then ;
+   TICKET>REC dup ADOPT-OF dup ARMED? if CANCEL-REC else drop then ;
 
 \ Blocks until that operation has ended and answers its outcome, releasing the
 \ record. Only the task that submitted the ticket may await it, and only once.
 \ The main thread may await too.
 : AWAIT ( ticket -- outcome ) {: t:ticket :}
-   t TICKET>REC REC.IDX @ AWAIT-ONE ;
+   t TICKET>REC dup ADOPT-OF REC.IDX @ AWAIT-ONE ;
 
 \ What a wait for readiness ended as: the revents the kernel reported, the
 \ deadline, or the errno of a failed poll.
@@ -844,10 +1054,28 @@ public
 : GROUP+ ( ticket n group -- ) {: t:ticket tag:n g:group :}
    g GROUP>N t TICKET>REC tag G-ADD ;
 
+\ POLL from any task into a group another task holds, with POLL's outcome; the
+\ ticket joins the group with the tag as GROUP+ would, and only the holder
+\ AWAIT-ANYs it. A group no task holds is E-AIO-GROUP. The caller keeps that
+\ (a) the call returns before the holder ends, else the record outlives it,
+\ and (b) until the call returns, and while the ticket is armed, the holder
+\ arms nothing else on that descriptor, else the one registration's events
+\ are replaced.
+: POLL-INTO ( fd n ms n group -- ticket )
+   {: f:fd events:n timeout:ms tag:n g:group :}
+   g GROUP>N {: gn:n :}
+   gn G-ENTRY {: e:^ :}
+   f FD-INT {: fd:n :}
+   fd events timeout MS>N gn tag INTO-CLAIM {: r:^ :}
+   e G-PIN 0= if STATE-FREE r REC.STATE atomic! E-AIO-GROUP throw then
+   e r fd events INTO-PUBLISH
+   r >TICKET ;
+
 \ A ticket the group does not hold is E-AIO-GROUP. A group no task holds is
 \ empty: E-AIO-GROUP.
 : GROUP- ( ticket group -- ) {: t:ticket g:group :}
    t TICKET>REC {: r:^ :}
+   r ADOPT-OF
    r REC.GROUP @ g GROUP>N 1 + <> if E-AIO-GROUP throw then
    r G-LEAVE ;
 
