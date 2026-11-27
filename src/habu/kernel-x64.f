@@ -98,13 +98,11 @@ private
 : SAME? ( r64 r64 -- bool ) R64>N swap R64>N = ;
 
 \ The helpers' labels, set by HELPERS, in the stream it emits them into.
-variable LIVE-CELL
 variable DPBAD-CELL
 variable OVERLAY-DIE-CELL
 variable SCOPE-SEED-CELL
 variable SCOPE-SEED-END-CELL
 variable SCOPE-KIND-CELL
-: LIVE-LBL ( -- label ) LIVE-CELL @ >LABEL ;
 : DPBAD-LBL ( -- label ) DPBAD-CELL @ >LABEL ;
 : OVERLAY-DIE-LBL ( -- label ) OVERLAY-DIE-CELL @ >LABEL ;
 : SCOPE-SEED-LBL ( -- label ) SCOPE-SEED-CELL @ >LABEL ;
@@ -161,13 +159,6 @@ public
    s" x64kernel: no registered body named " type name type cr
    s" x64kernel: ENTRY-LABEL names no registered body" EXIT-STATUS:INTERNAL die ;
 
-\ The live-task retreat guard, also exercised by the bare kernel fixture.
-\ Ordinary writers check thread ownership instead. Clobbers rax and flags.
-: TASK-LIVE-GUARD, ( -- )
-   RAX DATA-REG TASKS-LIVE-CELL MEM-OFF ASM-SINK ENC-MOV-RM
-   RAX RAX ASM-SINK ENC-TEST-RR
-   C-NE LIVE-LBL JCC, ;
-
 \ An RX address becomes its RW alias for an engine store. Addresses
 \ stored in records, code and DATA remain RX identities. No scratch register
 \ is needed and no page changes protection while a task can execute it.
@@ -181,10 +172,6 @@ private
 : OVERLAY-GUARD, ( -- )
    RAX REPLAY-SCOPE:LATCH CELL@,
    RAX RAX ASM-SINK ENC-TEST-RR  C-NE OVERLAY-DIE-LBL JCC, ;
-
-: LIVE-HELPER, ( -- )
-   LIVE-LBL X64CODE:LBL,
-   EXIT-STATUS:TASK-COMPILE EXIT-GROUP, ;
 
 \ The machine-stack frame DIAG-U, writes digits into: room for any cell's.
 CELL 4 * constant DIAG-BYTES
@@ -1754,11 +1741,10 @@ private
 
 \ Make helper labels before the sections that branch to them.
 : HELPERS, ( -- )
-   X64CODE:LBL LIVE-CELL !
    X64CODE:LBL DPBAD-CELL !  X64CODE:LBL LGENIOOUT !
    X64CODE:LBL OVERLAY-DIE-CELL !
    X64CODE:LBL X64BOOT:LEXITHOOK !
-   LIVE-HELPER,  INDEX-HELPERS,
+   INDEX-HELPERS,
    DPBAD-HELPER,  GENIO-HELPER,  EXIT-HOOK-HELPER,
    X64PROF:HELPERS, ;
 

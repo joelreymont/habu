@@ -12,22 +12,9 @@ require src/arch/x86-64/asm.f
 require src/arch/x86-64/icode.f
 
 package X64K-ENGINE
-using LINUX-LAYOUT   \ the guard
 
 PROT-PAGE-MAX constant FILL-BYTES
 create FILL FILL-BYTES allot
-
-\ TASK-LIVE-GUARD, then an empty data stack. With no task live, as the boot
-\ leaves TASKS-LIVE-CELL, the guard passes; -armed marks a task live first.
-: BUILD ( bool bool str -- ) {: negative:bool armed:bool path:str :}
-   negative X64HARNESS:BOOT-OPEN,
-   armed if
-      EXIT-STATUS:TASK-COMPILE X64HARNESS:EXPECT-EXIT
-      1 TASKS-LIVE-CELL X64HARNESS:CELL!,
-   then
-   X64KERNEL:TASK-LIVE-GUARD,
-   0 X64HARNESS:EXPECT-DEPTH,
-   path X64HARNESS:BOOT-CLOSE, ;
 
 \ Text past one PROT-PAGE-MAX behind the kernel, as the whole kernel will carry,
 \ so the read-write segment lands a page further on; it pushes the text's span.
@@ -550,9 +537,6 @@ public
 : RUN ( -- )
    T-RESET
    X64HARNESS:INIT
-   false false s" hb-x64-kernel-engine" TMP-PATH BUILD
-   true false s" hb-x64-kernel-engine-negative" TMP-PATH BUILD
-   false true s" hb-x64-kernel-engine-armed" TMP-PATH BUILD
    s" hb-x64-kernel-window" TMP-PATH BUILD-WINDOW
    false s" hb-x64-kernel-search" TMP-PATH BUILD-SEARCH
    true s" hb-x64-kernel-search-index" TMP-PATH BUILD-SEARCH
@@ -598,7 +582,6 @@ public
    X64HARNESS:DISPOSE
    T-REPORT ;
 
-;using   \ LINUX-LAYOUT
 ;package
 
 X64K-ENGINE:RUN
