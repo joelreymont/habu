@@ -262,14 +262,16 @@ $5D constant CLOSE-BRACKET
    v PORT-MAX > if BAD-PORT exit then
    v ;
 
-\ The port the bytes after the host give: none, `:` alone or `:` and up to
-\ PORT-MAX in digits; BAD-PORT for anything else.
+\ The port the bytes after the host give: none, `:` alone or `:` and 1 to
+\ PORT-MAX in digits; BAD-PORT for anything else. Port 0 names no server.
 : PORT ( str -- n )
    {: s:str :}
    s STR:LEN 0= if NO-PORT exit then
    s STR:DATA c@ [char] : <> if BAD-PORT exit then
    s STR:LEN 1 = if NO-PORT exit then
-   0 s STR:LEN 1 ?do s STR:DATA i + c@ PORT-DIGIT loop ;
+   0 s STR:LEN 1 ?do s STR:DATA i + c@ PORT-DIGIT loop {: p:n :}
+   p 0= if BAD-PORT exit then
+   p ;
 
 \ The host, the port and the length of the authority the bytes after `//`
 \ start with, which ends at the first `/`, `?` or `#`, or at the end.
@@ -533,11 +535,13 @@ public
    t STR:DATA s >str h p ;
 
 \ Whether the text is an http(s) URL's origin alone: `http://` or `https://`, a
-\ host and an optional port as HTTP-READ reads them, and no byte after.
+\ host and an optional port as HTTP-READ reads them, and no byte after. An
+\ origin writes its port's digits or omits the port: a trailing `:` is false.
 : ORIGIN? ( str -- bool )
    {: t:str :}
    t HTTP-READ {: s:n h:str p:n end:n code:n :}
-   code 0= end t STR:LEN = and ;
+   code 0<>  end t STR:LEN <> or if false exit then
+   t STR:DATA end + 1- c@ [char] : <> ;
 
 \ Whether two http(s) URLs share an origin: schemes equal without case, hosts
 \ without ASCII case, ports as numbers, defaults applied. Rejected as HTTP-AT

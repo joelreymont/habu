@@ -435,12 +435,15 @@ TYPED-VARIABLE DECODED ^VEC:vector<u8>
    s" https://h/a" s" https://other/x" URI:SAME-ORIGIN? TFALSE ;
 
 \ An origin alone in each form; a path, a fragment, user information, another
-\ scheme or none, no host, a bad or unclosed address, and a bad port.
+\ scheme or none, no host, a bad or unclosed address, an empty port, port 0
+\ and a bad port.
 : ORIGINS-ALONE ( -- )
    s" https://h" URI:ORIGIN? TTRUE
    s" HTTP://h:8080" URI:ORIGIN? TTRUE
    s" https://[::1]:443" URI:ORIGIN? TTRUE
-   s" https://h:" URI:ORIGIN? TTRUE
+   s" https://a.example:443" URI:ORIGIN? TTRUE
+   s" https://a.example:" URI:ORIGIN? TFALSE
+   s" https://a.example:0" URI:ORIGIN? TFALSE
    s" https://h/" URI:ORIGIN? TFALSE
    s" https://h#f" URI:ORIGIN? TFALSE
    s" https://u@h" URI:ORIGIN? TFALSE
@@ -451,6 +454,14 @@ TYPED-VARIABLE DECODED ^VEC:vector<u8>
    s" https://h:65536" URI:ORIGIN? TFALSE
    s" https://h:x8" URI:ORIGIN? TFALSE
    s" " URI:ORIGIN? TFALSE ;
+
+: ORIGIN-DROP ( str -- )
+   URI:ORIGIN drop drop drop ;
+
+\ An empty port in a full URL is the scheme's default; port 0 is rejected.
+: ORIGIN-PORTS ( -- )
+   s" http://a.example:/x" URI:ORIGIN 80 T= drop drop
+   [: s" http://a.example:0/x" ORIGIN-DROP ;] E-URI-HOST TTHROWSQ ;
 
 \ The path and query without the fragment; none after a bare authority.
 : REQUEST-TARGETS ( -- )
@@ -502,6 +513,7 @@ TYPED-VARIABLE DECODED ^VEC:vector<u8>
    RESOLVES
    SAME-ORIGINS
    ORIGINS-ALONE
+   ORIGIN-PORTS
    REQUEST-TARGETS
    QUERY-ENCODES
    QUERY-OWN
