@@ -606,8 +606,10 @@ multi-cell type rationale is `docs/design.md` "Types".
   package and a field. `DERIVE addr` on a structure with fields
   generates typed field-address accessors plus `AT`, and `BYTES` and `CELLS`
   when the family's width reads none of its parameters; otherwise
-  `[type] F<args> width>n` gives an instance's size. A global public `point`
-  with `FIELD x n` gains `POINT:X ( ^point -- ^n )`,
+  `[type] F<args> width>n` gives an instance's size. Under it a field named
+  `make`, `unmake`, `at`, `bytes`, `cells`, `eq`, `hash` or `tag` is rejected
+  (`error[E-BAD-DECLARATION]`): those member names are generated. A global
+  public `point` with `FIELD x n` gains `POINT:X ( ^point -- ^n )`,
   read and written with the field type's ordinary checked operations; a
   `BUFFER b N` field's accessor answers its bytes as a span,
   `( ^point -- SPAN:span<u8> )` of N bytes
