@@ -957,14 +957,18 @@ private
       some OF dup JSON:STRING? swap s" " JSON:STRING= 0= and ENDOF
    ;MATCH ;
 
+\ The offset of the id's first byte outside $21..$7E, -1 for none.
+: ID-FAULT ( str -- n )
+   {: id:str :}
+   id STR:LEN 0 ?do
+      id STR:DATA i + c@ {: c :}
+      c $21 < c $7E > or if i unloop exit then
+   loop -1 ;
+
 \ An id a caller's key can hold: not empty, no space, no control byte.
 : ID? ( str -- bool )
    {: id:str :}
-   id STR:LEN 0= if false exit then
-   id STR:LEN 0 ?do
-      id STR:DATA i + c@ {: c :}
-      c $21 < c $7E > or if unloop false exit then
-   loop true ;
+   id STR:LEN 0<> id ID-FAULT 0< and ;
 
 : ID-CLAIM? ( str -- bool ) WORDS$ if ID? else drop false then ;
 
@@ -1018,16 +1022,30 @@ private
    s" tid" buf CLAIM+
    s" :" buf VEC:APPEND ;
 
+\ E-OPERAND naming APP!'s id and the byte at fault, or that it is empty.
+: APP-WRONG ( str -- )
+   {: id:str :}
+   id ID-FAULT {: at:n :}
+   id s" APP!'s id" SETTING REASON:EXPECTED
+   s" bytes $21 to $7E, at least one" REASON:APPEND
+   id STR:LEN 0= if
+      id FOUND-PART s" state the app's client id" REASON:APPEND
+   else
+      id STR:DATA at + c@ at FOUND-BYTE
+      s" state the app's client id alone" REASON:APPEND
+   then
+   E-OPERAND REASON:STOP ;
+
 public
 
 \ Lists an app id that may call as itself, beside those listed before. The text
 \ is copied. A built program keeps none: it states them at run time.
 \ E-HTTP-STATE while HTTP serves; E-OPERAND for an id that is empty or holds a
-\ byte outside $21..$7E.
+\ byte outside $21..$7E, whose REASON:TEXT$ names the id and the byte.
 : APP! ( str -- )
    {: id:str :}
    HTTP:RUNNING? if E-HTTP-STATE throw then
-   id ID? 0= if E-OPERAND throw then
+   id ID? 0= if id APP-WRONG then
    APPS-READY
    id APPS @ WORD+ ;
 

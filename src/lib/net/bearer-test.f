@@ -649,11 +649,18 @@ TASK:MIN-STACK TASK:TASK CLAIMER
 : PERSON ( -- str ) s" person entra:t-1:o-1" ;
 : APP ( -- str ) s" app app:t-1:app-1" ;
 
+\ The text of the last E-OPERAND is the span.
+: SAID ( str -- ) BEARER:E-OPERAND REASON:TEXT$ swap T$= ;
+
 : APP-CASES ( -- )
    s" APP! rejects an empty id" T-LABEL
    [: s" " BEARER:APP! ;] BEARER:E-OPERAND TTHROWSQ
+   s" APP!'s id ``: expected bytes $21 to $7E, at least one, found nothing; state the app's client id"
+   SAID
    s" APP! rejects an id with a space" T-LABEL
    [: s" app-1 app-2" BEARER:APP! ;] BEARER:E-OPERAND TTHROWSQ
+   s" APP!'s id `app-1 app-2`: expected bytes $21 to $7E, at least one, found byte $20 at offset 5; state the app's client id alone"
+   SAID
    s" CALLER-KEY outside a request throws E-HTTP-STATE" T-LABEL
    [: KEY-OUT @ BEARER:CALLER-KEY ;] E-HTTP-STATE TTHROWSQ
    s" app-0" BEARER:APP!
@@ -744,9 +751,6 @@ TASK:MIN-STACK TASK:TASK CLAIMER
    s" https://issuer.test" s" api://bearer-test" url BEARER:ISSUER! ;
 
 : CLIENT-AT ( str -- ) s" app" s" " BEARER:CLIENT! ;
-
-\ The text of the last E-OPERAND is the span.
-: SAID ( str -- ) BEARER:E-OPERAND REASON:TEXT$ swap T$= ;
 
 \ Leaves ISSUER! and CLIENT! stating SECURE$.
 : URL-CASES ( -- )
