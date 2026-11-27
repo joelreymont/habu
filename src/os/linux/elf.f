@@ -5,8 +5,9 @@
 \
 \ The code region is a PT_LOAD of REGION bytes at the image's base plus
 \ REGION-OFF that holds no file bytes: the kernel reserves it at exec, so the
-\ brk heap starts above it and nothing mapped before entry takes its range, and
-\ the boot maps the region's views over it.
+\ brk heap starts above it and nothing mapped before entry takes its range. An
+\ engine's boot maps the region's views over it; a stripped program keeps its
+\ readable zero pages, which the x86-64 crash dump reads.
 \
 \ The carrier is a read-write PT_LOAD at the address the build's kernel names,
 \ past the DATA window, that holds DATA's initial pages for the boot to move

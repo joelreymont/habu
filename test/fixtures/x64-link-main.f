@@ -1,5 +1,9 @@
-\ The linked x86 program checks local reads through calls and unwinding.
+\ The linked x86 program checks local reads through calls and unwinding, and
+\ forks a child that writes its own line.
+require src/core/exit-status.f
 require src/lib/string.f
+require src/lib/process.f
+require src/lib/process-fork.f
 
 package X64-LINK-PROGRAM
 private
@@ -35,6 +39,14 @@ BIND-NEXT
    {: closed:^ code:n :}
    [: closed code SCOPE ;] catch ;
 
+: CHILD ( -- )
+   PROC-FORK:CHECKED {: pid:pid :}
+   pid PID>N 0= if
+      s" child ok" type cr
+      s" " EXIT-STATUS:SUCCESS die
+   then
+   pid PROCESS:WAIT PROCESS:STATUS>RC RC>N 0 SAME ;
+
 public
 : RUN ( -- )
    BASE NEXT 42 SAME
@@ -44,6 +56,7 @@ public
    CLEANUPS @ 1 SAME
    CLEANUPS E-BODY CAUGHT E-BODY SAME
    CLEANUPS @ 2 SAME
+   CHILD
    [: SAY ;] execute ;
 
 ;package

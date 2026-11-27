@@ -48,8 +48,8 @@ SHA256-FILE-CTX-BYTES BUFFER: HASH
    PROCESS:ENDING>RC RC>N {: rc:n :}
    rc 0<> if rc SHOW then
    s" x86-64 program exits successfully" T-LABEL rc 0 T=
-   s" package, does>, defer, captured quotations and DATA run" T-LABEL
-   CMD:OUT$ s\" Hi\n" T$= ;
+   s" package, does>, defer, captured quotations, DATA and a fork run" T-LABEL
+   CMD:OUT$ s\" child ok\nHi\n" T$= ;
 
 : DIGEST ( ^u8 -- )
    {: dst:^ :}

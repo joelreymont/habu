@@ -60,15 +60,15 @@ public
 : LINK-START, ( bool label label label label -- label label )
    {: engine:bool image:label end:label records:label records-end:label :}
    LBL LBL LBL LBL LBL {: go:label crash:label rest:label stub:label trap:label :}
-   OPEN, CODE-REGION, DATA-REGION,
+   OPEN,  engine if CODE-REGION, then  DATA-REGION,
    image end MOVE-RUNS,
    engine if records records-end COPY-RECORDS, then
    RAX LINUX-LAYOUT:DATA-VA VA>N IMM,
-   false DATA-INIT,  ALIAS-DELTA,
+   false DATA-INIT,  engine 0= if NO-CODE-REGION, then  ALIAS-DELTA,
    crash rest stub SETTLE,
    engine if TRAMPOLINES, trap rest TRAP, then
    go JMP,
-   crash rest stub STUBS,
+   crash rest stub engine STUBS,
    engine if trap crash BP-HANDLER, then
    go stub ;
 

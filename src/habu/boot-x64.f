@@ -117,6 +117,15 @@ private
    ENGINE-GPR:X64-CP >R64 DBASE-REG DICT-SIZE MEM-OFF ASM-SINK ENC-LEA
    ENGINE-GPR:X64-NDICT >R64 ZERO-REG, ;
 
+\ A stripped program maps no region: r13 = r15 = the text content's end, read
+\ from DATA after DATA-INIT,; r14 = 0; r12 = 0, no alias.
+: NO-CODE-REGION, ( -- )
+   DBASE-REG RBASE-REG RBASE-CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   DBASE-REG RBASE-REG TEXT-SIZE-CELL MEM-OFF ASM-SINK ENC-ADD-RM
+   ENGINE-GPR:X64-CP >R64 DBASE-REG ASM-SINK ENC-MOV-RR
+   ENGINE-GPR:X64-NDICT >R64 ZERO-REG,
+   DELTA-REG ZERO-REG, ;
+
 \ rax = rdi = DATA, the DATA-SIZE reservation at DATA-VA, as
 \ EM-MMAP-DATA-REGION maps it.
 : DATA-REGION, ( -- )
@@ -882,22 +891,25 @@ variable HEX-AT
 \ The signal handlers, the crash handler, its restorer and the signal stub, lie
 \ together after the routines Habu code calls, so GUARDS, tells them by one
 \ band.
-: STUBS, ( label label label -- ) {: crash:label rest:label stub:label :}
+: STUBS, ( label label label bool -- )
+   {: crash:label rest:label stub:label engine:bool :}
    X64CODE:LBL {: last:label :}
    X64CRASH:EMIT-FAULT-RECORD
    STACK-BAD @ >LABEL S\" hb: cannot map guarded VM stack\n" EXIT-STATUS:SYSTEM FAIL,
    OCC-BAD @ >LABEL S\" hb: cannot map definition occurrences\n" EXIT-STATUS:SYSTEM FAIL,
    DATA-BAD @ >LABEL S\" hb: cannot map fixed data region\n" EXIT-STATUS:SYSTEM FAIL,
-   REGION-BAD @ >LABEL
-   S\" hb: cannot map the code region; raise the address-space limit (ulimit -v)\n"
-   EXIT-STATUS:SYSTEM FAIL,
+   engine if
+      REGION-BAD @ >LABEL
+      S\" hb: cannot map the code region; raise the address-space limit (ulimit -v)\n"
+      EXIT-STATUS:SYSTEM FAIL,
+   then
    crash rest last CRASH-HANDLER,
    rest RESTORER,
    stub last SIGNAL-STUB,
    X64CODE:DATA-AFTER, ;
 
 : CLOSE, ( label label label label -- ) {: booted:label crash:label rest:label stub:label :}
-   crash rest stub STUBS,
+   crash rest stub true STUBS,
    booted X64CODE:LBL, ;
 
 public
