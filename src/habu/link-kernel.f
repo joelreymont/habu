@@ -396,10 +396,7 @@ private
 \ The file at the path into KOBJ-VEC, which is empty; false when it is missing.
 : KOBJ-FILL ( str -- bool )
    {: path:str :}
-   path FS:OPEN-SIZED {: file:fd size:n found:bool :}
-   found 0= if false exit then
-   file KOBJ-VEC size FS:READ-SIZED
-   true ;
+   path KOBJ-VEC FS:READ-FILE+ ;
 
 public
 

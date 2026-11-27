@@ -3495,10 +3495,7 @@ EXPORT CHECK:HELD-UNDEFINE
 \ a new file over the path cannot tear the read; false when it is missing.
 : READ-INTO ( str ^VEC:vector<u8> -- bool )
    {: path:str buf:^ :}
-   path FS:OPEN-SIZED {: file:fd size:n found:bool :}
-   found 0= if false exit then
-   buf 0 VEC:RESIZE  file buf size FS:READ-SIZED
-   true ;
+   buf 0 VEC:RESIZE  path buf FS:READ-FILE+ ;
 
 \ READ-INTO with its inputs kept beneath its answer, so a catch around it keeps the stack's shape.
 : READ-KEEPING ( str ^VEC:vector<u8> bool -- str ^VEC:vector<u8> bool )

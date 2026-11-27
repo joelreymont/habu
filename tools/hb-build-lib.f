@@ -267,9 +267,7 @@ TYPED-VARIABLE HBB-SAME-OUT bool
 : HBB-READ ( str ^VEC:vector<u8> -- )
    {: s:str v:^ :}
    v 0 VEC:RESIZE
-   s FS:OPEN-SIZED {: file:fd size:n found:bool :}
-   found 0= if exit then
-   file v size FS:READ-SIZED ;
+   s v FS:READ-FILE+ drop ;
 
 \ True when the built file and the installed one, a regular file and no
 \ symlink, compare equal by the quotation; HBB-BUFS-NEW made the vectors.

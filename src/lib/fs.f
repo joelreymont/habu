@@ -743,6 +743,15 @@ public
    dup 0<> if v old VEC:RESIZE throw then drop
    IO-FD @ close ;
 
+\ The whole regular file at the path appended, true; false, the vector unchanged,
+\ when the path names nothing. A throw keeps COUNT and leaves no descriptor open.
+: READ-FILE+ ( str ^VEC:vector<u8> -- bool )
+   {: path:str v:^ :}
+   path OPEN-SIZED {: file:fd size:n found:bool :}
+   found 0= if false exit then
+   file v size READ-SIZED
+   true ;
+
 \ The open descriptor's file: change time, seconds then nanoseconds, and size.
 : FD-STAMP ( fd -- n n n )
    FD-FSTAT STAT-BUF LIBC-CTIME@  STAT-BUF LIBC-SIZE@ ;
