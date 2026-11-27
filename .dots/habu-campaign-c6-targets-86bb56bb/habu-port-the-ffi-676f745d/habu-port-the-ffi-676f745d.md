@@ -1,9 +1,10 @@
 ---
 title: Bring the x86-64 runtime to parity
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-17T17:32:42.546263+03:00"
+closed-at: "2026-11-27T20:54:56.748225+01:00"
 blocks:
   - habu-marshal-ffi-calls-46dfd999
   - habu-add-linux-family-56c75040

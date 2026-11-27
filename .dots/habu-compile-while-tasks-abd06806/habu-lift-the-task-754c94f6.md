@@ -1,9 +1,10 @@
 ---
 title: Lift the task rejection on x86-64
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-10-30T17:24:59.364026+02:00"
+closed-at: "2026-11-27T20:54:56.336568+01:00"
 ---
 
 Problem: W^X landed for arm64 (679c7755 two views, efc74616 compile while tasks run); the x86-64 engine still rejects compilation while any task is live and has no two views. src/habu/kernel-x64.f:199 TASK-LIVE-GUARD, (on every body that moves engine state) tests TASKS-LIVE-CELL, not the thread's TASK-TCB-CELL as habu1.f B-TASK-GUARD does; src/habu/prof-x64.f:407-408 skips only DICT-WL:RETIRED (-2/-1) and must also skip DICT-WL:RETIRED-NAMESPACE (-3); kernel-x64.f comments name deleted habu1.f words. Until this lands, src/lib/task-test.f, the package-throw program of habu-make-outer-interpret-267c9a3d and test/compiler/native-eval.f are red on the x86-64 host (pulsar). Acceptance: the x86-64 engine maps the region through two views as arm64 does, the guard reads the thread's TASK-TCB-CELL, the span reader skips -3, the stale comments go; those three rows and test/code-window.f rc 0 on pulsar with an engine built from the lane. Files: src/habu/kernel-x64.f, src/habu/prof-x64.f, src/habu/boot-x64.f. Verify: the rows above on joel@pulsar-ua-106. Depends: none (after arm64 end to end, one arch first). Claim: unassigned.

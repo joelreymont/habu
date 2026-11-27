@@ -1,9 +1,10 @@
 ---
 title: Build x86-64 files through the linker
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-11-03T14:09:36.119795+02:00"
+closed-at: "2026-11-27T20:55:08.618149+01:00"
 ---
 
 Problem: x86-64 files do not build through the one linker (src/habu/linker.f; arm64 and Wasm do). Joel 2026-11-03: "we don't have the loader anymore. you need to implement the linker and then switch x86 (then wasm?) over to it". x86-64 gets no observer: its files link through the linker with that machine's code patcher.

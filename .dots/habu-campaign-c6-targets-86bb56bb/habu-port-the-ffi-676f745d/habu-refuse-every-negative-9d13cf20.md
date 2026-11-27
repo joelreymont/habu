@@ -1,9 +1,10 @@
 ---
 title: "Reject every negative wid in x86-64's record writers"
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-11-07T01:29:13.866893+02:00"
+closed-at: "2026-11-27T20:54:56.484249+01:00"
 ---
 
 Problem: src/habu/prims.f's def-open and alias-record comments (:831, :858 after L4 lands) say the writers reject a negative wid. arm64 does: habu2.f REAL-WID, rejects wid < 0 (2 0 CMPI, C-LT). x86-64 does not: kernel-x64.f:4999 REAL-WID, rejects only WL:NAMESPACE and WL:RETIRED, so on x86-64 def-open and alias-record accept any other negative wid. A machine asymmetry (CLAUDE.md: a split to remove). Found by lane F's review of L4 (INTERPRETER:ALIAS-RECORD, PACKAGE-RECORD). Acceptance: one rule on both machines, a negative wid rejected by def-open and alias-record, by the shared layer once x86-64 moves onto the one typed interpreter and linker, not by an x86 patch. Files: src/habu/kernel-x64.f REAL-WID, (or its replacement). Verify: a checked probe calling INTERPRETER:ALIAS-RECORD with wid -5 rejected on x86-64 as on arm64. Depends: x86-64 work resumes only after arm64-to-arm64 works (Joel 2026-10-29). Ownership: unassigned. Claim: unassigned.
