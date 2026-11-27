@@ -813,7 +813,18 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    s" SELECT ?s ?l WHERE { ?s a t:10 OPTIONAL { ?s t:21 ?o } BIND(IF(BOUND(?o), ?o, ?s) AS ?k) OPTIONAL { ?k rdfs:label ?l } }"
    s"  IS NULL OR "
    s" {'head':{'vars':['s','l']},'results':{'bindings':[{'s':{'type':'uri','value':'urn:test:1'},'l':{'type':'literal','value':'Mill'}},{'s':{'type':'uri','value':'urn:test:2'},'l':{'type':'literal','value':'Mill'}}]}}"
-   WITHOUT ;
+   WITHOUT
+   \ A union each of whose branches binds always a variable the left side
+   \ binds always: 1 and 3 meet both branches, 4 the first alone, 5 the
+   \ second alone, 2 neither.
+   s" SELECT ?s ?c ?w ?l WHERE { ?s a ?c FILTER(?c IN (t:10, t:11)) OPTIONAL { { ?s t:30 ?w } UNION { ?c rdfs:label ?l } FILTER(?s != t:2 && (!BOUND(?l) || ?s != t:4)) } }"
+   s" {'head':{'vars':['s','c','w','l']},'results':{'bindings':[{'s':{'type':'uri','value':'urn:test:1'},'c':{'type':'uri','value':'urn:test:10'},'w':{'type':'literal','value':'1200','datatype':'http://www.w3.org/2001/XMLSchema#integer'}},{'s':{'type':'uri','value':'urn:test:1'},'c':{'type':'uri','value':'urn:test:10'},'l':{'type':'literal','value':'Machine'}},{'s':{'type':'uri','value':'urn:test:2'},'c':{'type':'uri','value':'urn:test:10'}},{'s':{'type':'uri','value':'urn:test:3'},'c':{'type':'uri','value':'urn:test:11'},'w':{'type':'literal','value':'12','datatype':'http://www.w3.org/2001/XMLSchema#integer'}},{'s':{'type':'uri','value':'urn:test:3'},'c':{'type':'uri','value':'urn:test:11'},'l':{'type':'literal','value':'Part'}},{'s':{'type':'uri','value':'urn:test:4'},'c':{'type':'uri','value':'urn:test:11'},'w':{'type':'literal','value':'0.25','datatype':'http://www.w3.org/2001/XMLSchema#decimal'}},{'s':{'type':'uri','value':'urn:test:5'},'c':{'type':'uri','value':'urn:test:11'},'l':{'type':'literal','value':'Part'}}]}}"
+   EXPECT
+   \ The same inside an EXISTS, whose left side reads the outer ?s: only 2
+   \ meets no branch.
+   s" SELECT ?s WHERE { ?s a ?c FILTER(?c IN (t:10, t:11)) FILTER EXISTS { ?s a ?k OPTIONAL { { ?k rdfs:label ?w FILTER(?w = 'Machine') } UNION { ?k rdfs:label ?l FILTER(?l = 'Part') } FILTER(?s != t:2) } FILTER(!BOUND(?w) && !BOUND(?l)) } }"
+   s" {'head':{'vars':['s']},'results':{'bindings':[{'s':{'type':'uri','value':'urn:test:2'}}]}}"
+   EXPECT ;
 
 : UNIONS ( -- )
    s" SELECT ?a ?b WHERE { { t:1 t:21 ?a } UNION { t:4 t:22 ?b } }"

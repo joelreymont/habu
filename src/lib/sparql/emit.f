@@ -45,9 +45,18 @@
 \ OPTIONAL's FILTERs, a MINUS is a correlated NOT EXISTS. An OPTIONAL's
 \ group with an OPTIONAL in it, no BIND and no KNOWN binding joins as its
 \ own FROM in parentheses, its WHERE in the ON; any other is a derived
-\ table. A BIND's variable is its expression, written at each read; one
-\ that calls RAND, UUID or STRUUID, or that PostgreSQL would plan as more
-\ than MOST-COPIED bytes, is a column of a derived table of the bindings
+\ table. An OPTIONAL whose group's solutions are a union's, each branch
+\ binding always a variable the bindings so far bind always, joins
+\ branch by branch: the FROM becomes a UNION ALL, under a materialized
+\ CTE of the bindings so far, of each branch joined to it, the FILTERs
+\ in each join, and of its rows meeting no branch, a NOT EXISTS each.
+\ Each join meets the variables both sides bind always by a strict `=`,
+\ which PostgreSQL can hash or merge; a LEFT JOIN's ON meets a variable a
+\ branch leaves unbound by `IS NULL OR`, which it tests row by row,
+\ running the union once per row on the left. A BIND's variable is its
+\ expression, written at each read; one that calls RAND, UUID or STRUUID,
+\ or that PostgreSQL would plan as more than MOST-COPIED bytes, is a
+\ column of a derived table of the bindings
 \ so far. Each of the group's FILTERs whose every variable, an EXISTS's
 \ included, those bindings bind always holds in that table, which no
 \ condition outside it reaches: there it keeps the same rows, and such a
@@ -285,7 +294,9 @@ STRUCTURE item DERIVE addr
    FIELD choices ^VEC:vector<choice>
    FIELD graph str  \ the active graph's term
    FIELD union bool  \ whether UNION? holds of it once pruned
-   FIELD branches ^VEC:vector<relation>  \ a union's, else NULL-PTR
+   \ A union's, an OPTIONAL's when its group's solutions are a union's,
+   \ else NULL-PTR.
+   FIELD branches ^VEC:vector<relation>
    \ An OPTIONAL group's WHERE when the group joins as it is, else NULL-PTR.
    FIELD where ^rel
 ;STRUCTURE
@@ -2358,17 +2369,23 @@ STRUCTURE pruning DERIVE addr
    {: plan out:^ r:^ cols:^ :}
    plan out plan r cols PRESENTED +SELECT ;
 
+\ Appends the branches as the union of columns cols presents them.
+: +UNION-ALL ( ^plan ^rel ^VEC:vector<relation> ^VEC:vector<binding>
+      -- )
+   {: plan out:^ branches:^ cols:^ :}
+   branches VEC:COUNT 0 ?do
+      i 0<> if out s"  UNION ALL " +TEXT then
+      plan out branches i VEC:AT cols +BRANCH
+   loop ;
+
 \ The branches as one UNION ALL derived table, and its columns.
 : UNION-TABLE ( ^plan ^VEC:vector<relation>
       -- ^rel ^VEC:vector<binding> )
    {: plan branches:^ :}
    plan branches COLUMNS {: cols:^ :}
    plan NEW-SQL {: out:^ :}
-   out s" (" +TEXT
-   branches VEC:COUNT 0 ?do
-      i 0<> if out s"  UNION ALL " +TEXT then
-      plan out branches i VEC:AT cols +BRANCH
-   loop out s" )" +TEXT out cols ;
+   out s" (" +TEXT plan out branches cols +UNION-ALL
+   out s" )" +TEXT out cols ;
 
 \ The relation as a derived table, and its columns.
 : SUBSELECT ( ^plan ^relation -- ^rel ^VEC:vector<binding> )
@@ -2862,10 +2879,12 @@ STRUCTURE pruning DERIVE addr
    {: plan scope:^ filter:n where:^ :}
    plan scope plan TREE filter NODE-A@ where +TEST ;
 
-\ The group with its FILTERs on all its bindings.
+\ The group with its FILTERs on all its bindings; a FILTER leaves its
+\ solutions no union's.
 : CLOSED ( ^plan n -- ^relation )
    {: plan group:n :}
    plan group GROUP-SQL {: r:^ filters:^ :}
+   filters VEC:COUNT 0<> if NULL-PTR r RELATION-BRANCHES ! then
    filters VEC:COUNT 0 ?do
       plan r RELATION-BINDINGS @ filters i VEC:AT @ r RELATION-WHERE @
          +FILTER
@@ -3001,14 +3020,16 @@ STRUCTURE pruning DERIVE addr
    r RELATION-FROM @ it ITEM-TABLE ! r RELATION-WHERE @ it ITEM-WHERE !
    r RELATION-BINDINGS @ it ITEM-COLUMNS ! it ;
 
-\ OPTIONAL { P }: P before the FILTERs it has not applied, which join the LEFT JOIN's ON.
+\ OPTIONAL { P }: P before the FILTERs it has not applied, which the
+\ LeftJoin holds, and the branches of P's solutions when they are a union's.
 : OPTIONAL-ITEM ( ^plan ^VEC:vector<item> n -- )
    {: plan items:^ node:n :}
    plan plan TREE node NODE-A@ GROUP-SQL {: r:^ filters:^ :}
    r RELATION-EMPTY @ if exit then
    items r AS-IS? if plan items r AS-IS-ITEM
    else plan items r N-OPTIONAL SIDE-ITEM then
-   ITEM-FILTERS filters swap ! ;
+   {: it:^ :} filters it ITEM-FILTERS !
+   r RELATION-BRANCHES @ it ITEM-BRANCHES ! ;
 
 : MINUS-ITEM ( ^plan ^VEC:vector<item> n -- )
    {: plan items:^ node:n :}
@@ -3290,10 +3311,104 @@ STRUCTURE pruning DERIVE addr
    where EMPTY? if exit then
    on s"  AND " +SEP on s" (" +SQL on where VIEW +REL on s" )" +SQL ;
 
+\ Appends to where the OPTIONAL's FILTERs on the scope's bindings.
+: +OPTIONAL-FILTERS ( ^plan ^VEC:vector<binding> ^item ^rel -- )
+   {: plan scope:^ it:^ where:^ :}
+   it ITEM-FILTERS @ {: filters:^ :}
+   filters VEC:COUNT 0 ?do
+      plan scope filters i VEC:AT @ where +FILTER
+   loop ;
+
+\ Whether the scope binds always a variable branch b binds always.
+: ANCHORED? ( ^VEC:vector<binding> ^relation -- bool )
+   {: scope:^ b:^ :}
+   b RELATION-BINDINGS @ {: bs:^ :}
+   bs VEC:COUNT 0 ?do
+      bs i VEC:AT {: o:^ :}
+      scope o BINDING-VAR @ FIND-VAR {: k:n :}
+      o BINDING-ALWAYS @ k -1 > and if
+         scope k VEC:AT BINDING-ALWAYS @ if true unloop exit then
+      then
+   loop false ;
+
+\ Whether the OPTIONAL's group is a union whose every branch is
+\ ANCHORED? in the scope.
+: BY-BRANCH? ( ^item ^VEC:vector<binding> -- bool )
+   {: it:^ scope:^ :}
+   it ITEM-BRANCHES @ {: bs:^ :}
+   bs LEN 0= if false exit then
+   bs VEC:COUNT 0 ?do
+      scope bs i VEC:AT ANCHORED? 0= if false unloop exit then
+   loop true ;
+
+\ Appends branch b's FROM to from, and to where its WHERE, its meeting
+\ with the scope and the OPTIONAL's FILTERs; the scope takes b's bindings.
+: +MET-BRANCH ( ^plan ^item ^relation ^VEC:vector<binding> ^rel ^rel
+      -- )
+   {: plan it:^ b:^ scope:^ from:^ where:^ :}
+   b +NULL-TESTS
+   b RELATION-FROM @ {: bf:^ :}
+   bf EMPTY? 0= if
+      from s"  CROSS JOIN " +SEP from bf VIEW +REL
+   then
+   b RELATION-WHERE @ {: bw:^ :}
+   bw EMPTY? 0= if where bw VIEW +REL then
+   plan scope b RELATION-BINDINGS @ where false MEET-ALL
+   plan scope it where +OPTIONAL-FILTERS ;
+
+\ Branch b joined to the outer rows, CTE name of columns cols.
+: JOINED-BRANCH ( ^plan ^item ^relation str ^VEC:vector<binding>
+      -- ^relation )
+   {: plan it:^ b:^ name:str cols:^ :}
+   plan NEW-SQL {: from:^ :} plan NEW-SQL {: where:^ :}
+   plan plan TEXTS name TEXT-REL cols from +TABLE {: scope:^ :}
+   plan it b scope from where +MET-BRANCH
+   plan from where scope RELATION-OF ;
+
+\ The outer rows, CTE name of columns cols, that meet no branch: a NOT
+\ EXISTS of each branch's rows met with them.
+: UNMET ( ^plan ^item str ^VEC:vector<binding> -- ^relation )
+   {: plan it:^ name:str cols:^ :}
+   plan NEW-SQL {: from:^ :} plan NEW-SQL {: where:^ :}
+   plan plan TEXTS name TEXT-REL cols from +TABLE {: scope:^ :}
+   it ITEM-BRANCHES @ {: bs:^ :}
+   bs VEC:COUNT 0 ?do
+      plan plan NEW-SQL plan NEW-SQL plan scope COPY-SCOPE RELATION-OF
+      {: m:^ :}
+      plan it bs i VEC:AT m RELATION-BINDINGS @ m RELATION-FROM @
+         m RELATION-WHERE @ +MET-BRANCH
+      where s"  AND " +SEP where s" NOT EXISTS (SELECT 1" +SQL
+      where m +FROM-WHERE where s" )" +SQL
+   loop plan from where scope RELATION-OF ;
+
+\ LeftJoin of a union, branch by branch: r becomes `(WITH c AS
+\ MATERIALIZED (r) <each branch joined to c> UNION ALL <c's UNMET rows>)`.
+: BY-BRANCH ( ^plan ^item ^relation -- )
+   {: plan it:^ r:^ :}
+   plan r SUBSELECT {: t:^ cols:^ :}
+   plan NEXT-ALIAS {: name:str :}
+   plan AL 0 [type] relation VEC:NEW {: arms:^ :}
+   it ITEM-BRANCHES @ {: bs:^ :}
+   bs VEC:COUNT 0 ?do
+      plan arms plan it bs i VEC:AT name cols JOINED-BRANCH +RELATION
+   loop
+   plan arms plan it name cols UNMET +RELATION
+   plan arms COLUMNS {: ucols:^ :}
+   plan NEW-SQL {: u:^ :}
+   plan AL name true t NEW-CTE u REL-WITH !
+   plan u arms ucols +UNION-ALL
+   plan NEW-SQL {: out:^ :}
+   out s" (" +TEXT out u +REL out s" )" +TEXT
+   plan NEW-SQL {: from:^ :}
+   plan out ucols from +TABLE {: bound:^ :}
+   from plan NEW-SQL bound r INIT-RELATION ;
+
 \ LeftJoin: P LEFT JOINs the FROM, ON P meeting the scope and P's
-\ FILTERs on the joined bindings. An empty FROM is one empty row.
+\ FILTERs on the joined bindings, unless it joins BY-BRANCH. An empty
+\ FROM is one empty row.
 : OPTIONAL-STEP ( ^plan ^item ^relation -- )
    {: plan it:^ r:^ :}
+   it r RELATION-BINDINGS @ BY-BRANCH? if plan it r BY-BRANCH exit then
    r RELATION-FROM @ {: from:^ :}
    from EMPTY? if
       plan plan TEXTS s" (SELECT)" TEXT-REL from +AS drop
@@ -3301,11 +3416,7 @@ STRUCTURE pruning DERIVE addr
    from s"  LEFT JOIN " +TEXT true r RELATION-OPTIONAL !
    plan NEW-SQL {: on:^ :}
    plan it r on +OPTIONAL-TABLE
-   r RELATION-BINDINGS @ {: scope:^ :}
-   it ITEM-FILTERS @ {: filters:^ :}
-   filters VEC:COUNT 0 ?do
-      plan scope filters i VEC:AT @ on +FILTER
-   loop
+   plan r RELATION-BINDINGS @ it on +OPTIONAL-FILTERS
    from s"  ON " +TEXT
    on EMPTY? if from s" true" +TEXT exit then
    from on +REL ;
@@ -4423,12 +4534,13 @@ STRUCTURE walk DERIVE addr
    loop
    plan items rot items VEC:COUNT r RUN ;
 
-\ r's solutions are a union's when r folded that one item alone and no
-\ FILTER.
-: KEEP-BRANCHES ( ^VEC:vector<item> n ^relation -- )
-   {: items:^ filters:n r:^ :}
-   items VEC:COUNT 1 <> filters 0<> or if exit then
-   items 0 VEC:AT ITEM-BRANCHES @ r RELATION-BRANCHES ! ;
+\ r's solutions are a union's when r folded that one joined item alone.
+: KEEP-BRANCHES ( ^VEC:vector<item> ^relation -- )
+   {: items:^ r:^ :}
+   items VEC:COUNT 1 <> if exit then
+   items 0 VEC:AT {: it:^ :}
+   it ITEM-MODE @ 0<> if exit then
+   it ITEM-BRANCHES @ r RELATION-BRANCHES ! ;
 
 \ The group's items folded in order, and its FILTERs the fold has not applied.
 : GROUP ( ^plan n -- ^relation ^VEC:vector<n> )
@@ -4441,8 +4553,7 @@ STRUCTURE walk DERIVE addr
    plan NEW-RELATION {: r:^ :}
    items DEAD? r RELATION-EMPTY !
    r RELATION-EMPTY @ 0= if
-      filters VEC:COUNT {: k:n :}
-      plan items r filters FOLD-ALL items k r KEEP-BRANCHES
+      plan items r filters FOLD-ALL items r KEEP-BRANCHES
    then r filters ;
 
 \ [NOT] EXISTS (SELECT 1 ...): the call's group with the scope as its
