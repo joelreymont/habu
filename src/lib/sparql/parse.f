@@ -17,7 +17,7 @@ private
       F-DISTINCT state query NODE NODE-FLAGS !
    else state s" REDUCED" ACCEPT$ drop then
    state s" *" IS$ if
-      state SYNTAX-CURSOR @ state query QUERY-INFO NODE-D !
+      state SYNTAX-CURSOR @ state query QUERY-INFO NODE-VALUE !
       state NEXT-TOKEN
       F-STAR state query NODE NODE-FLAGS +! exit
    then

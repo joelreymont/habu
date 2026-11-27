@@ -1011,6 +1011,62 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    s" {'head':{'vars':['x']},'results':{'bindings':[{'x':{'type':'literal','value':'sparql.rand('}}]}}"
    SPELLED-ALONE ;
 
+\ ` BIND(CONCAT(STR(?w), ...) AS ?x)`, long enough to be evaluated.
+: +LONG-BIND ( ^VEC:vector<u8> -- )
+   {: q:^ :}
+   s"  BIND(CONCAT(STR(?w)" q VEC:APPEND
+   250 1 ?do s" , STR(?w)" q VEC:APPEND loop
+   s" ) AS ?x)" q VEC:APPEND ;
+
+\ The offset of t in the statement at or after from, else its length.
+: OFFSET ( str str n -- n )
+   {: sql:str t:str from:n :}
+   sql t from STR:FIND-SUB-FROM MATCH option
+      none OF sql STR:LEN ENDOF
+      some OF IDX>N ENDOF
+   ;MATCH ;
+
+\ `?s t:30 ?w`, a long BIND and the filters: the statement holds the
+\ test of `?w < 100` inside the BIND's CTE alone; the document, and
+\ where the CTE ends.
+: FENCED ( str ^ARENA:arena -- ^VEC:vector<u8> ^VEC:vector<u8> n )
+   {: filters:str a:^ :}
+   a TEXT-VEC {: q:^ :}
+   s" SELECT ?s WHERE { ?s t:30 ?w" q VEC:APPEND
+   q +LONG-BIND filters q VEC:APPEND s"  }" q VEC:APPEND
+   q $ s" 1048576" a ANSWER {: sql:^ doc:^ :}
+   sql $ s"  SELECT * FROM c)" 0 OFFSET {: end:n :}
+   s" sparql.relation('<'," {: test:str :}
+   sql $ test 0 OFFSET end < TTRUE
+   sql $ test end OFFSET sql $ STR:LEN T=
+   sql doc end ;
+
+: FENCES-IN ( ^ARENA:arena -- )
+   {: a:^ :}
+   s"  FILTER(?w < 100)" a FENCED drop {: doc:^ :} drop
+   doc $ s" {'head':{'vars':['s']},'results':{'bindings':[{'s':{'type':'uri','value':'urn:test:3'}},{'s':{'type':'uri','value':'urn:test:4'}}]}}"
+   a UNQUOTE $ a false SAME? TTRUE
+   s"  FILTER(?w < 100) FILTER(STRSTARTS(?x, '1'))" a FENCED
+   {: sql:^ doc:^ end:n :}
+   sql $ s" sparql.strstarts(" end OFFSET sql $ STR:LEN < TTRUE
+   doc $ s" {'head':{'vars':['s']},'results':{'bindings':[{'s':{'type':'uri','value':'urn:test:3'}}]}}"
+   a UNQUOTE $ a false SAME? TTRUE ;
+
+\ An EXISTS of ?c, bound after the BIND, holds after the BIND's CTE:
+\ inside it, ?c is free and 4 passes too.
+: FENCES-EXISTS ( ^ARENA:arena -- )
+   {: a:^ :}
+   s"  FILTER(?w < 100) ?s t:20 ?c FILTER EXISTS { ?c t:21 t:2 }"
+   a FENCED {: sql:^ doc:^ end:n :}
+   sql $ s" EXISTS (SELECT 1" 0 OFFSET {: at:n :}
+   end at < TTRUE at sql $ STR:LEN < TTRUE
+   doc $ s" {'head':{'vars':['s']},'results':{'bindings':[{'s':{'type':'uri','value':'urn:test:3'}}]}}"
+   a UNQUOTE $ a false SAME? TTRUE ;
+
+\ A FILTER of variables bound before an evaluated BIND holds inside the
+\ BIND's CTE, once; one that reads the BIND's variable holds after it.
+: FENCES ( -- ) [: dup FENCES-IN FENCES-EXISTS ;] ARENA:WITH ;
+
 \ Inline VALUES joins a native column, UNDEF matching any term; no rows is
 \ no solution; a trailing VALUES joins the groups.
 : DATA-BLOCKS ( -- )
@@ -1624,7 +1680,7 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    ONLY-COLUMNS
    TYPED-FILTERS BRANCH-GROUPING ORDERS DISTINCTS STAR-COUNTS
    SUBQUERIES
-   BINDS CHAINS UUIDS VOLATILE-BINDS DATA-BLOCKS PATHS ;
+   BINDS CHAINS UUIDS VOLATILE-BINDS FENCES DATA-BLOCKS PATHS ;
 
 T-RESET
 s" sparql-test" ' SESSION MAIN

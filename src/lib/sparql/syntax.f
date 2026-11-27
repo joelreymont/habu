@@ -57,6 +57,8 @@ private
 4 constant F-STAR
 32 constant F-DESC
 
+\ A term (IRI, literal, variable, blank node, UNDEF) has no parts. Any other
+\ node's a, b, c and d hold node indexes or 0, and value its other number.
 STRUCTURE node DERIVE addr
    FIELD kind n
    FIELD flags n
@@ -282,7 +284,7 @@ STRUCTURE syntax DERIVE addr
 : QUERY-VALUES@ ( ^syntax n -- n ) QUERY-INFO NODE-A @ ;
 : QUERY-AGGREGATES ( ^syntax n -- n ) QUERY-INFO NODE-B @ ;
 : QUERY-NAMES ( ^syntax n -- n ) QUERY-INFO NODE-C @ ;
-: QUERY-STAR ( ^syntax n -- n ) QUERY-INFO NODE-D @ ;
+: QUERY-STAR ( ^syntax n -- n ) QUERY-INFO NODE-VALUE @ ;
 
 : TEXT! ( ^syntax n str -- )
    {: state index:n text:str :}

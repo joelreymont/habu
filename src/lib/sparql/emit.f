@@ -48,7 +48,10 @@
 \ table. A BIND's variable is its expression, written at each read; one
 \ that calls RAND, UUID or STRUUID, or that PostgreSQL would plan as more
 \ than MOST-COPIED bytes, is a column of a derived table of the bindings
-\ so far. A VALUES is a joined
+\ so far. Each of the group's FILTERs whose every variable, an EXISTS's
+\ included, those bindings bind always holds in that table, which no
+\ condition outside it reaches: there it keeps the same rows, and such a
+\ variable keeps its value through the items after. A VALUES is a joined
 \ derived table of its data block's terms. The joined items up to the next
 \ OPTIONAL, MINUS or BIND fold in connected order, next the first written
 \ of those that share a variable with the bindings so far and have a given
@@ -80,7 +83,7 @@
 \ NULL is tested `IS NOT NULL` where its relation's WHERE is written,
 \ unless a strict `=` of that WHERE already reads the column, since
 \ PostgreSQL would count the column's null fraction twice. The group's
-\ FILTERs read the folded bindings. An
+\ other FILTERs read the folded bindings. An
 \ expression has two SQL forms, its term, JSONB, and its test, an SQL
 \ boolean; a FILTER and HAVING hold its test, all else its term. A
 \ comparison (`=`, `!=`, `<`, `<=`, `>`, `>=`, IN or NOT IN of a list)
@@ -581,14 +584,21 @@ defer EXISTS-SQL ( ^plan n -- )
    {: v:^ name:str frame:n :}
    v NAME-FRAME @ frame = v NAME-TEXT @ name STR:= and ;
 
-\ The variable of the name in the frame.
-: VAR-ID ( ^plan str n -- n )
+\ The variable of the name in the frame, or -1.
+: FIND-VAR-ID ( ^plan str n -- n )
    {: plan name:str frame:n :}
    plan PLAN-VARIABLES @ {: vars:^ :}
    vars VEC:COUNT 0 ?do
       vars i VEC:AT name frame NAMED? if i unloop exit then
-   loop
+   loop -1 ;
+
+\ The variable of the name in the frame, added if new.
+: VAR-ID ( ^plan str n -- n )
+   {: plan name:str frame:n :}
+   plan name frame FIND-VAR-ID {: k:n :}
+   k 0 >= if k exit then
    plan +READ
+   plan PLAN-VARIABLES @ {: vars:^ :}
    vars VEC:PUSH {: v:^ :}
    name v NAME-TEXT ! frame v NAME-FRAME !
    vars VEC:COUNT 1- ;
@@ -2878,7 +2888,7 @@ STRUCTURE pruning DERIVE addr
    r RELATION-FROM @ it ITEM-TABLE ! r RELATION-WHERE @ it ITEM-WHERE !
    r RELATION-BINDINGS @ it ITEM-COLUMNS ! it ;
 
-\ OPTIONAL { P }: P before its FILTERs, which join the LEFT JOIN's ON.
+\ OPTIONAL { P }: P before the FILTERs it has not applied, which join the LEFT JOIN's ON.
 : OPTIONAL-ITEM ( ^plan ^VEC:vector<item> n -- )
    {: plan items:^ node:n :}
    plan plan TREE node NODE-A@ GROUP-SQL {: r:^ filters:^ :}
@@ -3228,7 +3238,10 @@ STRUCTURE pruning DERIVE addr
 : BOUND? ( ^plan ^relation n -- bool )
    {: plan r:^ node:n :}
    plan TREE node VARIABLE? 0= if false exit then
-   r RELATION-BINDINGS @ plan node VAR FIND-VAR {: k:n :}
+   plan plan node VAR-NAME plan PLAN-FRAME @ FIND-VAR-ID
+   {: var:n :}
+   var 0< if false exit then
+   r RELATION-BINDINGS @ var FIND-VAR {: k:n :}
    k 0< if false exit then
    r RELATION-BINDINGS @ k VEC:AT BINDING-ALWAYS @ ;
 
@@ -3260,20 +3273,18 @@ STRUCTURE pruning DERIVE addr
    v s" (" +SQL v x +REL v s" )" +SQL
    r RELATION-BINDINGS @ var GENERIC v s" " BIND ;
 
-\ The children of node n that may hold a call: two walked on their own
-\ and the one the walk goes on to, 0 for none. A list or a chain goes
-\ on along its long side.
-: CHILDREN ( ^syntax n -- n n n )
+\ Node n's children, 0 for none: three walked on their own and the one the
+\ walk goes on to, a list's tail, else child a, a chain's long side. A term
+\ has no parts.
+: NODE-PARTS ( ^syntax n -- n n n n )
    {: state node:n :}
    state node NODE-K {: kind:n :}
+   kind N-IRI >= kind N-UNDEF <= and if 0 0 0 0 exit then
    state node NODE-A@ state node NODE-B@ {: a:n b:n :}
-   kind N-LIST = if a 0 b exit then
-   kind N-BINARY = kind N-UNION = or if b 0 a exit then
-   kind N-CALL = if state node NODE-C@ 0 a exit then
-   kind N-SELECT = if a state node NODE-D@ b exit then
-   kind N-GRAPH = if 0 0 b exit then
-   kind N-TRIPLE = kind N-VALUES = or if 0 0 0 exit then
-   0 0 a ;
+   state node NODE-C@ state node NODE-D@ {: c:n d:n :}
+   kind N-LIST = if a c d b exit then
+   kind N-SELECT = if b state node QUERY-VALUES@ d a exit then
+   b c d a ;
 
 \ Whether node n or a node below it, an EXISTS's group's included, calls
 \ RAND, UUID or STRUUID, which give a new value at each call.
@@ -3284,8 +3295,9 @@ STRUCTURE pruning DERIVE addr
       state node NODE-K N-CALL = if
          state node s" RAND UUID STRUUID" CALL-IN? if true exit then
       then
-      state node CHILDREN {: one:n two:n next:n :}
-      state one RECURSE state two RECURSE or if true exit then
+      state node NODE-PARTS {: one:n two:n three:n next:n :}
+      state one RECURSE state two RECURSE or
+      state three RECURSE or if true exit then
       next
    repeat drop false ;
 
@@ -3303,26 +3315,56 @@ STRUCTURE pruning DERIVE addr
    bs VEC:COUNT 0 ?do 0 bs i VEC:AT BINDING-SQL @ REL-COPIES ! loop
    from plan NEW-SQL bs r INIT-RELATION ;
 
-\ Binds ?x of `(e AS ?x)` or BIND(e AS ?x) in r.
-: +ALIAS ( ^plan ^relation n -- )
-   {: plan r:^ e:n :}
+\ Whether each variable at or below node n is one r binds always.
+: ALL-BOUND? ( ^plan ^relation n -- bool )
+   {: plan r:^ top:n :}
+   plan TREE {: state :}
+   top begin dup 0<> while
+      {: node:n :}
+      state node VARIABLE? if
+         plan r node BOUND? 0= if false exit then
+      then
+      state node NODE-PARTS {: one:n two:n three:n next:n :}
+      plan r one RECURSE 0= if false exit then
+      plan r two RECURSE 0= if false exit then
+      plan r three RECURSE 0= if false exit then
+      next
+   repeat drop true ;
+
+\ Applies to r's WHERE each of the filters whose variables r binds
+\ always, and keeps the others in the list.
+: +EARLY-FILTERS ( ^plan ^relation ^VEC:vector<n> -- )
+   {: plan r:^ filters:^ :}
+   0 filters VEC:COUNT 0 ?do
+      filters i VEC:AT @ {: f:n :}
+      plan r plan TREE f NODE-A@ ALL-BOUND? if
+         plan r RELATION-BINDINGS @ f r RELATION-WHERE @ +FILTER
+      else f over filters swap VEC:AT ! 1+ then
+   loop filters swap VEC:RESIZE ;
+
+\ Binds ?x of `(e AS ?x)` or BIND(e AS ?x) in r, applying the group's
+\ filters it can before an evaluated one.
+: +ALIAS ( ^plan ^relation n ^VEC:vector<n> -- )
+   {: plan r:^ e:n filters:^ :}
    plan TREE {: state :}
    plan state e NODE-B@ VAR {: var:n :}
    state e NODE-A@ {: value:n :}
    plan r value EXPRESSION-SQL {: x:^ :}
-   state value VOLATILE? x SQL-LEN x COPIES + MOST-COPIED > or
-   if plan r var x +EVALUATED else plan r var x +COPIED then
+   state value VOLATILE? x SQL-LEN x COPIES + MOST-COPIED > or if
+      plan r filters +EARLY-FILTERS plan r var x +EVALUATED
+   else plan r var x +COPIED then
    r RELATION-BINDINGS @ LAST {: b:^ :}
    plan r value SURE? b BINDING-ALWAYS !
    plan b r RELATION-WHERE @ +OUTER ;
 
-: FOLD ( ^plan ^item ^relation -- )
-   {: plan it:^ r:^ :}
+: FOLD ( ^plan ^item ^relation ^VEC:vector<n> -- )
+   {: plan it:^ r:^ filters:^ :}
    it ITEM-MODE @ {: mode:n :}
    mode N-OPTIONAL = if plan it r OPTIONAL-STEP exit then
    mode N-MINUS = if plan it r MINUS-STEP exit then
    mode N-BIND = if
-      plan r it ITEM-NODE @ +ALIAS true r RELATION-BIND ! exit
+      plan r it ITEM-NODE @ filters +ALIAS
+      true r RELATION-BIND ! exit
    then
    plan it r JOIN-STEP ;
 
@@ -4160,7 +4202,7 @@ STRUCTURE walk DERIVE addr
    plan items from to r CONNECT
    to from ?do
       items i VEC:AT {: it:^ :}
-      it DRIVER? if plan it r FOLD then
+      it DRIVER? if plan it r JOIN-STEP then
    loop
    plan items from to r LATE ;
 
@@ -4168,26 +4210,27 @@ STRUCTURE walk DERIVE addr
 \ its other joined items: joins commute, and a union's keys read those
 \ other items; a left join, a minus and an Extend read the solutions so
 \ far.
-: FOLD-ALL ( ^plan ^VEC:vector<item> ^relation -- )
-   {: plan items:^ r:^ :}
+: FOLD-ALL ( ^plan ^VEC:vector<item> ^relation ^VEC:vector<n>
+      -- )
+   {: plan items:^ r:^ filters:^ :}
    0 items VEC:COUNT 0 ?do
       items i VEC:AT {: it:^ :}
       plan it UNION? it ITEM-UNION !
       it ITEM-MODE @ {: mode:n :}
       mode 0<> mode N-PATH <> and if
-         plan items rot i r RUN plan it r FOLD i 1+
+         plan items rot i r RUN plan it r filters FOLD i 1+
       then
    loop
    plan items rot items VEC:COUNT r RUN ;
 
 \ r's solutions are a union's when r folded that one item alone and no
 \ FILTER.
-: KEEP-BRANCHES ( ^VEC:vector<item> ^VEC:vector<n> ^relation -- )
-   {: items:^ filters:^ r:^ :}
-   items VEC:COUNT 1 <> filters VEC:COUNT 0<> or if exit then
+: KEEP-BRANCHES ( ^VEC:vector<item> n ^relation -- )
+   {: items:^ filters:n r:^ :}
+   items VEC:COUNT 1 <> filters 0<> or if exit then
    items 0 VEC:AT ITEM-BRANCHES @ r RELATION-BRANCHES ! ;
 
-\ The group's items folded in order, and its FILTERs.
+\ The group's items folded in order, and its FILTERs the fold has not applied.
 : GROUP ( ^plan n -- ^relation ^VEC:vector<n> )
    {: plan group:n :}
    plan AL 0 [type] item VEC:NEW {: items:^ :}
@@ -4198,7 +4241,8 @@ STRUCTURE walk DERIVE addr
    plan NEW-RELATION {: r:^ :}
    items DEAD? r RELATION-EMPTY !
    r RELATION-EMPTY @ 0= if
-      plan items r FOLD-ALL items filters r KEEP-BRANCHES
+      filters VEC:COUNT {: k:n :}
+      plan items r filters FOLD-ALL items k r KEEP-BRANCHES
    then r filters ;
 
 \ [NOT] EXISTS (SELECT 1 ...): the call's group with the scope as its
@@ -4764,9 +4808,10 @@ STRUCTURE walk DERIVE addr
 : EXTEND ( ^plan n ^relation -- )
    {: plan query:n r:^ :}
    plan TREE {: state :}
+   plan AL 0 [type] n VEC:NEW {: filters:^ :}
    state query NODE-A@ begin dup 0<> while
       {: list:n :} state list NODE-A@ {: e:n :}
-      state e NODE-K N-ALIAS = if plan r e +ALIAS then
+      state e NODE-K N-ALIAS = if plan r e filters +ALIAS then
       state list NODE-B@
    repeat drop ;
 
