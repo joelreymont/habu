@@ -184,7 +184,8 @@
 \ number the solutions, and the number orders the slice, the running byte
 \ total and the document. The projection is one derived table, which the
 \ document or a subquery reads.
-\ STORAGE CLASS. CALLER-OWNED: everything lives in the syntax's arena.
+\ STORAGE CLASS. CALLER-OWNED: everything lives in the syntax's arena, a
+\ step's scratch in its work arena.
 
 require src/lib/sparql/parse.f
 require src/lib/sparql/store.f
@@ -394,6 +395,12 @@ defer EXISTS-SQL ( ^plan n -- )
 : TREE ( ^plan -- ^syntax ) PLAN-SYNTAX @ ;
 
 : AL ( ^plan -- ^ALLOC:allocator ) TREE SYNTAX-ARENA @ ARENA:ALLOCATOR ;
+
+: WORK-ARENA ( ^plan -- ^ARENA:arena ) TREE SYNTAX-WORK @ ;
+
+\ A record made here is read only until the word that asked for it
+\ returns; that word, or one around it, cuts the work arena back.
+: WORK-AL ( ^plan -- ^ALLOC:allocator ) WORK-ARENA ARENA:ALLOCATOR ;
 
 : TEXTS ( ^plan -- ^texts ) PLAN-TEXTS @ ;
 
@@ -680,10 +687,13 @@ defer EXISTS-SQL ( ^plan n -- )
    dup NULL-PTR = if drop 0 exit then VEC:COUNT ;
 
 \ No bindings, with room for n.
-: NEW-BINDINGS ( ^plan n -- ^VEC:vector<binding> )
-   {: plan k:n :}
-   plan AL 0 [type] binding VEC:NEW {: list:^ :}
+: BINDINGS-IN ( ^ALLOC:allocator n -- ^VEC:vector<binding> )
+   {: al:^ k:n :}
+   al 0 [type] binding VEC:NEW {: list:^ :}
    list k VEC:RESERVE list ;
+
+: NEW-BINDINGS ( ^plan n -- ^VEC:vector<binding> )
+   {: plan k:n :} plan AL k BINDINGS-IN ;
 
 \ r becomes the FROM, the WHERE and the bindings, with no rows, no
 \ branches, no OPTIONAL and no BIND; its emptiness stays.
@@ -1321,10 +1331,16 @@ defer EXISTS-SQL ( ^plan n -- )
 \ An index list is NULL-PTR until its first push, which makes it.
 : INDEXES ( -- ^VEC:vector<n> ) NULL-PTR ;
 
-: +INDEX ( ^plan ^VEC:vector<n> n -- ^VEC:vector<n> )
-   {: plan list:^ k:n :}
-   list NULL-PTR = if plan AL 0 [type] n VEC:NEW else list then
+: +INDEX-IN ( ^ALLOC:allocator ^VEC:vector<n> n -- ^VEC:vector<n> )
+   {: al:^ list:^ k:n :}
+   list NULL-PTR = if al 0 [type] n VEC:NEW else list then
    {: out:^ :} k out VEC:PUSH ! out ;
+
+: +INDEX ( ^plan ^VEC:vector<n> n -- ^VEC:vector<n> )
+   {: plan list:^ k:n :} plan AL list k +INDEX-IN ;
+
+: +WORK-INDEX ( ^plan ^VEC:vector<n> n -- ^VEC:vector<n> )
+   {: plan list:^ k:n :} plan WORK-AL list k +INDEX-IN ;
 
 : INDEXED? ( ^VEC:vector<n> n -- bool )
    {: list:^ k:n :}
@@ -1337,6 +1353,11 @@ defer EXISTS-SQL ( ^plan n -- )
    {: plan list:^ k:n :}
    list k INDEXED? if list exit then
    plan list k +INDEX ;
+
+: +WORK-ONCE ( ^plan ^VEC:vector<n> n -- ^VEC:vector<n> )
+   {: plan list:^ k:n :}
+   list k INDEXED? if list exit then
+   plan list k +WORK-INDEX ;
 
 \ A shape and term as KINDS-COMPATIBLE? tells them apart; answers holds, by
 \ a class up to it, whether the two are compatible: 0 unasked, 1 no, 2 yes.
@@ -1575,17 +1596,18 @@ STRUCTURE pruning DERIVE addr
 \ The description source the choice's record was read from.
 : ORIGIN ( ^plan ^choice -- n ) CHOICE-SOURCE @ SOURCE@ SOURCE-ORIGIN @ ;
 
-\ The description sources of the item's live choices, each once.
+\ The description sources of the item's live choices, each once, in
+\ the work arena.
 : ORIGINS ( ^plan ^item -- ^VEC:vector<n> )
    {: plan it:^ :}
    it ITEM-CHOICES @ {: cs:^ :}
    INDEXES cs VEC:COUNT 0 ?do
       cs i VEC:AT {: c:^ :}
-      c CHOICE-ALIVE @ if plan swap plan c ORIGIN +ONCE then
+      c CHOICE-ALIVE @ if plan swap plan c ORIGIN +WORK-ONCE then
    loop ;
 
 \ The records of the item's live choices read from description source
-\ origin.
+\ origin, in the work arena.
 : LIVE-OF ( ^plan ^item n -- ^VEC:vector<n> )
    {: plan it:^ origin:n :}
    it ITEM-CHOICES @ {: cs:^ :}
@@ -1593,7 +1615,7 @@ STRUCTURE pruning DERIVE addr
       cs i VEC:AT {: c:^ :}
       c CHOICE-ALIVE @ if
          plan c ORIGIN origin = if
-            plan swap c CHOICE-SOURCE @ +INDEX
+            plan swap c CHOICE-SOURCE @ +WORK-INDEX
          then
       then
    loop ;
@@ -1722,13 +1744,14 @@ STRUCTURE pruning DERIVE addr
       then
    loop false ;
 
-\ Of the records, the first of each different slot k.
+\ Of the records, the first of each different slot k, in the work arena.
 : DISTINCT-AT ( ^plan ^VEC:vector<n> n -- ^VEC:vector<n> )
    {: plan recs:^ k:n :}
    INDEXES recs LEN 0 ?do
       recs i VEC:AT @ {: r:n :}
       {: out:^ :}
-      plan out r k SLOT-LISTED? if out else plan out r +INDEX then
+      plan out r k SLOT-LISTED? if out
+      else plan out r +WORK-INDEX then
    loop ;
 
 \ The form of the records' columns at slot k: their one shape, the root
@@ -1778,8 +1801,15 @@ STRUCTURE pruning DERIVE addr
       plan node sl alias where +COLUMN-COND
    loop where s" )" +SQL ;
 
+\ The list copied into the syntax's arena.
+: KEEP-LIST ( ^plan ^VEC:vector<n> -- ^VEC:vector<n> )
+   {: plan list:^ :}
+   plan AL list LEN [type] n VEC:NEW {: out:^ :}
+   list LEN 0 ?do list i VEC:AT @ out i VEC:AT ! loop out ;
+
 \ Slot k over several columns: a variable binds their COALESCE, and one
-\ of them is not null or holds the constant.
+\ of them is not null or holds the constant. A spread keeps its own copy
+\ of recs, which may be in the work arena.
 : +COLUMNS ( ^plan n ^VEC:vector<n> n str ^VEC:vector<binding>
       ^rel -- )
    {: plan node:n recs:^ k:n alias:str occs:^ where:^ :}
@@ -1787,7 +1817,8 @@ STRUCTURE pruning DERIVE addr
       plan recs k alias COALESCE-COLUMNS {: form:n sql:^ :}
       NULL-PTR form 0< if
          drop plan AL [type] spread ALLOC:NEW {: sp:^ :}
-         recs sp SPREAD-RECS ! k sp SPREAD-SLOT !
+         plan recs KEEP-LIST sp SPREAD-RECS !
+         k sp SPREAD-SLOT !
          alias sp SPREAD-ALIAS ! sp
       then {: sp:^ :}
       plan occs plan node VAR form sql s" " sp false where OCCUR
@@ -1837,7 +1868,10 @@ STRUCTURE pruning DERIVE addr
 \ Whether the records read one subject slot, a unique column.
 : UNIQUE-SUBJECT? ( ^plan ^VEC:vector<n> -- bool )
    {: plan recs:^ :}
-   plan recs 0 DISTINCT-AT LEN 1 <> if false exit then
+   plan WORK-ARENA {: work:^ :}
+   work ARENA:MARK {: mark:n :}
+   plan recs 0 DISTINCT-AT LEN work mark ARENA:CUT
+   1 <> if false exit then
    plan recs 0 VEC:AT @ 0 RECORD-SLOT SLOT-UNIQUE? ;
 
 \ Whether two nodes are one variable, or constants that are one term.
@@ -2165,11 +2199,14 @@ STRUCTURE pruning DERIVE addr
 \ source, as r, a relation of its own.
 : SOURCE-BRANCH ( ^plan n ^VEC:vector<n> ^relation -- )
    {: plan triple:n recs:^ r:^ :}
+   plan WORK-ARENA {: work:^ :}
+   work ARENA:MARK {: mark:n :}
    plan NEW-SQL {: from:^ :} plan NEW-SQL {: where:^ :}
    from plan recs 0 VEC:AT @ SOURCE@ s" u" +FROM
-   plan plan triple 0 OCCURRENCES NEW-BINDINGS {: occs:^ :}
+   plan WORK-AL plan triple 0 OCCURRENCES BINDINGS-IN {: occs:^ :}
    plan triple recs s" u" occs where 0 SLOTS-SQL
-   from where plan occs where JOINS r INIT-RELATION ;
+   from where plan occs where JOINS r INIT-RELATION
+   work mark ARENA:CUT ;
 
 \ Record k alone.
 : RECORD ( ^plan n -- ^VEC:vector<n> )
@@ -2366,13 +2403,15 @@ STRUCTURE pruning DERIVE addr
    k 0< if false list LAST BINDING-ALWAYS ! exit then
    bs k VEC:AT BINDING-ALWAYS @ list LAST BINDING-ALWAYS ! ;
 
-\ Branch b as the union of columns cols presents it. u shares b's WHERE,
-\ so b's null tests are written first.
+\ Branch b as the union of columns cols presents it, u in the work
+\ arena. u shares b's WHERE, so b's null tests are written first.
 : PRESENTED ( ^plan ^relation ^VEC:vector<binding> -- ^relation )
    {: plan b:^ cols:^ :}
    b +NULL-TESTS
-   plan b RELATION-FROM @ b RELATION-WHERE @ plan cols VEC:COUNT NEW-BINDINGS
-   RELATION-OF {: u:^ :}
+   plan WORK-AL {: al:^ :}
+   al [type] relation ALLOC:NEW {: u:^ :}
+   b RELATION-FROM @ b RELATION-WHERE @ al cols VEC:COUNT BINDINGS-IN
+   u INIT-RELATION
    cols VEC:COUNT 0 ?do
       cols i VEC:AT {: c:^ :}
       plan u RELATION-BINDINGS @ b c BINDING-VAR @ c BINDING-SHAPE @
@@ -2381,7 +2420,10 @@ STRUCTURE pruning DERIVE addr
 
 : +BRANCH ( ^plan ^rel ^relation ^VEC:vector<binding> -- )
    {: plan out:^ r:^ cols:^ :}
-   plan out plan r cols PRESENTED +SELECT ;
+   plan WORK-ARENA {: work:^ :}
+   work ARENA:MARK {: mark:n :}
+   plan out plan r cols PRESENTED +SELECT
+   work mark ARENA:CUT ;
 
 \ Appends the branches as the union of columns cols presents them.
 : +UNION-ALL ( ^plan ^rel ^VEC:vector<relation> ^VEC:vector<binding>
@@ -2621,18 +2663,30 @@ STRUCTURE pruning DERIVE addr
    rest LEN 0= if t cols exit then
    plan t branches rest cols BESIDE cols ;
 
+\ Branch b over the records of description source origin; what it reads
+\ in the work arena is cut back once b is built.
+: ORIGIN-BRANCH ( ^plan ^item n ^relation -- )
+   {: plan it:^ origin:n b:^ :}
+   plan WORK-ARENA {: work:^ :}
+   work ARENA:MARK {: mark:n :}
+   plan it origin LIVE-OF {: recs:^ :}
+   plan it ITEM-NODE @ recs b SOURCE-BRANCH
+   work mark ARENA:CUT ;
+
 \ Sets the item's branches, one per description source it reads. Each
 \ is a scan PostgreSQL plans: one read, the first being the item's own.
 : BRANCHES ( ^plan ^item -- )
    {: plan it:^ :}
+   plan WORK-ARENA {: work:^ :}
+   work ARENA:MARK {: mark:n :}
    plan it ORIGINS {: origins:^ :}
    plan AL 0 [type] relation VEC:NEW {: branches:^ :}
+   branches origins LEN VEC:RESERVE
    origins LEN 0 ?do
       i 0<> if plan +READ then
-      plan it origins i VEC:AT @ LIVE-OF {: recs:^ :}
-      branches VEC:PUSH {: b:^ :}
-      plan it ITEM-NODE @ recs b SOURCE-BRANCH
-   loop branches it ITEM-BRANCHES ! ;
+      plan it origins i VEC:AT @ branches VEC:PUSH ORIGIN-BRANCH
+   loop branches it ITEM-BRANCHES !
+   work mark ARENA:CUT ;
 
 \ Joins a pattern of several description sources into the group: a UNION
 \ ALL of a branch per source, driven by the first natively bound key.
@@ -3322,11 +3376,14 @@ STRUCTURE pruning DERIVE addr
    {: plan it:^ r:^ :}
    r RELATION-BINDINGS @ {: scope:^ :}
    it ITEM-NODE @ 0<> if
+      plan WORK-ARENA {: work:^ :}
+      work ARENA:MARK {: mark:n :}
       plan it plan it ORIGINS 0 VEC:AT @ LIVE-OF {: recs:^ :}
       plan it ITEM-NODE @ recs r SINGLE-SQL {: occs:^ :}
       plan scope occs SETTLED {: done:^ :}
       plan scope occs r RELATION-WHERE @ false MEET-ALL
-      r done FORGET-ALL exit
+      r done FORGET-ALL
+      work mark ARENA:CUT exit
    then
    r RELATION-FROM @ {: from:^ :}
    from s"  CROSS JOIN " +SEP
@@ -3437,9 +3494,12 @@ STRUCTURE pruning DERIVE addr
    plan arms COLUMNS {: ucols:^ :}
    plan NEW-SQL {: mb:^ :}
    mb s" (" +TEXT
+   plan WORK-ARENA {: work:^ :}
    bs VEC:COUNT 0 ?do
       i 0<> if mb s"  UNION ALL " +TEXT then
+      work ARENA:MARK {: mark:n :}
       plan mb plan arms i VEC:AT ucols PRESENTED nums i VEC:AT @ +NUMBERED
+      work mark ARENA:CUT
    loop mb s" )" +TEXT
    plan NEW-SQL {: mf:^ :}
    plan plan TEXTS met TEXT-REL ucols mf +TABLE {: mcols:^ :}
@@ -4369,7 +4429,9 @@ STRUCTURE walk DERIVE addr
 : UNION? ( ^plan ^item -- bool )
    {: plan it:^ :}
    it ITEM-MODE @ 0<> it ITEM-NODE @ 0= or if false exit then
-   plan it ORIGINS LEN 1 > ;
+   plan WORK-ARENA {: work:^ :}
+   work ARENA:MARK {: mark:n :}
+   plan it ORIGINS LEN 1 > work mark ARENA:CUT ;
 
 : DRIVER? ( ^item -- bool )
    {: it:^ :}
@@ -4563,8 +4625,12 @@ STRUCTURE walk DERIVE addr
 \ r then drops the variables SETTLED by it.
 : UNION-STEP ( ^plan ^item ^VEC:vector<binding> ^relation -- )
    {: plan it:^ run:^ r:^ :}
-   plan it KEYED? if run else plan 0 NEW-BINDINGS then {: keys:^ :}
-   plan it keys r UNION-SQL ;
+   plan WORK-ARENA {: work:^ :}
+   work ARENA:MARK {: mark:n :}
+   plan it KEYED? if run else plan WORK-AL 0 BINDINGS-IN then
+   {: keys:^ :}
+   plan it keys r UNION-SQL
+   work mark ARENA:CUT ;
 
 \ Folds the unions among items from..to, then the walks done does not hold.
 : LATE ( ^plan ^VEC:vector<item> n n ^VEC:vector<n> ^relation -- )
@@ -5129,6 +5195,8 @@ STRUCTURE walk DERIVE addr
 \ without a key, a branch with no solution has none.
 : +BRANCH-GROUPS ( ^plan n ^rel ^relation ^relation bool -- )
    {: plan query:n from:^ b:^ r:^ partial:bool :}
+   plan WORK-ARENA {: work:^ :}
+   work ARENA:MARK {: mark:n :}
    plan b r RELATION-BINDINGS @ PRESENTED {: u:^ :}
    plan NEW-RELATION {: gb:^ :}
    plan NEW-SQL {: keys:^ :} plan NEW-SQL {: having:^ :}
@@ -5136,7 +5204,8 @@ STRUCTURE walk DERIVE addr
    plan u partial PARTS
    keys gb +KEY-COLUMNS
    keys EMPTY? if having s" count(*)>0" +SQL then
-   plan from u gb keys having +GROUPED-SELECT ;
+   plan from u gb keys having +GROUPED-SELECT
+   work mark ARENA:CUT ;
 
 \ Appends `(` and the groups of r's branches, a UNION ALL.
 : +BRANCHES ( ^plan n ^rel ^relation bool -- )
