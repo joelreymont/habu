@@ -802,7 +802,18 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    EXPECT
    s" SELECT ?s ?m ?n WHERE { ?s t:30 ?w OPTIONAL { ?s t:20 ?m } ?m t:21 ?n }"
    s" {'head':{'vars':['s','m','n']},'results':{'bindings':[{'s':{'type':'uri','value':'urn:test:1'},'m':{'type':'uri','value':'urn:test:1'},'n':{'type':'uri','value':'urn:test:2'}},{'s':{'type':'uri','value':'urn:test:2'},'m':{'type':'uri','value':'urn:test:1'},'n':{'type':'uri','value':'urn:test:2'}},{'s':{'type':'uri','value':'urn:test:3'},'m':{'type':'uri','value':'urn:test:1'},'n':{'type':'uri','value':'urn:test:2'}}]}}"
-   EXPECT ;
+   EXPECT
+   \ STR of a variable bound always is always bound where no shape holds
+   \ a blank node: the OPTIONAL meets ?k as equal.
+   s" SELECT ?s ?l WHERE { ?s t:20 ?o BIND(STR(?o) AS ?k) OPTIONAL { ?x rdfs:label ?l BIND(STR(?x) AS ?k) } }"
+   s"  IS NULL OR "
+   s" {'head':{'vars':['s','l']},'results':{'bindings':[{'s':{'type':'uri','value':'urn:test:3'},'l':{'type':'literal','value':'Lathe'}},{'s':{'type':'uri','value':'urn:test:4'},'l':{'type':'literal','value':'Mill'}},{'s':{'type':'uri','value':'urn:test:5'},'l':{'type':'literal','value':'Lathe'}}]}}"
+   WITHOUT
+   \ IF(BOUND(?o), ?o, ?s) is always bound: 1 is next to 2, 2 to none.
+   s" SELECT ?s ?l WHERE { ?s a t:10 OPTIONAL { ?s t:21 ?o } BIND(IF(BOUND(?o), ?o, ?s) AS ?k) OPTIONAL { ?k rdfs:label ?l } }"
+   s"  IS NULL OR "
+   s" {'head':{'vars':['s','l']},'results':{'bindings':[{'s':{'type':'uri','value':'urn:test:1'},'l':{'type':'literal','value':'Mill'}},{'s':{'type':'uri','value':'urn:test:2'},'l':{'type':'literal','value':'Mill'}}]}}"
+   WITHOUT ;
 
 : UNIONS ( -- )
    s" SELECT ?a ?b WHERE { { t:1 t:21 ?a } UNION { t:4 t:22 ?b } }"

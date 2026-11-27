@@ -3385,37 +3385,86 @@ STRUCTURE pruning DERIVE addr
       as i VEC:AT AGGREGATE-NODE @ call = if i unloop exit then
    loop -1 ;
 
+\ The variable node n is, -1 for another node or a name no pattern has.
+: FOUND-VAR ( ^plan n -- n )
+   {: plan node:n :}
+   plan TREE node VARIABLE? 0= if -1 exit then
+   plan plan node VAR-NAME plan PLAN-FRAME @ FIND-VAR-ID ;
+
 \ Whether the node is a variable r binds always.
 : BOUND? ( ^plan ^relation n -- bool )
    {: plan r:^ node:n :}
-   plan TREE node VARIABLE? 0= if false exit then
-   plan plan node VAR-NAME plan PLAN-FRAME @ FIND-VAR-ID
-   {: var:n :}
+   plan node FOUND-VAR {: var:n :}
    var 0< if false exit then
    r RELATION-BINDINGS @ var FIND-VAR {: k:n :}
    k 0< if false exit then
    r RELATION-BINDINGS @ k VEC:AT BINDING-ALWAYS @ ;
 
-\ Whether expression e over r's bindings always has a value: a constant,
-\ a variable r binds always, a COALESCE with an argument that does, or an
-\ aggregate that is always bound.
-: SURE? ( ^plan ^relation n -- bool )
-   {: plan r:^ e:n :}
+\ Whether shape k may hold a blank node: it holds any term.
+: BLANKS? ( ^plan n -- bool )
+   SHAPE@ SHAPE-HOLDS @ MATCH holds
+      any OF true ENDOF
+      uris OF false ENDOF
+      literals OF drop false ENDOF
+   ;MATCH ;
+
+\ Whether no term the store holds is a blank node: a term slot holds a
+\ uri or a literal, and a query makes no blank node.
+: BLANKLESS? ( ^plan -- bool )
+   {: plan :}
+   plan PLAN-STORE @ STORE-SHAPES @ VEC:COUNT 0 ?do
+      plan i BLANKS? if false unloop exit then
+   loop true ;
+
+\ The variable the IF call's condition tests with BOUND, else -1.
+: BOUND-TESTED ( ^plan n -- n )
+   {: plan call:n :}
+   plan TREE {: state :}
+   state state call NODE-A@ NODE-A@ {: test:n :}
+   state test NODE-K N-CALL <> if -1 exit then
+   state test s" BOUND" CALL-IS? 0= if -1 exit then
+   plan state state test NODE-A@ NODE-A@ FOUND-VAR ;
+
+\ Whether expression e over r's bindings always has a value, variable
+\ given counted bound (-1 for none): a constant, a variable r binds
+\ always, a COALESCE with an argument that does, STR of one where the
+\ store holds no blank node, whose STR is NULL, IF(BOUND(?v), a, b)
+\ where b does and a does with ?v counted bound, or an aggregate that is
+\ always bound.
+: SURE-GIVEN? ( ^plan ^relation n n -- bool )
+   {: plan r:^ e:n given:n :}
    plan TREE {: state :}
    state e CONSTANT? if true exit then
    plan r e BOUND? if true exit then
+   given -1 > plan e FOUND-VAR given = and if true exit then
    state e NODE-K N-CALL = if
+      state e NODE-A@ {: args:n :}
       state e s" COALESCE" CALL-IS? if
-         state e NODE-A@ begin dup 0<> while
+         args begin dup 0<> while
             {: each:n :}
-            plan r state each NODE-A@ RECURSE if true exit then
+            plan r state each NODE-A@ given RECURSE if true exit then
             state each NODE-B@
          repeat drop
+      then
+      state e s" STR" CALL-IS? if
+         plan BLANKLESS? 0= if false exit then
+         plan r state args NODE-A@ given RECURSE exit
+      then
+      state e s" IF" CALL-IS? if
+         state args NODE-B@ {: rest:n :}
+         state rest NODE-A@ state state rest NODE-B@ NODE-A@
+         {: a:n b:n :}
+         plan e BOUND-TESTED {: v:n :}
+         v 0< if false exit then
+         plan r b given RECURSE 0= if false exit then
+         plan r a v RECURSE exit
       then
    then
    plan e FIND-AGGREGATE {: k:n :}
    k 0< if false exit then
    plan PLAN-AGGREGATES @ k VEC:AT AGGREGATE-ALWAYS @ ;
+
+: SURE? ( ^plan ^relation n -- bool ) -1 SURE-GIVEN? ;
 
 \ Binds the variable to the expression itself, `(x)`, x a piece.
 : +COPIED ( ^plan ^relation n ^rel -- )
