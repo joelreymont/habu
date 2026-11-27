@@ -1,9 +1,10 @@
 ---
 title: Write the one kernel exit line on x86-64
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-11-12T15:34:38.834675+02:00"
+closed-at: "2026-11-27T14:48:18.509669+01:00"
 ---
 
 Problem: arm64 kernel exits write one line, `<class> habu: <text>[ <16 hex>] lr <16 hex>`, before they exit (arm64 commits "Print one line before kernel exits" and "Print the line at the remaining kernel exits"); the x86-64 kernel still writes the old texts at src/habu/boot-x64.f:523-526 and src/habu/kernel-x64.f:3452, :3645, :4023, :4339-4362. Six suites shared through test/gate-stdlib-cases.f expect the arm64 line on every host: engine-stack-machine, engine-stack-lifecycle, compiler-native-eval, ffi-callback, friend-arena-seal, native-gate-dictionary. Acceptance: the arm64 tests that pin the line (src/lib/task-test.f TASK-EXPECT-REJECTED-EXIT callers, test/compiler/native-eval.f IN-TASK, src/lib/ffi-callback-test.f transcript) pass on x86-64; the x86-64 kernel writes the same line at every site; those six suites pass on an x86-64 engine. Depends: none. Claim: unassigned.
