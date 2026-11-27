@@ -204,6 +204,12 @@ $14 constant LOCATOR-BYTES
 
 : MEMBER-AT ( ^n n -- ^n ) {: node:^ idx:n :}
    node MEMBERS @ idx MEMBER-CELLS * cells + ;
+: CRC-BIT ( n -- n )
+   dup 1 and 0 <> if 1 rshift $EDB88320 xor else 1 rshift then ;
+: CRC-BYTE ( n n -- n ) xor 8 0 ?do CRC-BIT loop ;
+: CRC32 ( str -- n ) {: data:str :}
+   U32-MAX data STR:LEN 0 ?do data STR:DATA i + c@ CRC-BYTE loop U32-MAX xor ;
+
 : CENTRAL-PTR ( ^n ^n -- ^u8 )
    CENTRAL-OFF @ CENTRAL-BYTES RAW-SPAN ;
 : CENTRAL-NAME ( ^n ^n -- str )
@@ -228,6 +234,24 @@ $14 constant LOCATOR-BYTES
       dup STR:DATA 2 + U16@ 4 + {: step:n :}
       dup STR:DATA step + swap STR:LEN step - >str
    repeat ;
+
+$7075 constant UNICODE-PATH-TAG
+
+\ Info-ZIP's Unicode Path field (APPNOTE 4.6.9): version 1, the CRC-32 of the
+\ header's name, then a nonempty UTF-8 name; any other field declares nothing.
+: UNICODE-PATH ( ^n ^n -- str bool ) {: node:^ member:^ :}
+   node member EXTRA-SPAN UNICODE-PATH-TAG EXTRA-FIND {: field:str :}
+   field STR:LEN 0= if field false exit then
+   field STR:DATA 2 + U16@ 5 - {: len:n :}
+   field STR:DATA 4 + {: body:^ :}
+   len 1 < if field false exit then
+   body c@ 1 <> if field false exit then
+   body 1 + U32@ node member CENTRAL-NAME CRC32 <> if field false exit then
+   body 5 + len >str true ;
+
+: UNICODE-CHECK ( ^n ^n -- ) {: node:^ member:^ :}
+   node member UNICODE-PATH {: path:str found:bool :}
+   found if path UTF8:VALID? 0= if E-OPEN throw then then ;
 
 : WIDE-FIELD ( str -- str n ) {: data:str :}
    data STR:LEN 8 < if E-READ throw then
@@ -281,7 +305,7 @@ $14 constant LOCATOR-BYTES
       node member CENTRAL-NAME UTF8:VALID? 0= if E-OPEN throw then
       data CENTRAL-BYTES + data $1C + U16@ + data $1E + U16@ +
          data $20 + U16@ >str UTF8:VALID? 0= if E-OPEN throw then
-   then
+   else node member UNICODE-CHECK then
    node member PARSE-WIDE next ;
 
 : WIDE-DESCRIPTOR? ( ^n ^n -- bool ) {: node:^ member:^ :}
@@ -342,12 +366,6 @@ $14 constant LOCATOR-BYTES
    node node node DIRECTORY-OFF @ node DIRECTORY-SIZE @ RAW-SPAN
       node DIRECTORY-SIZE @ >str COPY-IN STR:DATA node DIRECTORY-PTR !
    node PARSE-MEMBERS ;
-
-: CRC-BIT ( n -- n )
-   dup 1 and 0 <> if 1 rshift $EDB88320 xor else 1 rshift then ;
-: CRC-BYTE ( n n -- n ) xor 8 0 ?do CRC-BIT loop ;
-: CRC32 ( str -- n ) {: data:str :}
-   U32-MAX data STR:LEN 0 ?do data STR:DATA i + c@ CRC-BYTE loop U32-MAX xor ;
 
 : EMIT-BYTES ( ^n str -- )
    {: node:^ data:str :}

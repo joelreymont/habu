@@ -5,6 +5,7 @@ require src/lib/zip-test-fixture.f
 require src/lib/zip-framing-fixture.f
 require src/lib/zip-count-fixture.f
 require src/lib/zip-boundary-fixture.f
+require src/lib/zip-name-fixture.f
 require src/lib/test/assert.f
 require src/lib/zip-types.f
 require src/lib/fs.f
@@ -258,8 +259,32 @@ TASK:SEMAPHORE ZIP-START
 
 : REPLACE-FIRST ( -- )
    INPUT$ EDIT {: archive:ZIP:archive :}
-   archive 1 ENTRY archive swap NAME$ s" raw.txt" T$=
+   archive 1 ENTRY archive swap NAME$ s" é.txt" T$=
    archive 0 ENTRY archive swap s" replacement text" REPLACE archive COMMIT ;
+
+\ NAMES$ offset of the matching member's central Unicode Path name.
+366 constant NAMES-PATH-OFF
+
+: NAME= ( ZIP:archive n str -- ) {: archive:ZIP:archive idx:n want:str :}
+   archive idx ENTRY archive swap NAME$ want T$= ;
+
+: NAMES-OPEN ( -- ) INPUT$ ZIP:OPEN drop ;
+
+\ The field's CRC-32 covers the raw name, so it still matches.
+: BAD-PATH-NAME ( -- )
+   NAMES$ {: src:str :}
+   src STR:DATA RAW src STR:LEN BYTE-COPY $FF RAW NAMES-PATH-OFF + c!
+   INPUT$ RAW src STR:LEN >str FS:WRITE-ALL
+   [: NAMES-OPEN ;] E-OPEN TTHROWSQ ;
+
+: NAME-DECODING ( -- )
+   INPUT$ NAMES$ FS:WRITE-ALL INPUT$ ZIP:OPEN {: archive:ZIP:archive :}
+   archive 0 s" naïve.txt" NAME=
+   archive 1 s" été.txt" NAME=
+   archive 2 s" über.txt" NAME=
+   archive 3 s" ä" NAME=
+   archive 4 s" été.txt" NAME=
+   archive ZIP:CLOSE BAD-PATH-NAME ;
 
 : FRAMING-CASE ( str str -- )
    {: before:str after:str :}
@@ -719,7 +744,7 @@ $10000 constant WIDE-COUNT
    FILE-INPUT-RETIRE FILE-INSTALL-FAILURE
    BOUNDARY-OPEN-ERRORS BOUNDARY-READ-ERRORS BOUNDARY-DISAGREEMENT BOUNDARY-CURSORS
    BOUNDARY-ZIP64-CASES COMPRESSED-SIZES WIDE-EOCD-CASES
-   FILE-REPLACE TASK-READERS
+   FILE-REPLACE TASK-READERS NAME-DECODING
    FS:CLEANUP-RUN T-REPORT ;
 
 RUN

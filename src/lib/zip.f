@@ -17,6 +17,7 @@ require src/lib/ffi-abi.f
 require src/lib/zip-ffi.f
 require src/lib/zip-state.f
 require src/lib/zip-types.f
+require src/lib/utf8-scalar.f
 
 package ZIP
 using FFI
@@ -125,12 +126,57 @@ PATH-CAP CSTR-ROOM constant SNAPSHOT-ROOM   \ a temp path and its terminator
    ident node ID ! idx node INDEX ! node archive ENTRIES ADD-NODE
    ident >ENTRY ;
 
+\ Code page 437's scalars for the bytes $80-$FF (APPNOTE Appendix D); the
+\ bytes below $80 are ASCII.
+create CP437-HIGH
+   $00C7 , $00FC , $00E9 , $00E2 , $00E4 , $00E0 , $00E5 , $00E7 ,
+   $00EA , $00EB , $00E8 , $00EF , $00EE , $00EC , $00C4 , $00C5 ,
+   $00C9 , $00E6 , $00C6 , $00F4 , $00F6 , $00F2 , $00FB , $00F9 ,
+   $00FF , $00D6 , $00DC , $00A2 , $00A3 , $00A5 , $20A7 , $0192 ,
+   $00E1 , $00ED , $00F3 , $00FA , $00F1 , $00D1 , $00AA , $00BA ,
+   $00BF , $2310 , $00AC , $00BD , $00BC , $00A1 , $00AB , $00BB ,
+   $2591 , $2592 , $2593 , $2502 , $2524 , $2561 , $2562 , $2556 ,
+   $2555 , $2563 , $2551 , $2557 , $255D , $255C , $255B , $2510 ,
+   $2514 , $2534 , $252C , $251C , $2500 , $253C , $255E , $255F ,
+   $255A , $2554 , $2569 , $2566 , $2560 , $2550 , $256C , $2567 ,
+   $2568 , $2564 , $2565 , $2559 , $2558 , $2552 , $2553 , $256B ,
+   $256A , $2518 , $250C , $2588 , $2584 , $258C , $2590 , $2580 ,
+   $03B1 , $00DF , $0393 , $03C0 , $03A3 , $03C3 , $00B5 , $03C4 ,
+   $03A6 , $0398 , $03A9 , $03B4 , $221E , $03C6 , $03B5 , $2229 ,
+   $2261 , $00B1 , $2265 , $2264 , $2320 , $2321 , $00F7 , $2248 ,
+   $00B0 , $2219 , $00B7 , $221A , $207F , $00B2 , $25A0 , $00A0 ,
+
+: CP437 ( n -- n ) dup $80 < if exit then $80 - cells CP437-HIGH + @ ;
+
+: CP437-LEN ( str -- n ) {: raw:str :}
+   0 raw STR:LEN 0 ?do
+      raw STR:DATA i + c@ CP437 UTF8:SCALAR-WIDTH +
+   loop ;
+
+: CP437-COPY ( ^n str -- str ) {: node:^ raw:str :}
+   raw CP437-LEN {: len:n :}
+   node len 1 max CHUNK-RESERVE {: dst:^ :}
+   dst raw STR:LEN 0 ?do
+      raw STR:DATA i + c@ CP437 swap UTF8:SCALAR!
+   loop drop dst len >str ;
+
+: BYTES-COPY ( ^n str -- str ) {: node:^ name:str :}
+   node name STR:LEN 1 max CHUNK-RESERVE {: dst:^ :}
+   name STR:DATA dst name STR:LEN BYTE-COPY dst name STR:LEN >str ;
+
+\ Bit 11 is APPNOTE 4.4.4's; OPEN checked a flagged name and a matching
+\ Unicode Path name as UTF-8.
 : NAME-COPY ( ^n n -- str )
    {: node:^ idx:n :}
    node idx MEMBER-AT {: member:^ :}
-   node member CENTRAL-NAME {: name:str :}
-   node name STR:LEN 1 max CHUNK-RESERVE {: dst:^ :}
-   name STR:DATA dst name STR:LEN BYTE-COPY dst name STR:LEN >str ;
+   node member CENTRAL-NAME {: raw:str :}
+   node member CENTRAL-PTR 8 + U16@ $800 and 0<> if
+      node raw BYTES-COPY exit
+   then
+   node member UNICODE-PATH {: path:str found:bool :}
+   found if node path BYTES-COPY exit then
+   raw UTF8:VALID? if node raw BYTES-COPY exit then
+   node raw CP437-COPY ;
 
 : MEMBER-SIZE ( ^n n -- n ) {: node:^ idx:n :}
    node OBJECT @ NULL? if node idx MEMBER-AT PLAIN-SIZE @ exit then
@@ -334,6 +380,8 @@ public
 \ fixed entry limit.
 : ENTRY ( archive n -- entry ) swap ARCHIVE-NODE swap NEW-ENTRY ;
 
+\ Always UTF-8: flag bit 11's bytes, else a matching version 1 Unicode
+\ Path field's name, else the bytes if UTF-8, else read as code page 437.
 : NAME$ ( archive entry -- str )
    swap ARCHIVE-NODE dup rot ENTRY-INDEX NAME-COPY ;
 
