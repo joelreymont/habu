@@ -142,8 +142,10 @@
 \ the steps' start and end forms is a term, the CTE carries n, the end in
 \ the start form, converted once per end so that a step compares columns,
 \ not a term the host parses per pair scanned; where the steps hold an,
-\ the start's columns of the end's root, a further step compares an with
-\ the end instead.
+\ the start's columns of the end's root, each branch's when they are a
+\ union, a further step compares an with the end instead, and the first
+\ step an with the seed when the seeds' form is of that root, or with the
+\ root's `in` of a given term only those columns may hold.
 \
 \ A query that GROUP BY or an aggregate groups reads its groups, a derived
 \ table grouped on its keys' anchors, native where native, whose columns
@@ -3695,6 +3697,7 @@ STRUCTURE walk DERIVE addr
    FIELD start n  \ the form of the steps' first end
    FIELD end n  \ the form of the steps' second end
    FIELD rooted bool  \ the steps hold an, the start's columns of the end's root
+   FIELD held bool  \ the seed is a given term only an may hold
    FIELD kind n  \ the seeds' form
    FIELD ctes ^ctes
 ;STRUCTURE
@@ -3802,8 +3805,103 @@ STRUCTURE walk DERIVE addr
    plan AL plan PLAN-CTES @ n true t +CTE
    plan TEXTS n TEXT-REL w WALK-PAIRS ! ;
 
+\ The columns of the end's root that b, a binding of the steps' start,
+\ reads: b when native of that root, else its spread's, if any.
+: AN ( ^plan n ^binding -- ^rel )
+   {: plan end:n b:^ :}
+   plan NEW-SQL {: v:^ :}
+   plan b BINDING-SHAPE @ end ONE-ROOT? if v b +BINDING v exit then
+   b BINDING-SPREAD @ {: sp:^ :}
+   sp NULL-PTR = if v exit then
+   plan end sp ROOT-COLUMNS ;
+
+\ The relations the steps read: a union's branches, else r alone.
+: STEP-COUNT ( ^relation -- n ) RELATION-BRANCHES @ LEN 1 max ;
+
+: STEP-REL ( ^relation n -- ^relation )
+   {: r:^ k:n :}
+   r RELATION-BRANCHES @ {: bs:^ :}
+   bs NULL-PTR = if r else bs k VEC:AT then ;
+
+\ AN of relation r's binding of the start's variable var, empty where r
+\ binds none.
+: REL-AN ( ^plan n n ^relation -- ^rel )
+   {: plan end:n var:n r:^ :}
+   r RELATION-BINDINGS @ {: bs:^ :}
+   bs var FIND-VAR {: k:n :}
+   k 0< if plan NEW-SQL exit then
+   plan end bs k VEC:AT AN ;
+
+\ Whether a column of kind x, holding term s when KNOWN, cannot hold
+\ term t or is of the end's root.
+: ROOT-FOR? ( ^plan n n str str -- bool )
+   {: plan end:n x:n s:str t:str :}
+   plan x s KNOWN t KINDS-COMPATIBLE? 0= if true exit then
+   plan x end ONE-ROOT? ;
+
+\ Whether of the columns b, a binding of the steps' start, reads, only
+\ those of the end's root may hold term t.
+: HELD? ( ^plan n str ^binding -- bool )
+   {: plan end:n t:str b:^ :}
+   b BINDING-SPREAD @ {: sp:^ :}
+   sp NULL-PTR = if
+      plan end b BINDING-SHAPE @ b BINDING-TERM @ t ROOT-FOR? exit
+   then
+   sp SPREAD-RECS @ {: recs:^ :} sp SPREAD-SLOT @ {: k:n :}
+   recs LEN 0 ?do
+      plan recs i VEC:AT @ k RECORD-SLOT SLOT-KIND {: x:n s:str :}
+      plan end x s t ROOT-FOR? 0= if false unloop exit then
+   loop true ;
+
+\ Whether every relation of the steps binds var to columns of the end's
+\ root.
+: ROOTED? ( ^plan n n ^relation -- bool )
+   {: plan end:n var:n r:^ :}
+   r STEP-COUNT 0 ?do
+      plan end var r i STEP-REL REL-AN EMPTY? if false unloop exit then
+   loop true ;
+
+\ Whether, in every relation of the steps, HELD? holds of term t and its
+\ binding of var, which ROOTED? found.
+: ALL-HELD? ( ^plan n n str ^relation -- bool )
+   {: plan end:n var:n t:str r:^ :}
+   r STEP-COUNT 0 ?do
+      r i STEP-REL RELATION-BINDINGS @ {: bs:^ :}
+      plan end t bs bs var FIND-VAR VEC:AT HELD? 0= if
+         false unloop exit
+      then
+   loop true ;
+
+\ Sets whether the steps of r, from var, hold an, and whether the seed
+\ is a given term only an may hold.
+: ROOTS! ( ^plan ^walk ^relation n -- )
+   {: plan w:^ r:^ var:n :}
+   false w WALK-ROOTED ! false w WALK-HELD !
+   w WALK-END @ {: end:n :}
+   end 0< w WALK-START @ GENERIC <> or if exit then
+   plan end var r ROOTED? 0= if exit then
+   true w WALK-ROOTED !
+   plan w WALK-SEED @ GIVEN? 0= if exit then
+   plan w WALK-SEED @ GIVEN {: g:^ :}
+   g BINDING-SHAPE @ KNOWN <> if exit then
+   plan end var g BINDING-TERM @ r ALL-HELD? w WALK-HELD ! ;
+
+\ Appends `SELECT a, b[, an]` and r's FROM and WHERE: r's steps from
+\ variable x to y.
+: +PAIRS ( ^plan ^walk ^rel ^relation n n -- )
+   {: plan w:^ v:^ r:^ x:n y:n :}
+   r RELATION-BINDINGS @ {: bs:^ :}
+   v s" SELECT " +SQL plan v bs x w WALK-START @ s" a," +PAIR
+   plan v bs y w WALK-END @ s" b" +PAIR
+   w WALK-ROOTED @ if
+      v s" ," +SQL v plan w WALK-END @ x r REL-AN +REL
+      v s"  AS an" +SQL
+   then v r +FROM-WHERE ;
+
 \ The walk's steps `(SELECT a, b[, an] ...)`, the operand from fresh a to b,
-\ b to a when inverse, and their forms; an is a's columns of native b's root.
+\ b to a when inverse, and their forms; an is a's columns of native b's
+\ root. Where the steps are a union that holds an, each branch selects its
+\ own an, a UNION ALL.
 : STEPS ( ^plan ^walk -- )
    {: plan w:^ :}
    plan TREE {: state :}
@@ -3821,22 +3919,16 @@ STRUCTURE walk DERIVE addr
    rp RELATION-BINDINGS @ {: bs:^ :}
    plan a VAR {: av:n :} plan b VAR {: bv:n :}
    bs av SHAPE-OF w WALK-START ! bs bv SHAPE-OF w WALK-END !
-   plan NEW-SQL {: v:^ :}
-   v s" (SELECT " +SQL plan v bs av w WALK-START @ s" a," +PAIR
-   plan v bs bv w WALK-END @ s" b" +PAIR
-   false w WALK-ROOTED !
-   w WALK-END @ {: end:n :} bs av FIND-VAR {: k:n :}
-   end -1 > w WALK-START @ GENERIC = and k -1 > and if
-      bs k VEC:AT BINDING-SPREAD @ {: sp:^ :}
-      sp NULL-PTR <> if
-         plan end sp ROOT-COLUMNS {: cs:^ :}
-         cs EMPTY? 0= if
-            v s" ," +SQL v cs +REL v s"  AS an" +SQL
-            true w WALK-ROOTED !
-         then
-      then
-   then
-   v rp +FROM-WHERE v s" )" +TEXT plan w v PAIRS! ;
+   plan w rp av ROOTS!
+   plan NEW-SQL {: v:^ :} v s" (" +SQL
+   w WALK-ROOTED @ 0= rp RELATION-BRANCHES @ NULL-PTR = or if
+      plan w v rp av bv +PAIRS
+   else
+      rp STEP-COUNT 0 ?do
+         i 0<> if v s"  UNION ALL " +SQL then
+         plan w v rp i STEP-REL av bv +PAIRS
+      loop
+   then v s" )" +TEXT plan w v PAIRS! ;
 
 \ r's solutions become CTE nameR, which r then reads.
 : REST ( ^plan ^walk ^relation -- )
@@ -3849,7 +3941,8 @@ STRUCTURE walk DERIVE addr
    r INIT-RELATION ;
 
 \ Appends to the rel the given end's value as k, native where it has a
-\ shape.
+\ shape; a KNOWN term stays one, so `*` and `?` answer it as their own
+\ end even where no shape's `in` takes it.
 : GIVEN-SEEDS ( ^plan ^walk ^rel -- )
    {: plan w:^ v:^ :}
    plan w WALK-SEED @ GIVEN {: b:^ :}
@@ -4064,6 +4157,28 @@ STRUCTURE walk DERIVE addr
    else v plan start SHAPE@ SHAPE-IN @ s" p.b" +CALL then
    v s"  AS n" +SQL ;
 
+\ The condition that a step's pairs p start at at, the seed or the end:
+\ p.an = at, columns an index serves, where the steps hold an and at's
+\ shape is of the end's root, else p.a, a term built per pair, meets at.
+: STEP-FROM ( ^plan ^walk ^binding -- ^rel )
+   {: plan w:^ at:^ :}
+   w WALK-END @ {: end:n :}
+   w WALK-ROOTED @ plan at BINDING-SHAPE @ end ONE-ROOT? and if
+      plan plan plan end ROOT s" p.an" VALUE at SAME-SQL exit
+   then
+   plan plan w WALK-START @ s" p.a" VALUE at SAME-SQL ;
+
+\ The seed as the first step meets it: s.k in the seeds' form, or the
+\ end's root's `in` of it where it is a term only an may hold.
+: SEED-AT ( ^plan ^walk -- ^binding )
+   {: plan w:^ :}
+   w WALK-HELD @ 0= if plan w WALK-KIND @ s" s.k" VALUE exit then
+   plan w WALK-END @ ROOT {: root:n :}
+   plan NEW-SQL {: v:^ :}
+   v plan root SHAPE@ SHAPE-IN @ s" s.k" +CALL
+   plan AL [type] binding ALLOC:NEW {: b:^ :}
+   b -1 root v s" " SET-BINDING b ;
+
 \ Adds to the walk's CTEs nameW(k, e[, n]): each seed k and the ends e of
 \ its steps, for `?` one step, else UNION (distinct) each further step.
 : WALK-CTE ( ^plan ^walk -- )
@@ -4077,19 +4192,13 @@ STRUCTURE walk DERIVE addr
    v s" (SELECT s.k AS k,p.b AS e" +SQL
    key if plan v w +KEY then
    v s"  FROM " +SQL v s +SQL v s"  AS s" +SQL
-   v w plan plan start s" p.a" VALUE plan w WALK-KIND @ s" s.k" VALUE
-      SAME-SQL +STEP
+   v w plan w plan w SEED-AT STEP-FROM +STEP
    more if
       v s"  UNION SELECT w.k,p.b" +SQL key if plan v w +KEY then
       v s"  FROM " +SQL v n +SQL v s"  AS w" +SQL
-      w WALK-ROOTED @ if
-         plan plan end s" p.an" VALUE plan end s" w.e" VALUE SAME-SQL
-      else
-         key if plan start s" w.n" VALUE else plan end s" w.e" VALUE then
-            {: at:^ :}
-         plan plan start s" p.a" VALUE at SAME-SQL
-      then {: c:^ :}
-      v w c +STEP
+      key if plan start s" w.n" VALUE else plan end s" w.e" VALUE then
+         {: at:^ :}
+      v w plan w at STEP-FROM +STEP
    then v s" )" +TEXT
    plan AL w WALK-CTES @ n false v +CTE ;
 

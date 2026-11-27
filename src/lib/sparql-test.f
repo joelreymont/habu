@@ -1266,12 +1266,29 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    a TEXT-VEC {: out:^ :}
    sql a EDGE-SOURCES $ out RUN-TEXT TTRUE out ;
 
+\ The description the select answers.
+: SELECTED-STORE ( str ^ARENA:arena -- ^VEC:vector<u8> )
+   {: sql:str a:^ :}
+   a TEXT-VEC {: out:^ :}
+   sql out RUN TTRUE out ;
+
 \ The description with typed as its only source.
 : TYPED-STORE ( ^ARENA:arena -- ^VEC:vector<u8> )
    {: a:^ :}
-   a TEXT-VEC {: out:^ :}
    s" select jsonb_set(s,'{sources}',jsonb_path_query_array(s,'$.sources[7]'))::text from sparql_test.store(1048576) s"
-   out RUN TTRUE out ;
+   a SELECTED-STORE ;
+
+\ The description with node's rdf:type and typed as its only sources.
+: KIND-TYPED-STORE ( ^ARENA:arena -- ^VEC:vector<u8> )
+   {: a:^ :}
+   s" select jsonb_set(s,'{sources}',jsonb_path_query_array(s,'$.sources[1,7]'))::text from sparql_test.store(1048576) s"
+   a SELECTED-STORE ;
+
+\ The description with fact and typed as its only sources.
+: FACT-TYPED-STORE ( ^ARENA:arena -- ^VEC:vector<u8> )
+   {: a:^ :}
+   s" select jsonb_set(s,'{sources}',jsonb_path_query_array(s,'$.sources[6,7]'))::text from sparql_test.store(1048576) s"
+   a SELECTED-STORE ;
 
 \ The query answers alike on both descriptions; the text call is in the
 \ second's statement, and in the first's exactly when generic.
@@ -1514,6 +1531,22 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
 \ ALONE on the description of typed alone.
 : TYPED-ALONE ( str str str str -- ) [: TYPED-ALONE-IN ;] ARENA:WITH ;
 
+: KIND-TYPED-ALONE-IN ( str str str str ^ARENA:arena -- )
+   {: q:str keep:str gone:str w:str a:^ :}
+   q a KIND-TYPED-STORE a ANSWER-ON keep gone w a ALONE-OF ;
+
+\ ALONE on the description of node's rdf:type and typed.
+: KIND-TYPED-ALONE ( str str str str -- )
+   [: KIND-TYPED-ALONE-IN ;] ARENA:WITH ;
+
+: FACT-TYPED-ALONE-IN ( str str str str ^ARENA:arena -- )
+   {: q:str keep:str gone:str w:str a:^ :}
+   q a FACT-TYPED-STORE a ANSWER-ON keep gone w a ALONE-OF ;
+
+\ ALONE on the description of fact and typed.
+: FACT-TYPED-ALONE ( str str str str -- )
+   [: FACT-TYPED-ALONE-IN ;] ARENA:WITH ;
+
 \ A value's `only` binds it to the one listing set's column, else to all;
 \ without `only`, a native binding meets the value by its root's column.
 : ONLY-COLUMNS ( -- )
@@ -1733,7 +1766,27 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    \ column of the end's root.
    s" SELECT ?x WHERE { ?x t:80+ t:1 }" s" p.an = w.e" s" w.n"
    s" {'head':{'vars':['x']},'results':{'bindings':[{'x':{'type':'uri','value':'urn:test:40'}}]}}"
-   TYPED-ALONE ;
+   TYPED-ALONE
+   \ Its first step from a seed of that root compares that column too.
+   s" SELECT ?x ?s WHERE { ?x a t:10 . ?s t:80+ ?x }"
+   s" p.an = s.k" s" sparql_test.id(p.a)"
+   s" {'head':{'vars':['x','s']},'results':{'bindings':[{'x':{'type':'uri','value':'urn:test:1'},'s':{'type':'uri','value':'urn:test:40'}}]}}"
+   KIND-TYPED-ALONE
+   \ So does its first step from a constant only that column may hold.
+   s" SELECT ?x WHERE { ?x t:80* t:1 }"
+   s" p.an = sparql_test.id(s.k)" s" p.a = s.k"
+   s" {'head':{'vars':['x']},'results':{'bindings':[{'x':{'type':'uri','value':'urn:test:1'}},{'x':{'type':'uri','value':'urn:test:40'}}]}}"
+   TYPED-ALONE
+   \ A seed that no `in` takes still answers itself at length zero.
+   s" SELECT ?x WHERE { ?x t:80* <urn:other:1> }"
+   s" p.an = sparql_test.id(s.k)" s" p.a = s.k"
+   s" {'head':{'vars':['x']},'results':{'bindings':[{'x':{'type':'uri','value':'urn:other:1'}}]}}"
+   TYPED-ALONE
+   \ Steps a union of sources reads, each with a column of the end's root,
+   \ compare those columns.
+   s" SELECT ?x WHERE { ?x (t:71|t:80)+ t:1 }" s" p.an = w.e" s" w.n"
+   s" {'head':{'vars':['x']},'results':{'bindings':[{'x':{'type':'uri','value':'urn:test:40'}},{'x':{'type':'uri','value':'urn:test:43'}}]}}"
+   FACT-TYPED-ALONE ;
 
 : SESSION ( -- )
    s" src/lib/sparql/runtime.sql" RUN-SQL
