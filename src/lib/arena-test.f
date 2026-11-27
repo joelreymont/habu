@@ -14,7 +14,10 @@
 \ it shrinks, or loses a block's bytes or leaves stale ones in it when its
 \ allocator resizes it; copies a span's bytes wrongly or outside it, or
 \ allocates for an empty one; or whose CUT leaves bytes, a later chunk or the
-\ position above its mark, runs an action twice or one from before the mark.
+\ position above its mark, runs an action twice or one from before the mark,
+\ moves the position off a mark a block shrunk in place under, skips an action
+\ registered after that shrink, or ends a child from before the mark or keeps
+\ one from after it.
 
 require src/lib/test/assert.f
 require src/lib/span.f
@@ -418,12 +421,61 @@ TASK:MIN-STACK TASK:TASK HALT-TASK
    a ARENA:RELEASE
    ORDER @ 21 T= ;
 
+
+\ A new arena's 64-byte block, the MARK above it, then the block shrunk in
+\ place by 16.
+: SHRUNK ( -- ^ARENA:arena ^u8 n )
+   ARENA:NEW {: a:^ :}
+   a ARENA:ALLOCATOR {: al:^ :}
+   al 64 ALLOC:BYTES drop {: block:^ :}
+   a ARENA:MARK {: mark:n :}
+   al block 64 48 ALLOC:RESIZE 2drop
+   a block mark ;
+
+
+\ 15. CUT across a chunk to a MARK taken before a block shrank in place: MARK
+\ answers it again, the next bytes sit at it, and an action registered
+\ between the shrink and the chunk runs.
+: CUT-SHRUNK ( -- )
+   s" cut-shrunk" T-LABEL
+   0 ORDER !
+   SHRUNK {: a:^ block:^ mark:n :}
+   a 20000 ARENA:ALLOC >str FILL-FF
+   a mark ARENA:CUT
+   a ARENA:MARK mark T=
+   a 8 ARENA:ALLOC {: p:^ pn:n :}
+   p block 64 + = TTRUE
+   p pn >str ZEROED? TTRUE
+   a ARENA:MARK mark 8 + T=
+   a ARENA:RELEASE
+   SHRUNK nip {: b:^ bmark:n :}
+   b 1 TAGGED
+   b 20000 ARENA:ALLOC >str FILL-FF
+   b bmark ARENA:CUT
+   ORDER @ 1 T=
+   b ARENA:RELEASE
+   ORDER @ 1 T= ;
+
+
+\ 16. CUT ends the child made after the mark and keeps the one made before.
+: CUT-KIDS ( -- )
+   s" cut-kids" T-LABEL
+   0 ORDER !
+   ARENA:NEW {: a:^ :}
+   a ARENA:NEW-IN 1 TAGGED
+   a ARENA:MARK {: mark:n :}
+   a ARENA:NEW-IN 2 TAGGED
+   a mark ARENA:CUT
+   ORDER @ 2 T=
+   a ARENA:RELEASE
+   ORDER @ 21 T= ;
+
 public
 
 : RUN ( -- )
    T-RESET
    MANY LARGE ACTIONS-ONCE RESET-ZEROES CHILDREN WITH-RELEASES ACTION-THROWS
-   EDGES HELD UNMAPPED HALTED RESIZES COPIES CUTS
+   EDGES HELD UNMAPPED HALTED RESIZES COPIES CUTS CUT-SHRUNK CUT-KIDS
    T-REPORT ;
 
 RUN

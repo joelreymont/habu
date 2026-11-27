@@ -20,7 +20,7 @@ package ARENA
 private
 
 \ A release action and the allocation it receives, newest first; `born` is the
-\ arena's MARK before its bump.
+\ arena's position before its bump.
 STRUCTURE action DERIVE addr
    FIELD next ^action
    FIELD born n
@@ -29,7 +29,7 @@ STRUCTURE action DERIVE addr
 ;STRUCTURE
 
 \ A chunk after the first: the chunk before it, newest first, its bytes, and
-\ the arena's MARK when it was mapped, where the chunk before it ends.
+\ the arena's position when it was mapped, where the chunk before it ends.
 STRUCTURE chunk DERIVE addr
    FIELD prev ^chunk
    FIELD size n
@@ -46,14 +46,15 @@ STRUCTURE arena OPAQUE DERIVE addr
    FIELD kids ^arena
    FIELD older ^arena
    FIELD newer ^arena
-   FIELD born n        \ the parent's MARK before NEW-IN
+   FIELD born n        \ the parent's position before NEW-IN
+   FIELD floor n       \ the last MARK's answer or CUT's mark
    FIELD allocator ALLOC:allocator
 ;STRUCTURE
 
 private
 
 $4000 constant FIRST-BYTES         \ the first chunk, header included
-ARENA-BYTES constant EMPTY         \ an empty arena's MARK
+ARENA-BYTES constant EMPTY         \ an empty arena's position
 
 \ Each cell is 0 or a zeroed first chunk no arena holds. A task takes or gives
 \ one by a compare-and-swap of its cell, so each kept chunk goes to one NEW.
@@ -81,19 +82,25 @@ CAST: >ACTION ( ^u8 -- ^action )
    c BYTE-VIEW c CHUNK-SIZE @ ;
 
 
-\ The MARK at the newest chunk's first byte.
+\ The position at the newest chunk's first byte.
 : START ( ^arena -- n )
    {: a:^ :}
    a ARENA-CHUNKS @ {: c:^ :}
    c NULL-PTR = if 0 exit then
    c CHUNK-START @ ;
 
-public
-
 \ The arena's position: the bytes below its chunks' tops, headers included.
-: MARK ( ^arena -- n )
+: POSITION ( ^arena -- n )
    {: a:^ :}
    a START a ARENA-TOP @ + ;
+
+public
+
+\ Answers the position; until the next MARK or CUT, a block shrunk in place
+\ leaves the top at or above it.
+: MARK ( ^arena -- n )
+   {: a:^ :}
+   a POSITION dup a ARENA-FLOOR ! ;
 
 private
 
@@ -106,7 +113,7 @@ private
    size MEM-ALLOC-PTR {: c:^chunk :}
    a ARENA-CHUNKS @ c CHUNK-PREV !
    size c CHUNK-SIZE !
-   a MARK c CHUNK-START !
+   a POSITION c CHUNK-START !
    CHUNK-BYTES a ARENA-TOP !
    c a ARENA-CHUNKS ! ;
 
@@ -187,14 +194,13 @@ private
 
 
 \ The chunks mapped since `mark` are unmapped, every one tried, and the
-\ bytes above it zeroed. A block shrunk in place leaves the top below a
-\ MARK taken before the shrink, and the bytes between are zero.
+\ bytes above it zeroed.
 : CHOP ( ^arena n -- n )
    {: a:^ mark:n :}
    0 begin mark a START <= while a POP-CHUNK FIRST-ERROR repeat
    mark a START - {: off:n :}
    a NEWEST drop off + {: above:^ :}
-   0 above a ARENA-TOP @ off - 0 max SPAN:MAKE SPAN:FILL
+   0 above a ARENA-TOP @ off - SPAN:MAKE SPAN:FILL
    off a ARENA-TOP ! ;
 
 
@@ -271,13 +277,20 @@ private
    size a ARENA-TOP @ - more >= and ;
 
 
+\ Moves the top by `more`, never below the floor.
+: MOVE-TOP ( ^arena n -- )
+   {: a:^ more:n :}
+   a ARENA-TOP @ more + a ARENA-FLOOR @ a START - max
+   a ARENA-TOP ! ;
+
+
 : SELF-RESIZE ( ^u8 ^u8 n n -- ^u8 )
    {: st:^ block:^ old:n new:n :}
    st >ARENA {: a:^ :}
    old EXTENT {: oe:n :}
    new EXTENT oe - {: more:n :}
    block old new ZERO-TAIL
-   a block oe more IN-PLACE? if more a ARENA-TOP +! block exit then
+   a block oe more IN-PLACE? if a more MOVE-TOP block exit then
    more 0 <= if block exit then
    a oe more + BUMP {: moved:^ :}
    block moved old BYTE-COPY moved ;
@@ -295,6 +308,7 @@ public
 : NEW ( -- ^arena )
    FIRST-CHUNK {: a:^arena :}
    ARENA-BYTES a ARENA-TOP !
+   EMPTY a ARENA-FLOOR !
    a BYTE-VIEW [: SELF-ALLOC ;] [: SELF-RESIZE ;] [: SELF-FREE ;]
    a ARENA-ALLOCATOR ALLOC:INIT
    a ;
@@ -304,7 +318,7 @@ public
 \ child's `born`, so a CUT to it keeps the child.
 : NEW-IN ( ^arena -- ^arena )
    {: parent:^ :}
-   parent MARK {: at:n :}
+   parent POSITION {: at:n :}
    parent CELL BUMP drop
    NEW {: a:^ :}
    at a ARENA-BORN !
@@ -339,7 +353,7 @@ public
 : ALLOC-DISPOSE ( ^arena n [ ^u8 -- ] -- ^u8 n )
    {: a:^ len:n run :}
    len EXTENT {: bytes:n :}
-   a MARK {: at:n :}
+   a POSITION {: at:n :}
    a bytes ACTION-BYTES + BUMP {: p:^ :}
    p bytes + >ACTION {: act:^ :}
    p act ACTION-ALLOC !
@@ -355,7 +369,10 @@ public
 \ Bytes above the mark are undefined after CUT, a block grown across it
 \ included, as after RESET. Each action caught; the first code one threw is
 \ rethrown after the rest.
-: CUT ( ^arena n -- ) true SETTLE RETHROW ;
+: CUT ( ^arena n -- )
+   {: a:^ mark:n :}
+   mark a ARENA-FLOOR !
+   a mark true SETTLE RETHROW ;
 : RESET ( ^arena -- ) EMPTY CUT ;
 : RELEASE ( ^arena -- )
    dup NULL-PTR = if drop exit then EMPTY false SETTLE RETHROW ;
