@@ -128,7 +128,6 @@ public
 
 private
 
-6 constant ENXIO                     \ the same number on macOS and Linux
 1000000 constant NS-PER-MS
 $7FFFFFFF constant MAX-POLL-MS
 
@@ -369,7 +368,7 @@ public
    ps FS:FIFO? 0= if E-FS-OPEN throw then
    ps FS:>PATHZ FS:O-WRONLY O-NONBLOCK or OPEN-CALL {: opened:n :}
    opened 0 < if
-      FFI:ERRNO ENXIO = if OPTION:NONE exit then
+      FFI:ERRNO FS:ENXIO = if OPTION:NONE exit then
       E-FS-OPEN ERRNO-FAIL
    then
    \ F_SETFL 0 clears the status flags F_SETFL can change; of those, the open

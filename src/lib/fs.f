@@ -69,6 +69,7 @@ $2F constant SLASH
 \ Host errnos: macOS sys/errno.h, Linux asm-generic/errno.h on every arch.
 1 constant EPERM
 2 constant ENOENT
+6 constant ENXIO
 9 constant EBADF
 12 constant ENOMEM
 13 constant EACCES
