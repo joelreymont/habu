@@ -153,7 +153,7 @@ public
    k 1 + LV-HEAD-RESERVE  k 1 + LV-ENTRY-RESERVE  k 1 + LV-FIRST-RESERVE
    MARK k LV-HEAD !
    at k LV-ENTRY !
-   LEAVE-N @ k LV-FIRST !
+   LEAVE-N @ k LV-FIRST ARENA-CELL!
    k 1 + LV-N ! ;
 
 : LEAVE, ( -- )

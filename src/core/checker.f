@@ -1098,7 +1098,7 @@ TV-CLEAR
 : NLINEAR@ ( n -- bool ) cells NLINEAR + @ 0 <> ;
 : NLINEAR! ( n -- ) -1 swap cells NLINEAR + ! ;
 : TV-PROV? ( n -- bool ) cells TVP + @ 0 <> ;
-: TV-PROV! ( n bool -- ) IF -1 ELSE 0 THEN swap cells TVP + ! ;
+: TV-PROV! ( n bool -- ) IF -1 ELSE 0 THEN swap cells TVP + ARENA-CELL! ;
 : VRC-TV ( -- ^n ) TV-READY VRC-TV-P @ ; : VRC-RV ( -- ^n ) TV-READY VRC-RV-P @ ;
 : VRI-TV ( -- ^n ) TV-READY VRI-TV-P @ ; : VRI-RV ( -- ^n ) TV-READY VRI-RV-P @ ;
 : EC-TV ( -- ^n ) TV-READY EC-TV-P @ ;   : EC-RV ( -- ^n ) TV-READY EC-RV-P @ ;
@@ -1154,7 +1154,7 @@ private
 : TVO@ ( n -- n ) cells TVO + @ ;
 : TVO! ( n n -- ) cells TVO + ! ;
 : TVI@ ( n -- n ) cells TVI + @ ;
-: TVI! ( n n -- ) cells TVI + ! ;
+: TVI! ( n n -- ) cells TVI + ARENA-CELL! ;
 : TVS@ ( n -- n ) cells TVS + @ ;
 : TVS! ( n n -- ) cells TVS + ! ;
 : TVK-RAW? ( n -- bool ) TVK@ TVK-RAW = ;
@@ -2470,7 +2470,7 @@ variable JOIN-FACTS
 : STALE-NEW ( n n -- n ) {: inner:n catch:n :}
    STLN @ 1 + STL-ENSURE
    inner STLN @ cells STLA + !
-   catch STLN @ cells STLC + !
+   catch STLN @ cells STLC + ARENA-CELL!
    STLN @ TAG-SHIFT lshift T-STALE or
    STLN @ 1 + STLN ! ;
 : MK-STALE ( n -- n )
@@ -4266,7 +4266,7 @@ variable FAILB  variable FAILE   \ the pin's span, the current token's while no 
    THEN
    term HELD {: held:n :}
    held 0 <> IF id FB-VAR? 0= IF held  held FB-MINT  U-FAIL EXIT THEN THEN
-   id 0 TRAIL-PUSH term 1+ id cells TVT + !  0 id cells TVP + ! ;
+   id 0 TRAIL-PUSH term 1+ id cells TVT + !  0 id cells TVP + ARENA-CELL! ;
 
 
 : RV! ( n n -- ) {: row:n id:n :}
@@ -5051,7 +5051,7 @@ PTR-VARIABLE HOLD-KF-P   variable HOLD-KF-CAP
       f HF-NK HF @ {: k:n :}
       id  f HF-NK 1 + k + HF !
       k 1 + f HF-NK HF !
-      HOLD-KF-ENSURE  f id cells HOLD-KF + !  EXIT
+      HOLD-KF-ENSURE  f id cells HOLD-KF + ARENA-CELL!  EXIT
    THEN
    HOLD-I-N @ 1 + HOLD-I-ENSURE   HOLD-IX-ENSURE
    id HOLD-I-N @ cells HOLD-I + !
@@ -5369,7 +5369,7 @@ variable KEPT-ROLE   variable KEPT-WANT   variable KEPT-RUN   variable KEPT-RUN-
    pid cells PARAMUC + @ ctx =  and  pid cells PARAMUL + @ CUR-LIT @ =  and
    IF RES-TRUE EXIT THEN
    UNIFY-GEN @ pid cells PARAMUG + !  b pid cells PARAMUB + !
-   ctx pid cells PARAMUC + !  CUR-LIT @ pid cells PARAMUL + !
+   ctx pid cells PARAMUC + !  CUR-LIT @ pid cells PARAMUL + ARENA-CELL!
    RES-FALSE ;
 
 \ A wanted side that is a variable whose chain is provided demands nothing of a
@@ -10891,10 +10891,10 @@ HIDX-MEM-CLEAR
    id SYM-PKG$ id SYM-ROW SYM.VIS @ id SYM-NAME$ HIDX-HASH ;
 
 : HIDX-EP0 ( n -- ) {: id:n :}
-   0 id HT-EFF-E HIDX-CELL !
-   0 id HT-CTL-E HIDX-CELL !
-   0 id HT-DFR-E HIDX-CELL !
-   0 id HT-PRM-E HIDX-CELL ! ;
+   0 id HT-EFF-E HIDX-CELL ARENA-CELL!
+   0 id HT-CTL-E HIDX-CELL ARENA-CELL!
+   0 id HT-DFR-E HIDX-CELL ARENA-CELL!
+   0 id HT-PRM-E HIDX-CELL ARENA-CELL! ;
 
 : HIDX-SYM+ ( n -- ) {: id:n :}
    id HIDX-EP0
@@ -10965,7 +10965,7 @@ HIDX-MEM-CLEAR
    id vt HIDX-CELL @ RES-TRUE ;
 
 : HIDX! ( n n n n -- ) {: v:n id:n vt:n et:n :}
-   v id vt HIDX-CELL !
+   v id vt HIDX-CELL ARENA-CELL!
    HIDX-EPOCH @ id et HIDX-CELL ! ;
 
 : HIDX-B@ ( n n n -- bool bool ) {: id:n vt:n et:n :}

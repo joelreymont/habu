@@ -52,6 +52,10 @@ global
       dup 0 <> IF dst i cells + BYTE-VIEW CELL-VIEW ! ELSE drop THEN
    loop ;
 
+\ Stores n unless the cell holds n already: a zero stored over a page not
+\ written since its map would make the page resident.
+: ARENA-CELL! ( n ^n -- ) 2dup @ = IF 2drop EXIT THEN ! ;
+
 : ARENA-CELLS-UNBOUND ( ^n n n -- ) {: base:^ from:n to:n :}
    from begin dup to < while {: i:n :}
       UNBOUND i cells base + !
@@ -60,7 +64,7 @@ global
 
 : ARENA-CELLS-ZERO ( ^n n n -- ) {: base:^ from:n to:n :}
    from begin dup to < while {: i:n :}
-      0 i cells base + !
+      0 i cells base + ARENA-CELL!
       i 1 +
    repeat drop ;
 

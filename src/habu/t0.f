@@ -1825,7 +1825,7 @@ variable CATCH-REC                   \ catch's
    r 1+ OP-OF-RESERVE  r 1+ OP-AT-RESERVE
    r XREF-REC REC-START {: to:n :}
    r OP-AT @ to = if exit then
-   to START-OP r OP-OF !  to r OP-AT ! ;
+   to START-OP r OP-OF ARENA-CELL!  to r OP-AT ! ;
 
 : OP-CODE ( n -- n )
    {: r:n :}
