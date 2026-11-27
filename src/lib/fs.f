@@ -22,6 +22,7 @@ require src/lib/le.f
 require src/lib/span.f
 require src/lib/ffi-abi.f
 require src/lib/memory.f
+require src/lib/vector.f
 require src/core/compile-reads.f
 
 package FS
@@ -703,7 +704,8 @@ public
 \ descriptor open; any other open failure is E-FS-OPEN, and a descriptor that
 \ is not a regular file is closed and E-FS-STAT. The open does not block: a
 \ FIFO at the path opens at once and is E-FS-STAT, as any file not regular is.
-\ A true flag hands the caller an open descriptor that READ-SIZED closes.
+\ A true flag hands the caller an open descriptor that READ-SIZED closes; a
+\ throw before READ-SIZED leaves it open.
 : OPEN-SIZED ( str -- fd n bool ) {: ps:str :}
    ps READ-PATHZ O-NONBLOCK 0 open {: file :}
    file 0 < if
@@ -714,13 +716,31 @@ public
    STAT-BUF LIBC-MODE@ S-IFMT and S-IFREG <> if file 0 FSTAT-FAIL then
    file >FD STAT-BUF LIBC-SIZE@ true ;
 
-\ Read exactly the size OPEN-SIZED gave into dst, which holds at least that
-\ many bytes, then close the descriptor. Fewer bytes or more than that size
-\ mean the open file changed underneath: E-FS-IO, the descriptor closed.
-: READ-SIZED ( fd ^u8 n -- ) {: file:fd dst:^ size :}
+private
+\ Room in the vector for n more bytes, so an EXTEND of them cannot throw;
+\ else the descriptor closed and the rejection thrown on.
+: ROOM-OR-CLOSE ( ^VEC:vector<u8> n -- )
+   {: v:^ size :}
+   [: v v VEC:COUNT size + VEC:RESERVE ;] catch
+   dup 0<> if IO-FD @ close throw then drop ;
+
+\ The span filled whole and nothing left after it; IO-FAIL closes.
+: FILL-EXACT ( SPAN:span<u8> -- )
+   SPAN:$ {: dst:str :}
+   dst STR:DATA dst STR:LEN READ-FILL
+   dst STR:LEN <> if IO-FAIL then
+   READ-MORE? if IO-FAIL then ;
+
+public
+\ Append exactly the size OPEN-SIZED gave and close the descriptor on every
+\ path; a throw keeps COUNT. Another size means the file changed: E-FS-IO.
+: READ-SIZED ( fd ^VEC:vector<u8> n -- )
+   {: file:fd v:^ size :}
    file FD>N IO-FD !
-   dst size READ-FILL size <> if IO-FAIL then
-   READ-MORE? if IO-FAIL then
+   v VEC:COUNT {: old:n :}
+   v size ROOM-OR-CLOSE
+   [: v size VEC:EXTEND FILL-EXACT ;] catch
+   dup 0<> if v old VEC:RESIZE throw then drop
    IO-FD @ close ;
 
 \ The open descriptor's file: change time, seconds then nanoseconds, and size.

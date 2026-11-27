@@ -7,6 +7,8 @@ require src/lib/string.f
 require src/lib/string-option.f
 require src/lib/fmt.f
 require src/lib/memory.f
+require src/lib/heap.f
+require src/lib/vector.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/at-exit.f
@@ -248,28 +250,34 @@ variable HBB-ELAPSED-NS
    HBB-GOT$ tmp FS:COPY-FILE-STREAM
    tmp FS:CHMOD-X ;
 
-DYNAMIC-BUFFER HBB-BUILT u8             \ a built file's bytes while HBB-SAME-PAIR compares them
-DYNAMIC-BUFFER HBB-HELD u8              \ the installed file's bytes beside them
+TYPED-VARIABLE HBB-BUILT ^VEC:vector<u8>  \ a built file's bytes while HBB-SAME-PAIR compares them
+TYPED-VARIABLE HBB-HELD ^VEC:vector<u8>   \ the installed file's bytes beside them
 TYPED-VARIABLE HBB-SAME-OUT bool
 
-\ The file read whole into the buffer the reserve and buffer words name; its
-\ length, 0 when it is missing.
-: HBB-READ ( str [ n -- ] [ n -- ^u8 ] -- n )
-   {: s:str reserve buf :}
+: HBB-BUFS-NEW ( -- )
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW HBB-BUILT !
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW HBB-HELD ! ;
+
+\ Either cell may hold NULL-PTR when HBB-BUFS-NEW threw part way.
+: HBB-BUFS-DELETE ( -- )
+   HBB-BUILT @ VEC:DELETE  NULL-PTR HBB-BUILT !
+   HBB-HELD @ VEC:DELETE  NULL-PTR HBB-HELD ! ;
+
+\ The vector holds the file whole, empty when it is missing.
+: HBB-READ ( str ^VEC:vector<u8> -- )
+   {: s:str v:^ :}
+   v 0 VEC:RESIZE
    s FS:OPEN-SIZED {: file:fd size:n found:bool :}
-   found 0= if 0 exit then
-   size reserve execute
-   file 0 buf execute size FS:READ-SIZED
-   size ;
+   found 0= if exit then
+   file v size FS:READ-SIZED ;
 
 \ True when the built file and the installed one, a regular file and no
-\ symlink, compare equal by the quotation. HBB-SAME-OUT? releases the buffers.
+\ symlink, compare equal by the quotation; HBB-BUFS-NEW made the vectors.
 : HBB-SAME-FILE? ( str str [ str str -- bool ] -- bool )
    {: s:str b:str same :}
    b FS:FILE? 0= b FS:SYMLINK? or if false exit then
-   s [: HBB-BUILT-RESERVE ;] [: HBB-BUILT ;] HBB-READ {: au:n :}
-   b [: HBB-HELD-RESERVE ;] [: HBB-HELD ;] HBB-READ {: hu:n :}
-   0 HBB-BUILT au >str 0 HBB-HELD hu >str same execute ;
+   s HBB-BUILT @ HBB-READ  b HBB-HELD @ HBB-READ
+   HBB-BUILT @ VEC:BYTES HBB-HELD @ VEC:BYTES same execute ;
 
 \ The ad hoc build and a team-signed -o hold the same code whatever signed
 \ them; the team check runs codesign, so it goes last.
@@ -282,8 +290,8 @@ TYPED-VARIABLE HBB-SAME-OUT bool
 \ install leaves both untouched; an unreadable -o counts as differing.
 : HBB-SAME-OUT? ( -- bool )
    false HBB-SAME-OUT !
-   [: HBB-SAME-PAIR ;] catch {: rc:n :}
-   HBB-BUILT-RELEASE HBB-HELD-RELEASE
+   [: HBB-BUFS-NEW HBB-SAME-PAIR ;] catch {: rc:n :}
+   HBB-BUFS-DELETE
    rc 0= HBB-SAME-OUT @ and ;
 
 \ A Wasm module is copied with no execute bit, and no map is written beside it.
@@ -297,8 +305,8 @@ TYPED-VARIABLE HBB-SAME-OUT bool
 \ True when -o already holds the module's bytes, as HBB-SAME-OUT? tells a program's.
 : HBB-SAME-MODULE? ( -- bool )
    false HBB-SAME-OUT !
-   [: HBB-SAME-MODULE ;] catch {: rc:n :}
-   HBB-BUILT-RELEASE HBB-HELD-RELEASE
+   [: HBB-BUFS-NEW HBB-SAME-MODULE ;] catch {: rc:n :}
+   HBB-BUFS-DELETE
    rc 0= HBB-SAME-OUT @ and ;
 
 : HBB-INSTALL-MODULE ( -- )

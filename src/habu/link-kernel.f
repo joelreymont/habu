@@ -19,6 +19,7 @@ require src/habu/layout.f
 require src/habu/code-bytes.f
 require src/arch/x86-64/icode.f
 require src/lib/vector.f
+require src/lib/heap.f
 
 package LINKER
 private
@@ -112,8 +113,7 @@ variable N-HOSTS
 \ CHECK passes only an object as hb wrote it, and BAD stops one whose layout
 \ this hb does not read, so the readers index it unchecked.
 
-DYNAMIC-BUFFER KOBJ u8
-variable KOBJ-U                      \ its length, 0 before READ
+TYPED-VARIABLE KOBJ-CELL ^VEC:vector<u8> SCRATCH-ONLY
 PTR-VARIABLE PARSED                  \ the bytes NEXT parses: READ's object, or the rows STATE-PRIMS states
 variable PARSED-U                    \ their length
 variable AT                          \ NEXT's offset in them
@@ -154,6 +154,16 @@ variable PATH-U
 : BAD ( -- )
    SAY-OBJECT
    s" link: this hb does not read the kernel object's layout: build its tree with a stage (docs/bootstrap.md)" EXIT-STATUS:DATAERR die ;
+
+: KOBJ-VEC ( -- ^VEC:vector<u8> )
+   KOBJ-CELL @ NULL-PTR = if
+      HEAP:ALLOCATOR 0 [type] u8 VEC:NEW KOBJ-CELL !
+   then
+   KOBJ-CELL @ ;
+
+\ The address of the object's byte n; KOBJ-VEC's COUNT is its length, 0
+\ before READ.
+: KOBJ ( n -- ^u8 ) KOBJ-VEC swap VEC:AT ;
 
 : KOBJ@ ( n -- n ) 0 KOBJ swap + LE:U64@ ;
 
@@ -220,12 +230,12 @@ variable PATH-U
    AT @ PARSED-U @ <> if BAD then ;
 
 : CHECK ( -- )
-   KOBJ-U @ 40 < if PATH PATH-U @ >str s" checksum" DAMAGED then
+   KOBJ-VEC VEC:COUNT 40 < if PATH PATH-U @ >str s" checksum" DAMAGED then
    0 KOBJ 8 >str s" HBKERNX6" STR:= X64!
    X64? 0= if
       0 KOBJ 8 >str s" HBKERNEL" STR:= 0= if PATH PATH-U @ >str s" checksum" DAMAGED then
    then
-   0 KOBJ KOBJ-U @ >str SEALED? 0= if PATH PATH-U @ >str s" checksum" DAMAGED then ;
+   KOBJ-VEC VEC:BYTES SEALED? 0= if PATH PATH-U @ >str s" checksum" DAMAGED then ;
 
 : LABEL-AT ( n -- n ) 8 * LABELS-AT @ + KOBJ@ ;
 
@@ -318,7 +328,7 @@ variable PATH-U
 public
 
 \ True once READ read an object.
-: READ? ( -- bool ) KOBJ-U @ 0<> ;
+: READ? ( -- bool ) KOBJ-VEC VEC:COUNT 0<> ;
 
 : SYM ( str -- n )
    {: s:str :}
@@ -383,15 +393,13 @@ public
 
 private
 
-\ The file at the path into KOBJ and its length into KOBJ-U; false when it is
-\ missing.
+\ The file at the path into KOBJ-VEC, which is empty; false when it is missing.
 : KOBJ-FILL ( str -- bool )
    {: path:str :}
    path FS:OPEN-SIZED {: file:fd size:n found:bool :}
    found 0= if false exit then
-   size 1 max KOBJ-RESERVE
-   file 0 KOBJ size FS:READ-SIZED
-   size KOBJ-U !  true ;
+   file KOBJ-VEC size FS:READ-SIZED
+   true ;
 
 public
 
@@ -399,7 +407,7 @@ public
 \ DATA-START is above hb's dies: hb routes only its own header's stores.
 : READ ( str -- )
    {: path:str :}
-   0 KOBJ-U !
+   KOBJ-VEC 0 VEC:RESIZE
    path STR:LEN PATH-CAP min PATH-U !
    path STR:DATA PATH PATH-U @ BYTE-COPY
    [: path KOBJ-FILL ;] catch {: found code:n :}
@@ -410,7 +418,7 @@ public
       s" link: the kernel object is missing" EXIT-STATUS:NOINPUT die
    then
    CHECK
-   0 KOBJ PARSED !  KOBJ-U @ PARSED-U !
+   0 KOBJ PARSED !  KOBJ-VEC VEC:COUNT PARSED-U !
    SECTIONS
    s" DATA-START" SYM {: theirs:n :}
    theirs DATA-START > if

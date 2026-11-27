@@ -28,6 +28,8 @@ require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/build-out.f
 require src/lib/le.f
+require src/lib/heap.f
+require src/lib/vector.f
 require src/core/include.f
 require src/habu/boot-files.f
 require src/compiler/target/model.f
@@ -63,10 +65,20 @@ TYPED-VARIABLE KERNEL-ENGINE? bool
 TYPED-VARIABLE TARGET RTARGET:resolved-target
 DYNAMIC-BUFFER TEXT u8                  \ the end file's text until it is written
 variable TEXT-U
-DYNAMIC-BUFFER PRESENT u8               \ a written file's bytes while SAME-FILE? compares them
-DYNAMIC-BUFFER RECORD u8                \ an inputs file's bytes while KERNEL-WRITE or ADOPT? holds them
-variable RECORD-U                       \ the inputs file's size once INPUTS-READ read it
-variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS:READ-SIZED owns it, else -1
+TYPED-VARIABLE RECORD-CELL ^VEC:vector<u8>   \ an inputs file's bytes while KERNEL-WRITE or ADOPT? holds them
+
+: CELL-VEC ( ^^VEC:vector<u8> -- ^VEC:vector<u8> )
+   {: c:^ :}
+   c @ NULL-PTR = if HEAP:ALLOCATOR 0 [type] u8 VEC:NEW c ! then
+   c @ ;
+
+\ The cell holds NULL-PTR after, so a second delete does nothing.
+: CELL-DELETE ( ^^VEC:vector<u8> -- )
+   {: c:^ :}
+   c @ VEC:DELETE  NULL-PTR c ! ;
+
+: RECORD-VEC ( -- ^VEC:vector<u8> ) RECORD-CELL CELL-VEC ;
+: RECORD ( n -- ^u8 ) RECORD-VEC swap VEC:AT ;
 
 : END$ ( -- str ) END-PATH END-U @ >str ;
 : SRC$ ( -- str ) SRC-PATH @ SRC-LEN @ >str ;
@@ -102,16 +114,19 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
    WHERE-BUF WHERE-U @ >str ;
 
 
-\ True when the file at the path holds exactly the bytes; false when it is missing.
-: SAME-FILE? ( str str -- bool )
-   {: ps:str s:str :}
+: SAME-BYTES? ( str str ^VEC:vector<u8> -- bool )
+   {: ps:str s:str v:^ :}
    ps FS:OPEN-SIZED {: file:fd size:n found:bool :}
    found 0= if false exit then
    size s STR:LEN <> if file FD>N close false exit then
-   size PRESENT-RESERVE
-   file 0 PRESENT size FS:READ-SIZED
-   0 PRESENT size >str s STR:=
-   PRESENT-RELEASE ;
+   file v size FS:READ-SIZED
+   v VEC:BYTES s STR:= ;
+
+\ True when the file at the path holds exactly the bytes; false when it is missing.
+: SAME-FILE? ( str str -- bool )
+   {: ps:str s:str :}
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: v:^ :}
+   [: ps s v SAME-BYTES? ;] [: v VEC:DELETE ;] finally ;
 
 
 \ A file the build loads keeps its inode and change time while its bytes stay
@@ -458,7 +473,7 @@ TYPED-VARIABLE PRIMS-LOADED? bool       \ ROWS-BODY's walk has loaded src/habu/p
 32 constant SUM-U
 SUM-U 32 + constant HEAD-U
 \ A real kernel build's inputs file is far below INPUTS-CAP; one over it is
-\ damaged, and ADOPT? maps no buffer of its size.
+\ damaged, and ADOPT? allocates no buffer of its size.
 16 1024 * 1024 * constant INPUTS-CAP
 
 : KNAME+ ( str -- )
@@ -516,33 +531,31 @@ SUM-U 32 + constant HEAD-U
    {: size:n ms:n mns:n cs:n cns:n :}
    LINKER:INPUTS$ {: l:str :}
    l STR:LEN {: lu:n :}
-   HEAD-U lu + RECORD-RESERVE
+   RECORD-VEC HEAD-U lu + VEC:RESIZE
    s STR:DATA 8 +  0 RECORD  SUM-U BYTE-COPY
    cs  SUM-U RECORD LE:U64!
    cns  SUM-U 8 + RECORD LE:U64!
    size  SUM-U 16 + RECORD LE:U64!
    lu  SUM-U 24 + RECORD LE:U64!
    l STR:DATA  HEAD-U RECORD  lu BYTE-COPY
-   INPUTS-PATH INPUTS-U @ >str  0 RECORD  HEAD-U lu + >str
+   INPUTS-PATH INPUTS-U @ >str  RECORD-VEC VEC:BYTES
    FS:ATOMIC-WRITE-FILE
-   RECORD-RELEASE ;
+   RECORD-CELL CELL-DELETE ;
 
-\ The inputs file whole into RECORD through one descriptor, its size into
-\ RECORD-U; false when it is missing, shorter than its head or over INPUTS-CAP.
+\ The inputs file whole into RECORD-VEC through one descriptor; false when it
+\ is missing, shorter than its head or over INPUTS-CAP.
 : INPUTS-READ ( -- bool )
+   RECORD-VEC 0 VEC:RESIZE
    INPUTS-PATH INPUTS-U @ >str FS:OPEN-SIZED {: file:fd n:n found:bool :}
    found 0= if false exit then
-   file FD>N INPUTS-FD !
-   n HEAD-U <  n INPUTS-CAP > or if false exit then
-   n RECORD-RESERVE
-   -1 INPUTS-FD !
-   file 0 RECORD n FS:READ-SIZED
-   n RECORD-U !  true ;
+   n HEAD-U <  n INPUTS-CAP > or if file FD>N close false exit then
+   file RECORD-VEC n FS:READ-SIZED
+   true ;
 
 : INPUTS-KEEPING ( bool -- bool ) drop INPUTS-READ ;
 
 \ INPUTS-READ, false also when the file cannot be opened or read, or a buffer
-\ of its size mapped; any other throw passes.
+\ of its size allocated; any other throw passes.
 : INPUTS-READ? ( -- bool )
    false ['] INPUTS-KEEPING catch {: ok code:n :}
    code 0= if ok exit then
@@ -553,7 +566,7 @@ SUM-U 32 + constant HEAD-U
 \ Whether the log runs exactly to the file's end, and the object the checksum
 \ names has the recorded stamp.
 : HEAD-HOLDS? ( -- bool )
-   RECORD-U @ HEAD-U -  SUM-U 24 + RECORD LE:U64@  <> if false exit then
+   RECORD-VEC VEC:COUNT HEAD-U -  SUM-U 24 + RECORD LE:U64@  <> if false exit then
    0 RECORD OBJECT-PATH!
    KERNEL-PATH KERNEL-U @ >str FS:TRY-FILE-META
    0= if 2drop 2drop drop false exit then
@@ -564,19 +577,13 @@ SUM-U 32 + constant HEAD-U
 : RECORD-HOLDS? ( -- bool )
    INPUTS-READ? 0= if false exit then
    HEAD-HOLDS? 0= if false exit then
-   HEAD-U RECORD  RECORD-U @ HEAD-U - >str  LINKER:INPUTS-HOLD? ;
-
-: INPUTS-DONE ( -- )
-   INPUTS-FD @ 0 >= if INPUTS-FD @ close then
-   -1 INPUTS-FD !
-   RECORD-RELEASE ;
+   HEAD-U RECORD  RECORD-VEC VEC:COUNT HEAD-U - >str  LINKER:INPUTS-HOLD? ;
 
 \ Whether the inputs file reads whole, its object stands as it records, and the
-\ inputs it logs hold now; KERNEL-PATH then names that object. The descriptor
-\ and RECORD are released on every exit, a throw included.
+\ inputs it logs hold now; KERNEL-PATH then names that object. RECORD-VEC is
+\ deleted on every exit, a throw included.
 : ADOPT? ( -- bool )
-   -1 INPUTS-FD !
-   ['] RECORD-HOLDS? ['] INPUTS-DONE finally ;
+   ['] RECORD-HOLDS? [: RECORD-CELL CELL-DELETE ;] finally ;
 
 : KERNEL-BODY ( -- )
    BETWEEN

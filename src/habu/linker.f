@@ -3491,28 +3491,13 @@ EXPORT CHECK:HELD-UNDEFINE
    ENTRIES-CK  SKIP-CODE  DATA-CK  SKIP-FACTS  SKIP-ACTS ;
 
 
-variable READ-FD                     \ READ-INTO's open descriptor until FS:READ-SIZED owns it
-
-\ The vector made the file's size, then the file read into it; a size the vector cannot
-\ hold throws before FS:READ-SIZED owns the descriptor.
-: READ-BODY ( fd n ^VEC:vector<u8> -- )
-   {: file:fd size:n buf:^ :}
-   buf 0 VEC:RESIZE  buf size VEC:ENSURE
-   file  buf BYTES$ dup STR:DATA swap STR:LEN
-   -1 READ-FD !  FS:READ-SIZED ;
-
-: READ-DONE ( -- )
-   READ-FD @ 0 >= if READ-FD @ close then
-   -1 READ-FD ! ;
-
 \ The file at the path, whole, into the vector through one descriptor, so a build renaming
 \ a new file over the path cannot tear the read; false when it is missing.
 : READ-INTO ( str ^VEC:vector<u8> -- bool )
    {: path:str buf:^ :}
    path FS:OPEN-SIZED {: file:fd size:n found:bool :}
    found 0= if false exit then
-   file FD>N READ-FD !
-   file size buf [: READ-BODY ;] [: READ-DONE ;] finally
+   buf 0 VEC:RESIZE  file buf size FS:READ-SIZED
    true ;
 
 \ READ-INTO with its inputs kept beneath its answer, so a catch around it keeps the stack's shape.

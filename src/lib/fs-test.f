@@ -11,6 +11,8 @@ require src/lib/test/assert.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/memory.f                \ MEM-MAX-N for the join overflow rows
+require src/lib/heap.f
+require src/lib/vector.f
 require src/lib/task.f                  \ two tasks through FS:READ-ALL / FS:FILE-SIZE at once
 require src/lib/adt/result.f            \ the join's answer is MATCHed here
 require src/lib/fmt.f                   \ FMT:.INT - report numbers inline
@@ -911,6 +913,32 @@ TASK:MIN-STACK TASK:TASK FS-TEST-RACE-TASK
    FS:ERRNO 9 FS-TEST=
    T-FAILURES 0 FS-TEST= ;
 
+: FS-TEST-SIZED-KEPT ( fd ^VEC:vector<u8> -- )
+   {: file:fd v:^ :}
+   v VEC:COUNT 2 FS-TEST=
+   v VEC:BYTES s" xy" FS-TEST$=
+   [: file FS:FD-LINKS drop ;] E-FS-STAT TTHROWSQ
+   FS:ERRNO 9 FS-TEST= ;
+
+\ A READ-SIZED that throws, from the room or the read, closes the descriptor
+\ and leaves the vector's bytes as they were.
+: FS-TEST-READ-SIZED-FAIL ( -- )
+   FS-TEST-LINKS-PATH s" abc" FS:WRITE-ALL
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: v:^ :}
+   s" xy" v VEC:APPEND
+   T-RESET
+   FS-TEST-LINKS-PATH FS:OPEN-SIZED {: a:fd au:n aok :}
+   aok FS-TEST-ASSERT
+   [: a v MEM-MAX-N 2 - FS:READ-SIZED ;] E-VEC-CAPACITY TTHROWSQ
+   a v FS-TEST-SIZED-KEPT
+   FS-TEST-LINKS-PATH FS:OPEN-SIZED {: b:fd bu:n bok :}
+   bok FS-TEST-ASSERT
+   [: b v bu 1+ FS:READ-SIZED ;] E-FS-IO TTHROWSQ
+   b v FS-TEST-SIZED-KEPT
+   v VEC:DELETE
+   FS-TEST-LINKS-PATH FS:REMOVE-FILE
+   T-FAILURES 0 FS-TEST= ;
+
 
 : FS-TEST-RACED-REJECTION ( -- )
    FS-TEST-BASE s" race-link" FS-TEST-RACE-LIVE-BUF FS-TEST-RACE-LIVE-U FS-TEST-PATH!
@@ -1119,6 +1147,7 @@ public
    FS-TEST-READ-AT
    FS-TEST-FD-STAT
    FS-TEST-FD-LINKS
+   FS-TEST-READ-SIZED-FAIL
    FS-TEST-PARALLEL
    FS-TEST-RACED-REJECTION
    FS-TEST-FIFO:RUN

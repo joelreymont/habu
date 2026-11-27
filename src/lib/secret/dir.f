@@ -87,15 +87,10 @@ TASK:FACILITY DIR-LOCK
    code throw ;
 
 
-\ Appends the opened item straight into the vector, its room reserved before the
-\ first byte is read; a failed reservation closes the item.
+\ Appends the opened item to the vector.
 : DIR-APPEND ( ^VEC:vector<u8> -- )
    {: dst:^ :}
-   dst VEC:COUNT {: old:n :}
-   [: dst old DIR-SIZE @ + VEC:ENSURE ;] catch {: code:n :}
-   code 0<> if DIR-FD @ close code throw then
-   dst VEC:BYTES STR:DATA old + {: at:^ :}
-   [: DIR-FD @ >FD at DIR-SIZE @ FS:READ-SIZED ;] catch
+   [: DIR-FD @ >FD dst DIR-SIZE @ FS:READ-SIZED ;] catch
    FS:ERRNO DIR-REJECT ;
 
 

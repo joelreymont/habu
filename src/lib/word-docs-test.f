@@ -7,6 +7,8 @@ require src/lib/string.f
 require src/lib/memory.f
 require src/lib/fmt.f
 require src/lib/fs.f
+require src/lib/heap.f
+require src/lib/vector.f
 require src/lib/test/assert.f
 require src/lib/word-docs.f
 
@@ -190,12 +192,10 @@ variable FIX-U
    c STR:DATA c STR:LEN + 1- c@ X-BYTE T=
    WORD-DOCS:RESET ;
 
-: READ-FILE ( str -- ) {: ps:str :}
+: READ-FILE ( str ^VEC:vector<u8> -- ) {: ps:str v:^ :}
    ps FS:OPEN-SIZED {: fd size:n ok :}
    ok TTRUE
-   size FIX-CAP > if E-STR-CAPACITY throw then
-   fd FIX@ size FS:READ-SIZED
-   size FIX-U ! ;
+   fd v size FS:READ-SIZED ;
 
 \ Record k named s.
 : FIND ( str -- n ) {: s:str :}
@@ -206,7 +206,8 @@ variable FIX-U
 
 : REAL-FILE ( -- )
    s" src/lib/unicode.f" T-LABEL
-   s" src/lib/unicode.f" READ-FILE FIX$ DOCS
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: v:^ :}
+   s" src/lib/unicode.f" v READ-FILE  v VEC:BYTES DOCS
    s" CASEFOLD=" FIND {: k:n :}
    k s" CASEFOLD=" s" UNICODE" s" str str -- bool" REC=
    k WORD-DOCS:PUBLIC? TTRUE
@@ -214,7 +215,7 @@ variable FIX-U
    w s" UNICODE-CLASS:WHITE-SPACE?" s" UNICODE" s" " REC=
    w WORD-DOCS:PUBLIC? TTRUE
    w WORD-DOCS:EXPORT? TTRUE
-   WORD-DOCS:RESET ;
+   WORD-DOCS:RESET  v VEC:DELETE ;
 
 public
 
