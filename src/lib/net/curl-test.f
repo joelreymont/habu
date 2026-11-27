@@ -3439,20 +3439,20 @@ TIGHT-FILL
    subject CURL:CLEANUP ;
 
 
-\ WITH-LOOPS starts the CURL loop itself. E-OPERAND is a code it never throws.
-: TEST-WITH-LOOPS ( -- )
-   PATH-HELLO$ GET-READY [: LOOPS-FETCH ;] CURL:WITH-LOOPS
-   s" WITH-LOOPS carries a transfer to the server" T-LABEL
+\ WITH-LOOP starts the CURL loop itself. E-OPERAND is a code it never throws.
+: TEST-WITH-LOOP ( -- )
+   PATH-HELLO$ GET-READY [: LOOPS-FETCH ;] CURL:WITH-LOOP
+   s" WITH-LOOP carries a transfer to the server" T-LABEL
    LAST-KIND @ KIND-RESPONSE T=
    BODY$ HELLO$ T$=
-   s" WITH-LOOPS stops the CURL loop when the step returns" T-LABEL
+   s" WITH-LOOP stops the CURL loop when the step returns" T-LABEL
    [: CURL:LOOP-STOP ;] CURL:E-STATE TTHROWSQ
-   s" a second WITH-LOOPS runs a step and passes its throw on" T-LABEL
-   [: [: CURL:E-OPERAND throw ;] CURL:WITH-LOOPS ;] CURL:E-OPERAND TTHROWSQ
+   s" a second WITH-LOOP runs a step and passes its throw on" T-LABEL
+   [: [: CURL:E-OPERAND throw ;] CURL:WITH-LOOP ;] CURL:E-OPERAND TTHROWSQ
    s" the CURL loop is stopped after the step threw" T-LABEL
    [: CURL:LOOP-STOP ;] CURL:E-STATE TTHROWSQ
-   s" WITH-LOOPS passes a LOOP-STOP's throw on" T-LABEL
-   [: [: CURL:LOOP-STOP ;] CURL:WITH-LOOPS ;] CURL:E-STATE TTHROWSQ ;
+   s" WITH-LOOP passes a LOOP-STOP's throw on" T-LABEL
+   [: [: CURL:LOOP-STOP ;] CURL:WITH-LOOP ;] CURL:E-STATE TTHROWSQ ;
 
 
 : OPT-IN ( -- )
@@ -3517,7 +3517,7 @@ public
    TEST-HOST:SNAPSHOT
    TEST-MULTI
    TEST-PIPE-REJECTED
-   TEST-WITH-LOOPS
+   TEST-WITH-LOOP
    OPT-IN
    TEARDOWN
    TEST-SERVER

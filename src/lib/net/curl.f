@@ -1872,7 +1872,7 @@ public
 
 \ Runs the step with the transfer loop started and stops it on every path; a
 \ transfer left in flight is E-STATE.
-: WITH-LOOPS ( R [ R -- S ] -- S )
+: WITH-LOOP ( R [ R -- S ] -- S )
    LOOP-START [: LOOP-STOP ;] finally ;
 
 

@@ -5077,7 +5077,7 @@ public
    T-RESET
    STORE-INSTALL
    LOG-INIT
-   [: CAPTURED ;] CURL:WITH-LOOPS
+   [: CAPTURED ;] CURL:WITH-LOOP
    LOG$ KEY$ STR:CONTAINS? 0= ASSERT
    LOG-B BUF:DISPOSE
    s" model-test: " type T-CASES FMT:.INT s"  checks" type cr
