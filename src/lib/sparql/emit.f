@@ -212,11 +212,6 @@ private
 -1 constant GENERIC
 -2 constant KNOWN
 
-\ The reads, items, aliases and variables, a statement may have.
-\ PostgreSQL's planner memory grows with them and no setting of its own
-\ bounds it: a 4 KB query of nested OPTIONALs took 8 GB.
-512 constant MOST
-
 \ The bytes a read of a BIND's variable may copy. A BIND read twice by the
 \ next doubles them; as LATERAL items PostgreSQL pulls up, a chain of 100
 \ each read once took its planner 2.9 GB.
@@ -635,9 +630,7 @@ defer EXISTS-SQL ( ^plan n -- )
 : CHECK-READS ( ^plan n -- )
    {: plan more:n :}
    plan PLAN-READS @ more + MOST > if
-      plan s" at most 512 patterns, sources they match and variables"
-         s" split the query, or state predicates so that fewer sources match"
-         TOO-MANY
+      plan MOST-TEXT TOO-MANY
    then ;
 
 \ Counts one more read.

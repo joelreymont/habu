@@ -42,6 +42,16 @@ private
 -10099 constant E-LAST
 -10001 s" rejected SPARQL query" ERROR:CODE E-QUERY
 
+\ The reads, items, aliases and variables, a statement may have.
+\ PostgreSQL's planner memory grows with them and no setting of its own
+\ bounds it: a 4 KB query of nested OPTIONALs took 8 GB.
+512 constant MOST
+
+\ What a rejection past MOST expects, and its fix.
+: MOST-TEXT ( -- str str )
+   s" at most 512 patterns, sources they match and variables"
+   s" split the query, or state predicates so that fewer sources match" ;
+
 1 constant N-IRI
 2 constant N-LITERAL
 3 constant N-VAR
@@ -217,6 +227,7 @@ STRUCTURE syntax DERIVE addr
    FIELD serial n
    FIELD group n
    FIELD nesting n
+   FIELD patterns n  \ the triple patterns read; MOST bounds them
    FIELD interns interns  \ the IRI and literal nodes by key
    FIELD names interns
 ;STRUCTURE

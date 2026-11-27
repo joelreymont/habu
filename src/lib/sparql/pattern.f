@@ -30,6 +30,13 @@ defer SUBQUERY ( ^syntax -- n )
    state pattern state group NODE-A@ CONS
       state group rot NODE-A! ;
 
+\ Counts k more triple patterns; past MOST, rejects at the current token,
+\ which starts their term.
+: +PATTERNS ( ^syntax n -- )
+   {: state k:n :}
+   k state SYNTAX-PATTERNS +!
+   state SYNTAX-PATTERNS @ MOST > if state MOST-TEXT REJECT then ;
+
 : TRIPLE+ ( ^syntax n n n -- n )
    {: state subject:n predicate:n object:n :}
    state N-TRIPLE subject predicate BINARY-NODE {: node:n :}
@@ -242,6 +249,7 @@ defer SUBQUERY ( ^syntax -- n )
          state s" a term or )" ANY-TERM TERM-EXAMPLE
             state AFTER-OBJECT? state VERB? or CLOSE-OR-REPLACE
       then
+      state 2 +PATTERNS
       state run state RDF-FIRST cell
          state [: dup GRAPH-NODE? swap s" )" IS$ or ;] GRAPH-NODE MEMBER+
       {: last:n list:n :}
@@ -291,6 +299,7 @@ defer SUBQUERY ( ^syntax -- n )
       state GRAPH-NODE? 0= if
          state ANY-TERM TERM-EXAMPLE state follows execute MISSING
       then
+      state 1 +PATTERNS
       state follows GRAPH-NODE {: run:n object:n :}
       state run LAST? if state run object MORE-OBJECTS run
       else state subject predicate object TRIPLE+ then

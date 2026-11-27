@@ -2320,13 +2320,13 @@ PROGRESS
    index 26 / 26 mod 97 + out VEC:PUSH c!
    index 26 mod 97 + out VEC:PUSH c! ;
 
-\ Parses 250 nested groups around 4,000 triples over 12,000 variables.
+\ Parses 250 nested groups around 512 triples over 1,536 variables.
 : DEEP ( ^ARENA:arena -- ^syntax )
    {: arena :}
    arena ARENA:ALLOCATOR 0 [type] u8 VEC:NEW {: out :}
    s" SELECT *" out VEC:APPEND
    out s" {" 250 TIMES
-   12000 0 ?do
+   1536 0 ?do
       out i DEEP-VAR
       i 3 mod 2 = if s" ." out VEC:APPEND then
    loop
@@ -2341,14 +2341,15 @@ PROGRESS
 
 25000000 constant RESOLVED-MOST-BYTES
 
-\ 2,100 relative references against a base of 4,000 segments.
+\ 2,100 relative references in one VALUES block against a base of 4,000
+\ segments.
 : WIDE-BASE ( ^VEC:vector<u8> -- )
    {: out :}
    s" BASE <http://h" out VEC:APPEND
    out s" /a" 4000 TIMES
-   s" /> ASK{" out VEC:APPEND
-   out s" <a> <a> <a>." 700 TIMES
-   s" }" out VEC:APPEND ;
+   s" /> ASK{VALUES ?x {" out VEC:APPEND
+   out s" <a> " 2100 TIMES
+   s" }}" out VEC:APPEND ;
 
 \ Arena bytes the parse takes. The first block makes a chunk of
 \ RESOLVED-MOST-BYTES follow; a parse that leaves that chunk ends below
@@ -2379,7 +2380,7 @@ PROGRESS
    s" and an ungrouped one" T-LABEL
    [: [: LONG-GROUPED ;] ARENA:WITH ;] E-QUERY TTHROWSQ
    SHORT-TEXT
-   s" 12,000 variables under 250 groups make at most 10 nodes per token" T-LABEL
+   s" 1,536 variables under 250 groups make at most 10 nodes per token" T-LABEL
    [: DEEP NODES-PER-TOKEN ;] ARENA:WITH 10 <= TTRUE
    s" 2,100 references on an 8 KB base take under 25 MB" T-LABEL
    [: RESOLVED-BYTES ;] ARENA:WITH
