@@ -48,6 +48,8 @@ STRUCTURE arena OPAQUE DERIVE addr
    FIELD newer ^arena
    FIELD born n        \ the parent's position before NEW-IN
    FIELD floor n       \ the last MARK's answer or CUT's mark
+   FIELD mapped n      \ chunk bytes it and its live children hold
+   FIELD peak n        \ the most `mapped` has been
    FIELD allocator ALLOC:allocator
 ;STRUCTURE
 
@@ -94,6 +96,16 @@ CAST: >ACTION ( ^u8 -- ^action )
    {: a:^ :}
    a START a ARENA-TOP @ + ;
 
+
+\ Adds `n`, below zero to take bytes away, to `mapped` of the arena and of
+\ each arena above it, raising each one's `peak` to its `mapped`.
+: ADD-MAPPED ( ^arena n -- )
+   {: a:^ n:n :}
+   a NULL-PTR = if exit then
+   n a ARENA-MAPPED +!
+   a ARENA-MAPPED @ a ARENA-PEAK @ max a ARENA-PEAK !
+   a ARENA-PARENT @ n RECURSE ;
+
 public
 
 \ Answers the position; until the next MARK or CUT, a block shrunk in place
@@ -101,6 +113,11 @@ public
 : MARK ( ^arena -- n )
    {: a:^ :}
    a POSITION dup a ARENA-FLOOR ! ;
+
+
+\ The most chunk bytes the arena and those made in it have held at once since
+\ NEW, each chunk counted whole whether its pages were touched or not.
+: PEAK ( ^arena -- n ) ARENA-PEAK @ ;
 
 private
 
@@ -115,7 +132,8 @@ private
    size c CHUNK-SIZE !
    a POSITION c CHUNK-START !
    CHUNK-BYTES a ARENA-TOP !
-   c a ARENA-CHUNKS ! ;
+   c a ARENA-CHUNKS !
+   a size ADD-MAPPED ;
 
 
 \ `bytes`, a positive cell multiple, from the newest chunk, or from a later one
@@ -190,6 +208,7 @@ private
    a ARENA-CHUNKS @ {: c:^ :}
    c CHUNK-PREV @ a ARENA-CHUNKS !
    c CHUNK-START @ a START - a ARENA-TOP !
+   a c CHUNK-SIZE @ negate ADD-MAPPED
    c UNMAP-CHUNK nip ;
 
 
@@ -250,6 +269,7 @@ private
    a mark RUN-ACTIONS FIRST-ERROR
    a mark CHOP FIRST-ERROR
    keep if exit then
+   a ARENA-PARENT @ FIRST-BYTES negate ADD-MAPPED
    a UNLINK
    a GIVE-BACK FIRST-ERROR ;
 
@@ -309,6 +329,8 @@ public
    FIRST-CHUNK {: a:^arena :}
    ARENA-BYTES a ARENA-TOP !
    EMPTY a ARENA-FLOOR !
+   FIRST-BYTES a ARENA-MAPPED !
+   FIRST-BYTES a ARENA-PEAK !
    a BYTE-VIEW [: SELF-ALLOC ;] [: SELF-RESIZE ;] [: SELF-FREE ;]
    a ARENA-ALLOCATOR ALLOC:INIT
    a ;
@@ -327,6 +349,7 @@ public
    older a ARENA-OLDER !
    older NULL-PTR <> if a older ARENA-NEWER ! then
    a parent ARENA-KIDS !
+   parent FIRST-BYTES ADD-MAPPED
    a ;
 
 

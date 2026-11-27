@@ -17,7 +17,8 @@
 \ position above its mark, runs an action twice or one from before the mark,
 \ moves the position off a mark a block shrunk in place under, skips an action
 \ registered after that shrink, or ends a child from before the mark or keeps
-\ one from after it.
+\ one from after it; or whose PEAK leaves out a child's chunks, keeps a
+\ released child's or falls when a chunk is unmapped.
 
 require src/lib/test/assert.f
 require src/lib/span.f
@@ -470,13 +471,34 @@ TASK:MIN-STACK TASK:TASK HALT-TASK
    a ARENA:RELEASE
    ORDER @ 21 T= ;
 
+
+\ 17. PEAK counts a child's chunks in its parent, a released child's no more,
+\ and stays when a CUT unmaps a chunk. A 20000-byte request past a 16384-byte
+\ first chunk maps a 32768-byte chunk, twice the one before it.
+: PEAKS ( -- )
+   s" peak" T-LABEL
+   ARENA:NEW {: a:^ :}
+   a ARENA:PEAK 16384 T=
+   a ARENA:NEW-IN {: kid:^ :}
+   kid 20000 ARENA:ALLOC 2drop
+   a ARENA:PEAK 16384 16384 + 32768 + T=
+   kid ARENA:RELEASE
+   a ARENA:PEAK 65536 T=
+   a ARENA:NEW-IN 20000 ARENA:ALLOC 2drop
+   a ARENA:PEAK 65536 T=
+   a ARENA:MARK {: mark:n :}
+   a 20000 ARENA:ALLOC 2drop
+   a mark ARENA:CUT
+   a ARENA:PEAK 65536 32768 + T=
+   a ARENA:RELEASE ;
+
 public
 
 : RUN ( -- )
    T-RESET
    MANY LARGE ACTIONS-ONCE RESET-ZEROES CHILDREN WITH-RELEASES ACTION-THROWS
    EDGES HELD UNMAPPED HALTED RESIZES COPIES CUTS CUT-SHRUNK CUT-KIDS
-   T-REPORT ;
+   PEAKS T-REPORT ;
 
 RUN
 
