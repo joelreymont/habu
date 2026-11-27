@@ -8,6 +8,8 @@ require src/lib/sparql/segs.f
 require src/lib/vector.f
 require src/lib/map-core.f
 require src/lib/map.f
+require src/lib/siphash.f
+require src/lib/le.f
 
 package SPARQL
 private
@@ -79,6 +81,7 @@ private
 : DECODE$ ( ^syntax str bool -- str )
    {: state source:str string:bool :}
    source str> {: text size:n :}
+   source 92 CHAR-OFF size = if source exit then
    state SYNTAX-ARENA @ ARENA:ALLOCATOR 0 [type] u8 VEC:NEW {: out:^ :}
    out size VEC:RESERVE
    0 begin dup size < while
@@ -92,8 +95,61 @@ private
       then
    repeat drop out VEC:BYTES ;
 
+: ABSORB$ ( ^SIPHASH:state str -- )
+   {: sip text:str :}
+   text str> {: bytes size:n :}
+   size 7 invert and {: whole:n :}
+   whole 0 ?do sip bytes i + LE:U64@ SIPHASH:ABSORB-WORD 8 +loop
+   size whole ?do sip bytes i + c@ SIPHASH:ABSORB-BYTE loop ;
+
+\ A term's key: its kind, text, datatype node and language tag, which
+\ compares and hashes as if lower case.
+: TERM-HASH ( ^syntax n str n str -- n )
+   {: state kind:n text:str datatype:n language:str :}
+   state SYNTAX-INTERNS INTERNS-HASH {: sip :}
+   sip kind SIPHASH:ABSORB-WORD
+   sip datatype SIPHASH:ABSORB-WORD
+   sip text str> nip SIPHASH:ABSORB-WORD
+   sip text ABSORB$
+   language str> {: tag size:n :}
+   size 0 ?do sip tag i + c@ STR:ASCII-LOWER SIPHASH:ABSORB-BYTE loop
+   sip SIPHASH:FINISH ;
+
+: SAME-TERM? ( n ^syntax n str n str -- bool )
+   {: index state kind:n text:str datatype:n language:str :}
+   state index NODE {: node :}
+   node NODE-KIND @ kind <> if false exit then
+   node NODE-A @ datatype <> if false exit then
+   node NODE-TEXT @ text STR:= 0= if false exit then
+   node NODE-B @ {: tag:n :}
+   tag 0= if language str> nip 0= exit then
+   state tag TEXT$ language STR:=CI ;
+
+\ A language node: the tag copied in lower case.
+: LANGUAGE-NODE ( ^syntax str -- n )
+   {: state language:str :}
+   state language COPY$ {: tag:str :}
+   tag str> {: text size:n :}
+   size 0 ?do text i + dup c@ STR:ASCII-LOWER swap c! loop
+   state N-LITERAL tag TEXT-NODE ;
+
+\ The IRI or literal node of the key, made when the query has none yet.
+: SHARED-TERM ( ^syntax n str n str -- n )
+   {: state kind:n text:str datatype:n language:str :}
+   state kind text datatype language TERM-HASH {: hash:n :}
+   state SYNTAX-INTERNS {: table:^ :}
+   table hash [: state kind text datatype language SAME-TERM? ;]
+      INTERNED dup 0<> if exit then drop
+   state kind text TERM-NODE {: term:n :}
+   datatype state term NODE NODE-A !
+   language str> nip 0<> if
+      state language LANGUAGE-NODE state term NODE NODE-B !
+   then
+   table hash term +INTERN term ;
+
 : IRI-NODE ( ^syntax str -- n )
-   N-IRI swap TERM-NODE ;
+   {: state text:str :}
+   state N-IRI text 0 s" " SHARED-TERM ;
 
 \ The IRI node the prefix is declared as, 0 for none.
 : PREFIX-NODE ( ^syntax str -- n )
@@ -139,42 +195,44 @@ private
 
 : LITERAL-NODE ( ^syntax str n -- n )
    {: state text:str datatype:n :}
-   state N-LITERAL text TERM-NODE {: term:n :}
-   datatype state term NODE NODE-A ! term ;
+   state N-LITERAL text datatype s" " SHARED-TERM ;
 
-: READ-LANGUAGE ( ^syntax n -- )
-   {: state term:n :}
+\ The literal of the text and the language tag at the cursor.
+: READ-LANGUAGE ( ^syntax str -- n )
+   {: state value:str :}
    state TOKEN$ str> {: token length:n :}
-   state token 1+ length 1- >str COPY$ {: tag:str :}
-   tag str> {: text size:n :}
-   size 0 ?do text i + dup c@ STR:ASCII-LOWER swap c! loop
+   token 1+ length 1- >str {: tag:str :}
    state NEXT-TOKEN
-   state N-LITERAL tag TEXT-NODE {: language:n :}
-   language state term NODE NODE-B !
    state s" http://www.w3.org/1999/02/22-rdf-syntax-ns#langString" IRI-NODE
-      state term NODE NODE-A ! ;
+      {: datatype:n :}
+   state N-LITERAL value datatype tag SHARED-TERM ;
 
-: STRING-TOKEN ( ^syntax -- n )
+\ A string token's value, decoded; the token is read.
+: STRING-VALUE ( ^syntax -- str )
    {: state :}
    state TOKEN$ str> {: text size:n :}
    size 6 >= if
       text c@ text 1+ c@ = text c@ text 2 + c@ = and
    else false then if 3 else 1 then {: edge:n :}
    state text edge + size edge 2 * - >str true DECODE$
-      {: value:str :}
-   state NEXT-TOKEN
-   state s" http://www.w3.org/2001/XMLSchema#string" IRI-NODE
-      {: datatype:n :}
-   state value datatype LITERAL-NODE ;
+   state NEXT-TOKEN ;
+
+: XSD-STRING ( ^syntax -- n )
+   s" http://www.w3.org/2001/XMLSchema#string" IRI-NODE ;
+
+: STRING-TOKEN ( ^syntax -- n )
+   {: state :}
+   state STRING-VALUE {: value:str :}
+   state value state XSD-STRING LITERAL-NODE ;
 
 : READ-STRING ( ^syntax -- n )
    {: state :}
-   state STRING-TOKEN {: term:n :}
+   state STRING-VALUE {: value:str :}
    state s" ^^" ACCEPT$ if
-      state READ-IRI state term NODE NODE-A !
-   else state TOKEN-K T-LANG = if
-      state term READ-LANGUAGE
-   then then term ;
+      state value state READ-IRI LITERAL-NODE exit
+   then
+   state TOKEN-K T-LANG = if state value READ-LANGUAGE exit then
+   state value state XSD-STRING LITERAL-NODE ;
 
 \ The datatype of a number token of kind n.
 : NUMERIC-TYPE ( ^syntax n -- n )

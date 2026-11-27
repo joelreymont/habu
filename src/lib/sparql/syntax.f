@@ -9,6 +9,8 @@ require src/lib/arena.f
 require src/lib/vector.f
 require src/lib/string.f
 require src/lib/map.f
+require src/lib/entropy.f
+require src/lib/siphash.f
 require src/lib/reason.f
 require src/lib/utf8-scalar.f
 require src/lib/unicode/visible.f
@@ -91,6 +93,19 @@ STRUCTURE iri DERIVE addr
    FIELD flags n
 ;STRUCTURE
 
+\ Node indexes by key, open addressed with linear probing: entry i is a
+\ node index, 0 for none, then its key's hash, which regrowth reuses. The
+\ entries double past half load; the old ones stay in the arena.
+STRUCTURE interns DERIVE addr
+   FIELD slots ^n
+   FIELD mask n
+   FIELD count n
+   FIELD k0 n
+   FIELD k1 n
+   FIELD arena ^ARENA:arena
+   FIELD sip SIPHASH:state
+;STRUCTURE
+
 \ Prefixes, variables and blank node labels are MAP maps: a prefix to its
 \ IRI node, a variable's name to its number, from 1 in order of first use,
 \ a label to the group it was first used in. The declared base is the BASE
@@ -117,6 +132,7 @@ STRUCTURE syntax DERIVE addr
    FIELD labels ^n
    FIELD nesting n
    FIELD terms n  \ the IRI and literal nodes made
+   FIELD interns interns  \ the IRI and literal nodes by key
 ;STRUCTURE
 
 \ The offset in the query as written of decoded offset n: the last escape
@@ -303,6 +319,68 @@ STRUCTURE syntax DERIVE addr
    state SYNTAX-TERMS @ state index NODE NODE-VALUE !
    1 state SYNTAX-TERMS +! index ;
 
+\ Entry n of the entries at the address; its hash is the next cell.
+: ENTRY ( ^n n -- ^n )
+   2 * cells + ;
+
+\ The node index under the hash that the quotation finds equal, 0 for none.
+: INTERNED ( ^interns n [ n -- bool ] -- n )
+   {: table:^ hash:n same :}
+   table INTERNS-SLOTS @ {: slots:^ :}
+   slots NULL-PTR = if 0 exit then
+   table INTERNS-MASK @ {: mask:n :}
+   hash mask and begin
+      slots over ENTRY @ dup 0<> if
+         {: at:n index:n :}
+         slots at ENTRY cell+ @ hash = if
+            index same execute if index exit then
+         then at 1+ mask and true
+      else drop false then
+   while repeat drop 0 ;
+
+: PLACE ( ^interns n n -- )
+   {: table:^ hash:n index:n :}
+   table INTERNS-SLOTS @ {: slots:^ :}
+   table INTERNS-MASK @ {: mask:n :}
+   hash mask and begin
+      slots over ENTRY @ 0<>
+   while 1+ mask and repeat
+   slots swap ENTRY {: entry:^ :}
+   index entry ! hash entry cell+ ! ;
+
+\ n entries in place of the table's, holding its nodes.
+: RESIZE ( ^interns n -- )
+   {: table:^ size:n :}
+   table INTERNS-SLOTS @ {: old:^ :}
+   table INTERNS-MASK @ 1+ {: before:n :}
+   table INTERNS-ARENA @ size 2 * cells ARENA:ALLOC drop CELL-VIEW
+      table INTERNS-SLOTS !
+   size 1- table INTERNS-MASK !
+   old NULL-PTR = if exit then
+   before 0 ?do
+      old i ENTRY {: entry:^ :}
+      entry @ 0<> if table entry cell+ @ entry @ PLACE then
+   loop ;
+
+\ Adds node index n under the hash; 16 entries first, doubled when one
+\ more node would fill past half.
+: +INTERN ( ^interns n n -- )
+   {: table:^ hash:n index:n :}
+   table INTERNS-SLOTS @ NULL-PTR = if
+      table 16 RESIZE
+   else
+      table INTERNS-MASK @ 1+ {: size:n :}
+      table INTERNS-COUNT @ 1+ 2 * size > if table size 2 * RESIZE then
+   then
+   table hash index PLACE
+   1 table INTERNS-COUNT +! ;
+
+\ The SipHash state, keyed for the table and reset.
+: INTERNS-HASH ( ^interns -- ^SIPHASH:state )
+   {: table:^ :}
+   table INTERNS-SIP {: sip :}
+   sip table INTERNS-K0 @ table INTERNS-K1 @ SIPHASH:INIT sip ;
+
 : COPY$ ( ^syntax str -- str )
    {: state source:str :}
    source str> {: text size:n :}
@@ -346,6 +424,10 @@ STRUCTURE syntax DERIVE addr
    arena ARENA:ALLOCATOR [type] syntax ALLOC:NEW
       {: state :}
    arena state SYNTAX-ARENA !
+   state SYNTAX-INTERNS {: table:^ :}
+   arena table INTERNS-ARENA !
+   ENTROPY:RANDOM table INTERNS-K0 !
+   ENTROPY:RANDOM table INTERNS-K1 !
    text state SYNTAX-SOURCE !
    text state SYNTAX-ORIGINAL !
    arena ARENA:ALLOCATOR 0 [type] escape VEC:NEW
