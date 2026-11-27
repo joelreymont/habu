@@ -4,10 +4,8 @@
 \ loop and recurses only where the parser recursed, so the parser's nesting
 \ bound bounds it.
 
-require src/lib/map.f
 require src/lib/sparql/pattern.f
 require src/lib/sparql/syntax.f
-require src/lib/map-core.f
 require src/lib/sparql/terms.f
 require src/lib/sparql/expression.f
 require src/lib/sparql/iri.f
@@ -25,9 +23,7 @@ STRUCTURE var-set DERIVE addr
 defer SCOPE ( ^syntax n -- ^var-set )
 defer QUERY-SCOPE ( ^syntax n -- ^var-set )
 
-: VAR-COUNT ( ^syntax -- n )
-   SYNTAX-VARIABLES @ {: names:^ :}
-   names NULL-PTR = if 0 else names MAP:COUNT@ COUNT>N then ;
+: VAR-COUNT ( ^syntax -- n ) SYNTAX-VARIABLES @ ;
 
 : NEW-SET ( ^syntax -- ^var-set )
    {: state :}
@@ -103,18 +99,14 @@ defer QUERY-SCOPE ( ^syntax n -- ^var-set )
    {: state term:n bgp:n :}
    state term NODE-K N-BNODE <> if exit then
    state term NODE NODE-FLAGS @ F-GENERATED and 0<> if exit then
-   state SYNTAX-LABELS state SYNTAX-ARENA @ MAP:ROOM
-   state SYNTAX-LABELS @ {: labels:^ :}
-   state term TEXT$ {: label:str :}
-   labels label MAP:GET MATCH option
-      none OF bgp labels label MAP:SET ENDOF
-      some OF
-         bgp <> if
-            state term s" a blank node label not used in another group"
-               s" rename the label" REJECT-NODE
-         then
-      ENDOF
-   ;MATCH ;
+   state N-BNODE state term TEXT$ FIRST-NAME {: first:n :}
+   first 0= if
+      bgp state term NODE NODE-VALUE ! state term +FIRST-NAME exit
+   then
+   state first NODE NODE-VALUE @ bgp <> if
+      state term s" a blank node label not used in another group"
+         s" rename the label" REJECT-NODE
+   then ;
 
 : TRIPLE-LABELS ( ^syntax n n -- )
    {: state triple:n bgp:n :}

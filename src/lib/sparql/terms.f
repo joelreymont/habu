@@ -5,8 +5,6 @@ require src/lib/sparql/lex.f
 require src/lib/sparql/iri.f
 require src/lib/sparql/syntax.f
 require src/lib/vector.f
-require src/lib/map-core.f
-require src/lib/map.f
 require src/lib/siphash.f
 require src/lib/le.f
 
@@ -94,6 +92,35 @@ private
    whole 0 ?do sip bytes i + LE:U64@ SIPHASH:ABSORB-WORD 8 +loop
    size whole ?do sip bytes i + c@ SIPHASH:ABSORB-BYTE loop ;
 
+\ A name's key: its node's kind and its text.
+: NAME-HASH ( ^syntax n str -- n )
+   {: state kind:n text:str :}
+   state SYNTAX-NAMES INTERNS-HASH {: sip :}
+   sip kind SIPHASH:ABSORB-WORD
+   sip text str> nip SIPHASH:ABSORB-WORD
+   sip text ABSORB$
+   sip SIPHASH:FINISH ;
+
+: NODE-NAME-HASH ( ^syntax n -- n )
+   {: state index:n :}
+   state state index NODE-K state index TEXT$ NAME-HASH ;
+
+: SAME-NAME? ( n ^syntax n str -- bool )
+   {: index state kind:n text:str :}
+   state index NODE-K kind <> if false exit then
+   state index TEXT$ text STR:= ;
+
+\ The first node of the kind and text, 0 for none.
+: FIRST-NAME ( ^syntax n str -- n )
+   {: state kind:n text:str :}
+   state SYNTAX-NAMES state kind text NAME-HASH
+   [: state kind text SAME-NAME? ;] INTERNED ;
+
+\ Adds node n as the first of its kind and text.
+: +FIRST-NAME ( ^syntax n -- )
+   {: state index:n :}
+   state SYNTAX-NAMES index [: state swap NODE-NAME-HASH ;] +INTERN ;
+
 \ A term's key: its kind, text, datatype node and language tag, which
 \ compares and hashes as if lower case.
 : TERM-HASH ( ^syntax n str n str -- n )
@@ -154,12 +181,9 @@ private
 \ The IRI node the prefix is declared as, 0 for none.
 : PREFIX-NODE ( ^syntax str -- n )
    {: state prefix:str :}
-   state SYNTAX-PREFIXES @ {: names:^ :}
-   names NULL-PTR = if 0 exit then
-   names prefix MAP:GET MATCH option
-      none OF 0 ENDOF
-      some OF ENDOF
-   ;MATCH ;
+   state N-PREFIX prefix FIRST-NAME {: node:n :}
+   node 0= if 0 exit then
+   state node NODE NODE-VALUE @ ;
 
 \ A name as a fix shows it.
 : FIX-NAME ( ^syntax str -- str )
@@ -280,24 +304,20 @@ private
       LITERAL-NODE
    state NEXT-TOKEN ;
 
-: VAR-NUMBER ( ^syntax str -- n )
-   {: state name:str :}
-   state SYNTAX-VARIABLES state SYNTAX-ARENA @ MAP:ROOM
-   state SYNTAX-VARIABLES @ {: names:^ :}
-   names name MAP:GET MATCH option
-      none OF
-         names MAP:COUNT@ COUNT>N 1+
-         dup names name MAP:SET
-      ENDOF
-      some OF ENDOF
-   ;MATCH ;
+\ The number of variable node n; a name not seen before takes the next.
+: VAR-NUMBER ( ^syntax n -- n )
+   {: state node:n :}
+   state N-VAR state node TEXT$ FIRST-NAME {: first:n :}
+   first 0<> if state first NODE NODE-VALUE @ exit then
+   state node +FIRST-NAME
+   1 state SYNTAX-VARIABLES +!
+   state SYNTAX-VARIABLES @ ;
 
 \ A variable node; its value is the variable's number.
 : READ-VAR ( ^syntax -- n )
    {: state :}
    state N-VAR 1 0 COPY-TOKEN {: node:n :}
-   state state node TEXT$ VAR-NUMBER
-      state node NODE NODE-VALUE ! node ;
+   state node VAR-NUMBER state node NODE NODE-VALUE ! node ;
 
 : READ-TERM ( ^syntax -- n )
    {: state :}
@@ -332,8 +352,9 @@ private
    then
    state NEXT-TOKEN state T-IRI s" an IRI in <...>" REQUIRE-KIND
    state READ-IRI {: iri:n :}
-   state SYNTAX-PREFIXES state SYNTAX-ARENA @ MAP:ROOM
-   iri state SYNTAX-PREFIXES @ text size 1- >str MAP:SET ;
+   state N-PREFIX text size 1- >str TEXT-NODE {: prefix:n :}
+   iri state prefix NODE NODE-VALUE !
+   state prefix +FIRST-NAME ;
 
 : BASE-SCHEME ( ^syntax -- )
    {: state :}

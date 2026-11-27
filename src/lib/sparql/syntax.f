@@ -8,7 +8,6 @@
 require src/lib/arena.f
 require src/lib/vector.f
 require src/lib/string.f
-require src/lib/map.f
 require src/lib/entropy.f
 require src/lib/siphash.f
 require src/lib/reason.f
@@ -41,6 +40,7 @@ private
 13 constant N-UNION
 14 constant N-MINUS
 15 constant N-GRAPH
+16 constant N-PREFIX
 17 constant N-FILTER
 18 constant N-BIND
 19 constant N-VALUES
@@ -108,11 +108,11 @@ STRUCTURE interns DERIVE addr
 
 \ The parser reads the tokens before, at and after the cursor, which is the
 \ current token's decoded offset; a token of kind 0 is the end.
-\ Prefixes, variables and blank node labels are MAP maps: a prefix to its
-\ IRI node, a variable's name to its number, from 1 in order of first use,
-\ a label to the group it was first used in. The declared base is the BASE
-\ IRI's node, 0 for none; base and directory are set with it. No name from
-\ position to word-end has a colon.
+\ Names holds the first variable, prefix and blank node label node of each
+\ name. That node's value is a variable's number, from 1 in order of first
+\ use, a prefix's IRI node, or the group a label was first used in. The
+\ declared base is the BASE IRI's node, 0 for none; base and directory are
+\ set with it. No name from position to word-end has a colon.
 STRUCTURE syntax DERIVE addr
    FIELD arena ^ARENA:arena
    FIELD nodes ^segs<node>
@@ -126,17 +126,16 @@ STRUCTURE syntax DERIVE addr
    FIELD word-end n
    FIELD cursor n
    FIELD root n
-   FIELD prefixes ^n
-   FIELD variables ^n
+   FIELD variables n  \ how many variables there are
    FIELD declared-base n
    FIELD base ^iri
    FIELD directory str
    FIELD serial n
    FIELD group n
-   FIELD labels ^n
    FIELD nesting n
    FIELD terms n  \ the IRI and literal nodes made
    FIELD interns interns  \ the IRI and literal nodes by key
+   FIELD names interns
 ;STRUCTURE
 
 \ The offset in the query as written of decoded offset n: the last escape
@@ -355,6 +354,13 @@ STRUCTURE syntax DERIVE addr
    table INTERNS-SIP {: sip :}
    sip table INTERNS-K0 @ table INTERNS-K1 @ SIPHASH:INIT sip ;
 
+\ An empty table whose slots the arena holds.
+: INTERNS-INIT ( ^interns ^ARENA:arena -- )
+   {: table:^ arena :}
+   arena table INTERNS-ARENA !
+   ENTROPY:RANDOM table INTERNS-K0 !
+   ENTROPY:RANDOM table INTERNS-K1 ! ;
+
 : COPY$ ( ^syntax str -- str )
    {: state source:str :}
    source str> {: text size:n :}
@@ -398,10 +404,8 @@ STRUCTURE syntax DERIVE addr
    arena ARENA:ALLOCATOR [type] syntax ALLOC:NEW
       {: state :}
    arena state SYNTAX-ARENA !
-   state SYNTAX-INTERNS {: table:^ :}
-   arena table INTERNS-ARENA !
-   ENTROPY:RANDOM table INTERNS-K0 !
-   ENTROPY:RANDOM table INTERNS-K1 !
+   state SYNTAX-INTERNS arena INTERNS-INIT
+   state SYNTAX-NAMES arena INTERNS-INIT
    text state SYNTAX-SOURCE !
    text state SYNTAX-ORIGINAL !
    arena ARENA:ALLOCATOR 0 [type] escape VEC:NEW
