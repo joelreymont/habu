@@ -85,17 +85,15 @@ private
 \ The head's bytes of node n, empty for none.
 : HEAD$ ( ^syntax n -- str )
    {: state index:n :}
-   state index NODE {: node :}
-   state node NODE-C @ node NODE-D @ HEAD-BYTES ;
+   state state index NODE-C@ state index NODE-D@ HEAD-BYTES ;
 
 \ IRI node n's whole text; a headed node is made whole, once.
 : IRI$ ( ^syntax n -- str )
    {: state index:n :}
-   state index NODE {: node :}
-   node NODE-C @ 0= if node NODE-TEXT @ exit then
-   state state index HEAD$ node NODE-TEXT @ JOIN$ {: whole:str :}
-   whole node NODE-TEXT !
-   0 node NODE-C ! 0 node NODE-D ! whole ;
+   state index NODE-C@ 0= if state index TEXT$ exit then
+   state state index HEAD$ state index TEXT$ JOIN$ {: whole:str :}
+   state index whole TEXT!
+   state index 0 NODE-C! state index 0 NODE-D! whole ;
 
 \ Cuts the last segment of the path that starts at n.
 : POP-SEGMENT ( ^VEC:vector<u8> n -- )

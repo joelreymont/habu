@@ -76,7 +76,7 @@ defer ORDER-CONDITION ( ^syntax -- n )
    {: state call:n :}
    state s" =" EXPECT$
    state T-STRING s" a string" REQUIRE-KIND
-   state STRING-TOKEN state call NODE NODE-B ! ;
+   state STRING-TOKEN state call rot NODE-B! ;
 
 \ Whether the current token is SEPARATOR or ORDER, which begin a clause.
 : CLAUSE-WORD? ( ^syntax -- bool )
@@ -96,7 +96,7 @@ defer ORDER-CONDITION ( ^syntax -- n )
       state s" a variable or expression to order by"
          s" write the variables to order by after ORDER BY" REJECT
    then
-   state swap REVERSE state call NODE NODE-C ! ;
+   state swap REVERSE state call rot NODE-C! ;
 
 : REJECT-IRI-CALL ( ^syntax n -- )
    s" arguments without *, SEPARATOR or ORDER BY"
@@ -165,13 +165,13 @@ defer ORDER-CONDITION ( ^syntax -- n )
 : CALL-ARGUMENTS ( ^syntax n -- )
    {: state call:n :}
    state s" DISTINCT" ACCEPT$ if
-      F-DISTINCT state call NODE NODE-FLAGS !
+      state call F-DISTINCT NODE-FLAGS!
    then
    state s" *" ACCEPT$ if
-      F-STAR state call NODE NODE-FLAGS +!
+      state call state call NODE-FLAGS@ F-STAR + NODE-FLAGS!
    else
       state s" )" ACCEPT$ if exit then
-      state EXPRESSIONS state call NODE NODE-A !
+      state EXPRESSIONS state call rot NODE-A!
    then
    state call CALL-CLAUSES state s" )" EXPECT$ ;
 
@@ -220,11 +220,11 @@ defer ORDER-CONDITION ( ^syntax -- n )
 : CHECK-CALL ( ^syntax n -- )
    {: state call:n :}
    state call TEXT$ BUILTIN? 0= if
-      state call NODE NODE-FLAGS @ F-STAR and 0<> if
+      state call NODE-FLAGS@ F-STAR and 0<> if
          state call REJECT-IRI-CALL
       then exit
    then
-   state call NODE NODE-FLAGS @ {: flags:n :}
+   state call NODE-FLAGS@ {: flags:n :}
    flags F-STAR and 0<> if
       state call s" COUNT" CALL-IS? 0= if
          state call s" COUNT, the only function that takes *"
@@ -259,7 +259,7 @@ defer ORDER-CONDITION ( ^syntax -- n )
       name
    else text then {: called:str :}
    state N-CALL called TEXT-NODE {: call:n :}
-   state PREVIOUS-AT state call NODE NODE-TOKEN !
+   state PREVIOUS-AT state call rot NODE-TOKEN!
    state s" (" EXPECT$ state call CALL-ARGUMENTS
    state call CHECK-CALL call ;
 
@@ -381,7 +381,7 @@ defer ORDER-CONDITION ( ^syntax -- n )
       state 0 EXPRESSION {: expression:n :}
       state s" )" EXPECT$
       state N-ORDER expression UNARY-NODE {: node:n :}
-      flags state node NODE NODE-FLAGS ! node
+      state node flags NODE-FLAGS! node
    else
       state TOKEN-K T-VAR = if state READ-TERM
       else state CONSTRAINT then

@@ -249,6 +249,18 @@ STRUCTURE syntax DERIVE addr
 : NODE-B@ ( ^syntax n -- n ) NODE NODE-B @ ;
 : NODE-C@ ( ^syntax n -- n ) NODE NODE-C @ ;
 : NODE-D@ ( ^syntax n -- n ) NODE NODE-D @ ;
+: NODE-FLAGS@ ( ^syntax n -- n ) NODE NODE-FLAGS @ ;
+: NODE-VALUE@ ( ^syntax n -- n ) NODE NODE-VALUE @ ;
+: NODE-TOKEN@ ( ^syntax n -- n ) NODE NODE-TOKEN @ ;
+
+: NODE-KIND! ( ^syntax n n -- ) rot rot NODE NODE-KIND ! ;
+: NODE-FLAGS! ( ^syntax n n -- ) rot rot NODE NODE-FLAGS ! ;
+: NODE-A! ( ^syntax n n -- ) rot rot NODE NODE-A ! ;
+: NODE-B! ( ^syntax n n -- ) rot rot NODE NODE-B ! ;
+: NODE-C! ( ^syntax n n -- ) rot rot NODE NODE-C ! ;
+: NODE-D! ( ^syntax n n -- ) rot rot NODE NODE-D ! ;
+: NODE-VALUE! ( ^syntax n n -- ) rot rot NODE NODE-VALUE ! ;
+: NODE-TOKEN! ( ^syntax n n -- ) rot rot NODE NODE-TOKEN ! ;
 
 : ADD-NODE ( ^syntax n -- n )
    {: state kind:n :}
@@ -272,6 +284,10 @@ STRUCTURE syntax DERIVE addr
 : QUERY-AGGREGATES ( ^syntax n -- n ) QUERY-INFO NODE-B @ ;
 : QUERY-NAMES ( ^syntax n -- n ) QUERY-INFO NODE-C @ ;
 : QUERY-STAR ( ^syntax n -- n ) QUERY-INFO NODE-VALUE @ ;
+: QUERY-VALUES! ( ^syntax n n -- ) rot rot QUERY-INFO NODE-A ! ;
+: QUERY-AGGREGATES! ( ^syntax n n -- ) rot rot QUERY-INFO NODE-B ! ;
+: QUERY-NAMES! ( ^syntax n n -- ) rot rot QUERY-INFO NODE-C ! ;
+: QUERY-STAR! ( ^syntax n n -- ) rot rot QUERY-INFO NODE-VALUE ! ;
 
 : TEXT! ( ^syntax n str -- )
    {: state index:n text:str :}

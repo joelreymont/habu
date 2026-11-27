@@ -34,7 +34,7 @@ defer QUERY-SCOPE ( ^syntax n -- ^var-set )
    span set VAR-SET-SPAN ! set ;
 
 \ The number of variable node n.
-: NUMBER@ ( ^syntax n -- n ) NODE NODE-VALUE @ ;
+: NUMBER@ ( ^syntax n -- n ) NODE-VALUE@ ;
 
 \ Cell n of the set.
 : SCOPE-CELL ( ^var-set n -- ^n ) cells swap VAR-SET-BITS @ + ;
@@ -98,12 +98,12 @@ defer QUERY-SCOPE ( ^syntax n -- ^var-set )
 : BLANK-LABEL ( ^syntax n n -- )
    {: state term:n bgp:n :}
    state term NODE-K N-BNODE <> if exit then
-   state term NODE NODE-FLAGS @ F-GENERATED and 0<> if exit then
+   state term NODE-FLAGS@ F-GENERATED and 0<> if exit then
    state N-BNODE state term TEXT$ FIRST-NAME {: first:n :}
    first 0= if
-      bgp state term NODE NODE-VALUE ! state term +FIRST-NAME exit
+      state term bgp NODE-VALUE! state term +FIRST-NAME exit
    then
-   state first NODE NODE-VALUE @ bgp <> if
+   state first NODE-VALUE@ bgp <> if
       state term s" a blank node label not used in another group"
          s" rename the label" REJECT-NODE
    then ;
@@ -337,10 +337,6 @@ defer QUERY-SCOPE ( ^syntax n -- ^var-set )
    {: state expression:n grouped :}
    state expression [: grouped GROUPED-LEAF ;] WALK ;
 
-: QUERY-NAMES! ( ^syntax n n -- )
-   {: state query:n names:n :}
-   names state query QUERY-INFO NODE-C ! ;
-
 : GROUP-BY-NODE ( ^syntax n -- n )
    {: state query:n :}
    state query NODE-D@ begin dup 0<> while
@@ -384,7 +380,7 @@ defer QUERY-SCOPE ( ^syntax n -- ^var-set )
 \ projected before it.
 : PROJECT-SCOPE ( ^syntax n ^var-set ^var-set bool -- ^var-set )
    {: state query:n scope grouped aggregate:bool :}
-   state query NODE NODE-FLAGS @ F-STAR and 0<> if
+   state query NODE-FLAGS@ F-STAR and 0<> if
       aggregate if
          state state query QUERY-STAR
             s" SELECT with named variables in a grouped query"
@@ -444,7 +440,7 @@ defer QUERY-SCOPE ( ^syntax n -- ^var-set )
    state state query NODE-B@ SCOPE {: names :}
    state query GROUP-BY-NODE {: grouping:n :}
    state query FIND-AGGREGATES {: aggregates:n :}
-   aggregates state query QUERY-INFO NODE-B !
+   state query aggregates QUERY-AGGREGATES!
    aggregates 0<> grouping 0<> or {: aggregate:bool :}
    state NEW-SET {: grouped :}
    grouping 0<> if

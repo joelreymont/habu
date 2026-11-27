@@ -28,12 +28,12 @@ defer SUBQUERY ( ^syntax -- n )
    {: state pattern:n :}
    state SYNTAX-GROUP @ {: group:n :}
    state pattern state group NODE-A@ CONS
-      state group NODE NODE-A ! ;
+      state group rot NODE-A! ;
 
 : TRIPLE+ ( ^syntax n n n -- n )
    {: state subject:n predicate:n object:n :}
    state N-TRIPLE subject predicate BINARY-NODE {: node:n :}
-   object state node NODE NODE-C !
+   state node object NODE-C!
    state node APPEND-PATTERN node ;
 
 \ Whether pattern n is the group's last.
@@ -46,8 +46,8 @@ defer SUBQUERY ( ^syntax -- n )
 \ Links list cell n after the run's last list cell, its value.
 : LINK-LAST ( ^syntax n n -- )
    {: state run:n list:n :}
-   list state state run NODE NODE-VALUE @ NODE NODE-B !
-   list state run NODE NODE-VALUE ! ;
+   state state run NODE-VALUE@ list NODE-B!
+   state run list NODE-VALUE! ;
 
 : PATH-IRI ( ^syntax -- n )
    {: state :}
@@ -125,8 +125,8 @@ defer SUBQUERY ( ^syntax -- n )
 : CELL ( ^syntax n -- n )
    {: state serial:n :}
    state N-BNODE ADD-NODE {: node:n :}
-   serial state node NODE NODE-VALUE !
-   F-GENERATED state node NODE NODE-FLAGS ! node ;
+   state node serial NODE-VALUE!
+   state node F-GENERATED NODE-FLAGS! node ;
 
 : ANONYMOUS ( ^syntax -- n )
    {: state :}
@@ -148,27 +148,27 @@ defer SUBQUERY ( ^syntax -- n )
 : MEMBER+ ( ^syntax n n n n -- n n )
    {: state run:n first:n cell:n member:n :}
    state member 0 CONS {: list:n :}
-   cell state list NODE NODE-VALUE !
+   state list cell NODE-VALUE!
    state run LAST? if state run list LINK-LAST run list exit then
    state N-COLLECTION list first BINARY-NODE {: new:n :}
-   list state new NODE NODE-VALUE !
+   state new list NODE-VALUE!
    state new APPEND-PATTERN new list ;
 
 : COLLECTION ( ^syntax -- n )
    {: state :}
    state s" )" ACCEPT$ if state RDF-NIL exit then
    state ANONYMOUS {: head:n :}
-   0 state head NODE NODE-VALUE @ begin
+   0 state head NODE-VALUE@ begin
       {: run:n cell:n :}
       state run state RDF-FIRST cell state GRAPH-NODE MEMBER+
       {: last:n list:n :}
       state s" )" ACCEPT$ if
-         state RDF-REST state last NODE NODE-C !
-         state RDF-NIL state last NODE NODE-D ! head exit
+         state RDF-REST state last rot NODE-C!
+         state RDF-NIL state last rot NODE-D! head exit
       then
       1 state SYNTAX-SERIAL +! state SYNTAX-SERIAL @ {: next:n :}
-      state next CELL state list NODE NODE-D !
-      state RDF-REST state last NODE NODE-C ! last next
+      state list state next CELL NODE-D!
+      state RDF-REST state last rot NODE-C! last next
    again ;
 
 : GRAPH-NODE-BODY ( ^syntax -- n )
@@ -199,9 +199,9 @@ defer SUBQUERY ( ^syntax -- n )
    {: state run:n object:n :}
    state object 0 CONS {: list:n :}
    state run NODE-K N-TRIPLE <> if state run list LINK-LAST exit then
-   N-OBJECTS state run NODE NODE-KIND !
-   list state run NODE NODE-D !
-   list state run NODE NODE-VALUE ! ;
+   state run N-OBJECTS NODE-KIND!
+   state run list NODE-D!
+   state run list NODE-VALUE! ;
 
 : OBJECT-LIST ( ^syntax n n -- )
    {: state subject:n predicate:n :}
@@ -329,7 +329,7 @@ defer SUBQUERY ( ^syntax -- n )
    then
    state s" BIND" ACCEPT$ if
       state ALIAS {: alias:n :}
-      N-BIND state alias NODE NODE-KIND ! alias exit
+      state alias N-BIND NODE-KIND! alias exit
    then
    state s" VALUES" ACCEPT$ if state VALUES exit then 0 ;
 
@@ -338,7 +338,7 @@ defer SUBQUERY ( ^syntax -- n )
    {: state :}
    state SYNTAX-CURSOR @ {: start:n :}
    state NONTRIPLE-BODY {: pattern:n :}
-   pattern 0<> if start state pattern NODE NODE-TOKEN ! then
+   pattern 0<> if state pattern start NODE-TOKEN! then
    pattern ;
 
 : GROUP-BODY ( ^syntax -- )
@@ -371,7 +371,7 @@ defer SUBQUERY ( ^syntax -- n )
    group state SYNTAX-GROUP !
    state GROUP-BODY
    state state group NODE-A@ REVERSE
-      state group NODE NODE-A !
+      state group rot NODE-A!
    outer state SYNTAX-GROUP ! state UNNEST group ;
 
 : INSTALL-PATTERN ( -- )

@@ -519,10 +519,10 @@ defer EXISTS-SQL ( ^plan n -- )
 \ The term node's parameter number, kept as its value from its first use.
 : TERM-PARAMETER ( ^plan n -- n )
    {: plan node:n :}
-   plan TREE node NODE {: term:^ :}
-   term NODE-VALUE @ {: k:n :}
+   plan TREE {: state :}
+   state node NODE-VALUE@ {: k:n :}
    k 0<> if k exit then
-   plan node s" " NEW-PARAMETER dup term NODE-VALUE ! ;
+   plan node s" " NEW-PARAMETER dup state node rot NODE-VALUE! ;
 
 \ The IRI or literal node's JSON text, copied once into its parameter's
 \ argument, which it gives the node: it lives as long as the plan.
@@ -610,8 +610,8 @@ defer EXISTS-SQL ( ^plan n -- )
    {: plan node:n :}
    plan TREE {: state :}
    state node NODE-K N-VAR = if state node TEXT$ exit then
-   state node NODE NODE-FLAGS @ F-GENERATED and 0<> if
-      state s" _:#" state node NODE NODE-VALUE @ FMT:INT$ JOIN$ exit
+   state node NODE-FLAGS@ F-GENERATED and 0<> if
+      state s" _:#" state node NODE-VALUE@ FMT:INT$ JOIN$ exit
    then state s" _:" state node TEXT$ JOIN$ ;
 
 \ Counts one more read.
@@ -3096,14 +3096,14 @@ STRUCTURE pruning DERIVE addr
    {: plan at:n s:n p:n o:n :}
    plan TREE {: state :}
    state N-TRIPLE s p BINARY-NODE {: t:n :}
-   o state t NODE NODE-C !
-   state at NODE NODE-TOKEN @ state t NODE NODE-TOKEN ! t ;
+   state t o NODE-C!
+   state t state at NODE-TOKEN@ NODE-TOKEN! t ;
 
 : GROUP-NODE ( ^plan n -- n )
    {: plan triple:n :}
    plan TREE {: state :}
    state N-GROUP ADD-NODE {: g:n :}
-   state triple 0 CONS state g NODE NODE-A ! g ;
+   state triple 0 CONS state g rot NODE-A! g ;
 
 \ The two triples' groups as a UNION item.
 : ALTERNATIVE ( ^plan ^VEC:vector<item> n n -- )
@@ -3189,7 +3189,7 @@ STRUCTURE pruning DERIVE addr
    plan TREE {: state :}
    state run NODE-B@ state run NODE-C@ {: first:n rest:n :}
    state run NODE-A@ {: head:n :}
-   state state head NODE NODE-VALUE @ CELL head
+   state state head NODE-VALUE@ CELL head
    begin dup 0<> while
       {: b:n cell:n :} state cell NODE-A@ {: m:n :}
       plan items plan cell b first m TRIPLE-NODE PATTERN-ITEM
@@ -4420,7 +4420,7 @@ STRUCTURE walk DERIVE addr
       state m NODE-K {: kind:n :}
       kind N-LIMIT = kind N-OFFSET = or if
          kind N-LIMIT = if v s"  LIMIT " +SQL else v s"  OFFSET " +SQL then
-         plan v state m NODE NODE-VALUE @ +NUMBER-ARG
+         plan v state m NODE-VALUE@ +NUMBER-ARG
          v s" ::bigint" +SQL
       then state list NODE-B@
    repeat drop ;
@@ -4444,7 +4444,7 @@ STRUCTURE walk DERIVE addr
 : +COUNTED ( ^plan ^rel ^relation n -- )
    {: plan v:^ r:^ call:n :}
    plan TREE {: state :}
-   state call NODE NODE-FLAGS @ {: flags:n :}
+   state call NODE-FLAGS@ {: flags:n :}
    flags F-STAR and 0<> if
       flags F-DISTINCT and 0= if v s" *" +SQL exit then
       plan v r +ROW exit
@@ -4481,7 +4481,7 @@ STRUCTURE walk DERIVE addr
 : NATIVE-SHAPE ( ^plan ^relation n -- n )
    {: plan r:^ call:n :}
    plan TREE {: state :}
-   state call NODE NODE-FLAGS @ F-DISTINCT and 0<> if -1 exit then
+   state call NODE-FLAGS@ F-DISTINCT and 0<> if -1 exit then
    state call s" SUM AVG MIN MAX" CALL-IN? 0= if -1 exit then
    plan r state state call NODE-A@ NODE-A@ BOUND? 0= if -1 exit then
    plan r call OPERAND-BINDING BINDING-SHAPE @ {: k:n :}
@@ -4545,7 +4545,7 @@ STRUCTURE walk DERIVE addr
       state m NODE-K N-ORDER = if
          v s" ," +SEP v s" sparql.order(" +SQL
          v plan r state m NODE-A@ EXPRESSION-SQL +REL v s" )" +SQL
-         state m NODE NODE-FLAGS @ F-DESC and 0<> if
+         state m NODE-FLAGS@ F-DESC and 0<> if
             v s"  DESC" +SQL
          then
       then state each NODE-B@
@@ -4575,7 +4575,7 @@ STRUCTURE walk DERIVE addr
    k -1 > if
       plan v r call +OPERAND plan call k v NATIVE-SQL exit
    then
-   state call NODE NODE-FLAGS @ F-DISTINCT and 0<> {: unique:bool :}
+   state call NODE-FLAGS@ F-DISTINCT and 0<> {: unique:bool :}
    state call s" COUNT" CALL-IS? if
       v s" sparql.number(count(" +SQL
       unique if v s" DISTINCT " +SQL then
@@ -4904,7 +4904,7 @@ STRUCTURE walk DERIVE addr
    plan TREE {: state :}
    state query QUERY-AGGREGATES begin dup 0<> while
       {: list:n :} state list NODE-A@ {: call:n :}
-      state call NODE NODE-FLAGS @ F-DISTINCT and 0<> if false exit then
+      state call NODE-FLAGS@ F-DISTINCT and 0<> if false exit then
       state call s" COUNT MIN MAX SAMPLE" CALL-IN? 0= if false exit then
       state list NODE-B@
    repeat drop
@@ -5097,7 +5097,7 @@ STRUCTURE walk DERIVE addr
    plan query s EXTEND
    plan query s ORDER-KEYS {: keys:^ :}
    plan NEW-SQL {: w:^ :}
-   plan TREE query NODE NODE-FLAGS @ F-DISTINCT and 0<> if
+   plan TREE query NODE-FLAGS@ F-DISTINCT and 0<> if
       plan s names keys DISTINCT-SQL dup
    else
       keys EMPTY? 0= if

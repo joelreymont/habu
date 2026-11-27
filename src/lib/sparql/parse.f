@@ -14,12 +14,12 @@ private
 : PROJECTION ( ^syntax n -- )
    {: state query:n :}
    state s" DISTINCT" ACCEPT$ if
-      F-DISTINCT state query NODE NODE-FLAGS !
+      state query F-DISTINCT NODE-FLAGS!
    else state s" REDUCED" ACCEPT$ drop then
    state s" *" IS$ if
-      state SYNTAX-CURSOR @ state query QUERY-INFO NODE-VALUE !
+      state query state SYNTAX-CURSOR @ QUERY-STAR!
       state NEXT-TOKEN
-      F-STAR state query NODE NODE-FLAGS +! exit
+      state query state query NODE-FLAGS@ F-STAR + NODE-FLAGS! exit
    then
    0 begin
       state TOKEN-K T-VAR = state s" (" IS$ or
@@ -32,7 +32,7 @@ private
       state s" *, a variable or (expression AS ?name)"
          s" write * or the variables to select" REJECT
    then
-   state swap REVERSE state query NODE NODE-A ! ;
+   state swap REVERSE state query rot NODE-A! ;
 
 : MODIFIER? ( ^syntax -- bool )
    {: state :}
@@ -106,7 +106,7 @@ private
          s" write at most 9223372036854775807" REJECT
    then state NEXT-TOKEN
    state kind ADD-NODE {: node:n :}
-   value state node NODE NODE-VALUE ! node ;
+   state node value NODE-VALUE! node ;
 
 : CONCAT-LISTS ( ^syntax n n -- n )
    {: state left:n right:n :}
@@ -114,7 +114,7 @@ private
    left begin state over NODE-B@ 0<> while
       state swap NODE-B@
    repeat
-   right state rot NODE NODE-B ! left ;
+   state swap right NODE-B! left ;
 
 : ADD-SLICE ( ^syntax n n -- n )
    {: state list:n kind:n :}
@@ -141,7 +141,7 @@ private
       state s" LIMIT" ACCEPT$ if
          state swap N-LIMIT ADD-SLICE
       then
-   then then state query NODE NODE-D ! ;
+   then then state query rot NODE-D! ;
 
 : WHERE-FIX ( ^syntax -- str )
    s" FROM" IS$ if
@@ -152,12 +152,12 @@ private
    {: state query:n :}
    state s" WHERE" ACCEPT$ 0= state s" {" IS$ 0= and if
       state s" WHERE or {" state WHERE-FIX REJECT
-   then state GROUP-PATTERN state query NODE NODE-B ! ;
+   then state GROUP-PATTERN state query rot NODE-B! ;
 
 : TAIL-VALUES ( ^syntax n -- )
    {: state query:n :}
    state s" VALUES" ACCEPT$ 0= if exit then
-   state VALUES state query QUERY-INFO NODE-A ! ;
+   state VALUES state query rot QUERY-VALUES! ;
 
 : SELECT-QUERY ( ^syntax -- n )
    {: state :}

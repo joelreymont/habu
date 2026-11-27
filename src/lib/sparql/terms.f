@@ -138,10 +138,9 @@ private
 \ The hash of term node n's key.
 : NODE-HASH ( ^syntax n -- n )
    {: state index:n :}
-   state index NODE {: node :}
-   node NODE-B @ {: tag:n :}
-   state node NODE-KIND @ state index HEAD$ node NODE-TEXT @
-   node NODE-A @ tag 0= if s" " else state tag TEXT$ then TERM-HASH ;
+   state index NODE-B@ {: tag:n :}
+   state state index NODE-K state index HEAD$ state index TEXT$
+   state index NODE-A@ tag 0= if s" " else state tag TEXT$ then TERM-HASH ;
 
 \ Whether the text is the first part then the second.
 : SPLIT-SAME? ( str str str -- bool )
@@ -169,13 +168,12 @@ private
 
 : SAME-TERM? ( n ^syntax n str str n str -- bool )
    {: index state kind:n head:str text:str datatype:n language:str :}
-   state index NODE {: node :}
-   node NODE-KIND @ kind <> if false exit then
-   node NODE-A @ datatype <> if false exit then
-   state index HEAD$ node NODE-TEXT @ head text SAME-PARTS? 0= if
+   state index NODE-K kind <> if false exit then
+   state index NODE-A@ datatype <> if false exit then
+   state index HEAD$ state index TEXT$ head text SAME-PARTS? 0= if
       false exit
    then
-   node NODE-B @ {: tag:n :}
+   state index NODE-B@ {: tag:n :}
    tag 0= if language str> nip 0= exit then
    state tag TEXT$ language STR:=CI ;
 
@@ -197,11 +195,10 @@ private
    table hash [: state kind bytes text datatype language SAME-TERM? ;]
       INTERNED dup 0<> if exit then drop
    state kind text TEXT-NODE {: term:n :}
-   state term NODE {: node :}
-   datatype node NODE-A !
-   head node NODE-C ! keep node NODE-D !
+   state term datatype NODE-A!
+   state term head NODE-C! state term keep NODE-D!
    language str> nip 0<> if
-      state language LANGUAGE-NODE node NODE-B !
+      state language LANGUAGE-NODE state term rot NODE-B!
    then
    table term [: state swap NODE-HASH ;] +INTERN term ;
 
@@ -219,7 +216,7 @@ private
    {: state prefix:str :}
    state N-PREFIX prefix FIRST-NAME {: node:n :}
    node 0= if 0 exit then
-   state node NODE NODE-VALUE @ ;
+   state node NODE-VALUE@ ;
 
 \ A name as a fix shows it.
 : FIX-NAME ( ^syntax str -- str )
@@ -346,7 +343,7 @@ private
 : VAR-NUMBER ( ^syntax n -- n )
    {: state node:n :}
    state N-VAR state node TEXT$ FIRST-NAME {: first:n :}
-   first 0<> if state first NODE NODE-VALUE @ exit then
+   first 0<> if state first NODE-VALUE@ exit then
    state node +FIRST-NAME
    1 state SYNTAX-VARIABLES +!
    state SYNTAX-VARIABLES @ ;
@@ -355,7 +352,7 @@ private
 : READ-VAR ( ^syntax -- n )
    {: state :}
    state N-VAR 1 0 COPY-TOKEN {: node:n :}
-   state node VAR-NUMBER state node NODE NODE-VALUE ! node ;
+   state node state node VAR-NUMBER NODE-VALUE! node ;
 
 : READ-TERM ( ^syntax -- n )
    {: state :}
@@ -391,7 +388,7 @@ private
    state NEXT-TOKEN state T-IRI s" an IRI in <...>" REQUIRE-KIND
    state READ-IRI {: iri:n :}
    state N-PREFIX text size 1- >str TEXT-NODE {: prefix:n :}
-   iri state prefix NODE NODE-VALUE !
+   state prefix iri NODE-VALUE!
    state prefix +FIRST-NAME ;
 
 : BASE-SCHEME ( ^syntax -- )

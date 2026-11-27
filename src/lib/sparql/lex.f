@@ -593,6 +593,6 @@ private
 \ Rejects at the token node n was read at.
 : REJECT-NODE ( ^syntax n str str -- )
    {: state index:n x:str f:str :}
-   state state index NODE NODE-TOKEN @ x f REJECT-TOKEN ;
+   state state index NODE-TOKEN@ x f REJECT-TOKEN ;
 
 ;package
