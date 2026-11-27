@@ -82,10 +82,10 @@ private
 : SIGSTK-FLAGS ( -- n )  HB-TARGET-LINUX? IF 8 ELSE 16 THEN ;
 : SIGSTK-SIZE ( -- n )  HB-TARGET-LINUX? IF 16 ELSE 8 THEN ;
 : SIGSTK-DISABLE ( -- n )  HB-TARGET-LINUX? IF 2 ELSE 4 THEN ;      \ SS_DISABLE
+public
 \ `sub/add xd, xn, #n` for n in whole 4 KiB units: the shifted-immediate form,
 \ which also takes sp. A remainder is rejected (asm.f SCALE/).
 : SUBI-4K, ( n n n -- )  $1000 SCALE/ ENC-SUBI-LSL12 EMITW ;
-public
 : ADDI-4K, ( n n n -- )  $1000 SCALE/ ENC-ADDI-LSL12 EMITW ;
 private
 $8 constant CRASH-LINUX-SIGSET-SIZE

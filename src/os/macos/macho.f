@@ -58,14 +58,13 @@ public
    case
       0 of s" dlopen" endof
       1 of s" dlsym" endof
-      2 of s" free" endof
-      3 of s" realpath" endof
-      4 of s" fork" endof
-      5 of s" mach_vm_remap" endof
-      6 of s" mach_task_self_" endof
+      2 of s" realpath" endof
+      3 of s" fork" endof
+      4 of s" mach_vm_remap" endof
+      5 of s" mach_task_self_" endof
       s" macho: no such import" EXIT-STATUS:IMAGE die
    endcase ;
-7 constant IMPORTS
+6 constant IMPORTS
 
 \ The row whose C name this is; the build dies on a name the table lacks.
 : IMPORT-ROW ( str -- n )

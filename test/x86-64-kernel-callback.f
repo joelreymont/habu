@@ -64,7 +64,7 @@ QSORT-FN CELL + constant THUNK
    name LBL,  s ASM-SINK VEC:APPEND
    0 ASM-SINK VEC:PUSH c!
    past LBL,
-   RSI name MOVABS,  X64KERNEL:DLSYM,  0 G-PUSH ;
+   RSI name MOVABS,  X64HARNESS:DLSYM,  0 G-PUSH ;
 
 \ Leave in rax slot 0's C entry: mov r10, 0 and a jump to the thunk. C keeps its
 \ own rbp, so the stub names the thunk's cell by its absolute address.

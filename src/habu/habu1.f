@@ -2432,42 +2432,45 @@ public
 \ dlsym-entry ( -- n ): the address the loader bound to dlsym.
 : DLSYM-ENTRY ( -- )   s" dlsym" SLOT,  16 G-PUSH ;
 
+private
+\ The realpath frame: [0] dst, [8] capacity, then the buffer realpath resolves
+\ into, Linux's PATH_MAX and above macOS's.
+16 constant RP-BUF
+$1000 constant RP-BUF-BYTES
+public
+
 \ ( pathz dst capacity -- length | -1 | -2 )
-\ libc allocates its realpath result. Only a fitting result, including its NUL,
-\ reaches dst; free runs after both success and insufficient capacity.
-\ -1 = resolution failure, -2 = no room for the complete C string.
+\ realpath resolves into the frame's buffer; only a result that fits dst with
+\ its NUL is copied there. -1 = resolution failure, -2 = no room for the
+\ complete C string.
 : REALPATH ( -- )
-   LBL LBL LBL LBL {: badcap:label failed:label short:label done:label :}
-   LBL LBL LBL LBL {: count:label counted:label copy:label release:label :}
+   LBL LBL LBL {: short:label failed:label done:label :}
+   LBL LBL LBL {: count:label counted:label copy:label :}
    2 G-POP  1 G-POP  0 G-POP
-   SP SP 48 SUBI,                        \ [24] free, [32] result, [40] length
-   0 SP 0 STR,  1 SP 8 STR,  2 SP 16 STR,
-   2 0 CMPI,  C-LE badcap BCOND,
-   s" free" SLOT,  16 SP 24 STR,
+   SP SP RP-BUF-BYTES SUBI-4K,  SP SP RP-BUF SUBI,
+   1 SP 0 STR,  2 SP 8 STR,
+   2 0 CMPI,  C-LE short BCOND,
    s" realpath" SLOT,
-   0 SP 0 LDR,  1 0 MOVZ,  16 BLR,
-   0 failed CBZ,  0 SP 32 STR,
-   9 0 0 ADDI,  10 0 MOVZ,
+   1 SP RP-BUF ADDI,  16 BLR,
+   0 failed CBZ,
+   9 SP RP-BUF ADDI,  0 0 MOVZ,
    count LBL,
       11 9 0 LDRB,  11 counted CBZ,
-      9 9 1 ADDI,  10 10 1 ADDI,  count B,
+      9 9 1 ADDI,  0 0 1 ADDI,  count B,
    counted LBL,
-   10 SP 40 STR,  12 SP 16 LDR,
-   10 12 CMP,  C-CS short BCOND,
-   9 SP 32 LDR,  11 10 1 ADDI,  10 SP 8 LDR,
+   12 SP 8 LDR,
+   0 12 CMP,  C-CS short BCOND,
+   9 SP RP-BUF ADDI,  11 0 1 ADDI,  10 SP 0 LDR,
    copy LBL,
       12 9 0 LDRB,  12 10 0 STRB,
       9 9 1 ADDI,  10 10 1 ADDI,  11 11 1 SUBI,
       11 copy CBNZ,
-   release LBL,
-   0 SP 32 LDR,  16 SP 24 LDR,  16 BLR,
-   0 SP 40 LDR,  done B,
-   short LBL,
-   9 1 MOVN,  9 SP 40 STR,  release B,
-   badcap LBL,  0 1 MOVN,  done B,
+   done B,
+   short LBL,  0 1 MOVN,  done B,
    failed LBL,  0 0 MOVN,
    done LBL,
-   SP SP 48 ADDI,  0 G-PUSH ;
+   SP SP RP-BUF ADDI,  SP SP RP-BUF-BYTES ADDI-4K,
+   0 G-PUSH ;
 
 \ A child owns its region before any Habu code runs, and starts with no exit
 \ owner, so its own exit runs the actions.

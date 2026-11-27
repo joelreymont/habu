@@ -865,13 +865,6 @@ public
 : C-CALL, ( -- )
    R11 RAX ASM-SINK ENC-MOV-RR  R10 ZERO-REG,  0 SYSV-CALL, ;
 
-\ rax = dlsym(RTLD_DEFAULT, the NUL-terminated name at rsi),
-\ or 0 if the loader has no such name.
-: DLSYM, ( -- )
-   s" dlsym" LIBC-ENTRY,
-   RDI ZERO-REG,
-   C-CALL, ;
-
 private
 
 \ ( -- ns ) CLOCK_MONOTONIC, the timers' clock, by libc's clock_gettime, which
@@ -886,57 +879,38 @@ private
    RAX CELL GTOD ASM-SINK ENC-ADD-RM
    0 G-PUSH ;
 
-\ The realpath frame on the machine stack: the arguments, free, the result and
-\ its length, then the two names dlsym is asked for, NUL-terminated.
-0 constant RP-PATH
-8 constant RP-DST
-16 constant RP-CAP
-24 constant RP-FREE
-32 constant RP-RESULT
-40 constant RP-LEN
-48 constant RP-FREE-NAME            \ "free"
-56 constant RP-REALPATH-NAME        \ "realpath", its NUL the next cell
-72 constant RP-FRAME
-$65657266 constant FREE-NAME
-$687461706C616572 constant REALPATH-NAME
+\ 4096 is Linux's PATH_MAX: the most realpath writes at RP-BUF, its NUL included.
+0 constant RP-DST
+8 constant RP-CAP
+16 constant RP-BUF
+RP-BUF 4096 + constant RP-FRAME
 
 : RP ( n -- mem ) RSP swap MEM-OFF ;
 
-\ ( pathz dst capacity -- length | -1 | -2 ): the twin of habu1.f LIBC-OS
-\ REALPATH. libc resolves the path, symlinks included, and allocates the
-\ result; only a result that fits with its NUL reaches dst, and free runs after
-\ a copy and after a result too long. -1 is a resolution or loader failure, -2
-\ a capacity with no room for the whole C string.
+\ ( pathz dst capacity -- length | -1 | -2 )
 : REALPATH-ROW ( -- )
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL {: badcap:label failed:label short:label release:label :}
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL {: count:label counted:label copy:label done:label :}
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL {: short:label failed:label done:label :}
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL {: count:label counted:label copy:label :}
    RDX POP,  RSI POP,  RDI POP,
-   RSP RP-FRAME >IMM8 ASM-SINK ENC-SUB-RI8
-   RDI RP-PATH RP ASM-SINK ENC-MOV-MR
+   RSP $1000 >IMM32 ASM-SINK ENC-SUB-RI32
+   \ x86-64 glibc guards a task's stack with one 4 KiB page: the store touches
+   \ it before the frame reaches past it.
+   RDI 0 RP ASM-SINK ENC-MOV-MR
+   RSP RP-FRAME $1000 - >IMM32 ASM-SINK ENC-SUB-RI32
    RSI RP-DST RP ASM-SINK ENC-MOV-MR
    RDX RP-CAP RP ASM-SINK ENC-MOV-MR
-   RDX RDX ASM-SINK ENC-TEST-RR  C-LE badcap JCC,
-   RAX FREE-NAME IMM32,  RAX RP-FREE-NAME RP ASM-SINK ENC-MOV-MR
-   RAX REALPATH-NAME >IMM64 ASM-SINK ENC-MOV-RI64
-   RAX RP-REALPATH-NAME RP ASM-SINK ENC-MOV-MR
-   RAX ZERO-REG,  RAX RP-REALPATH-NAME CELL + RP ASM-SINK ENC-MOV-MR
-   RSI RP-FREE-NAME RP ASM-SINK ENC-LEA  DLSYM,
+   RDX RDX ASM-SINK ENC-TEST-RR  C-LE short JCC,
+   s" realpath" LIBC-ENTRY,
+   RSI RP-BUF RP ASM-SINK ENC-LEA  C-CALL,
    RAX RAX ASM-SINK ENC-TEST-RR  C-E failed JCC,
-   RAX RP-FREE RP ASM-SINK ENC-MOV-MR
-   RSI RP-REALPATH-NAME RP ASM-SINK ENC-LEA  DLSYM,
-   RAX RAX ASM-SINK ENC-TEST-RR  C-E failed JCC,
-   RDI RP-PATH RP ASM-SINK ENC-MOV-RM  RSI ZERO-REG,  C-CALL,
-   RAX RAX ASM-SINK ENC-TEST-RR  C-E failed JCC,
-   RAX RP-RESULT RP ASM-SINK ENC-MOV-MR
-   RCX RAX ASM-SINK ENC-MOV-RR  RDX ZERO-REG,
+   RCX RP-BUF RP ASM-SINK ENC-LEA  RDX ZERO-REG,
    count X64CODE:LBL,
    R8 RCX MEM-AT ASM-SINK ENC-MOVZX-8-RM
    R8 R8 ASM-SINK ENC-TEST-RR  C-E counted JCC,
    RCX ASM-SINK ENC-INC  RDX ASM-SINK ENC-INC  count JMP,
    counted X64CODE:LBL,
-   RDX RP-LEN RP ASM-SINK ENC-MOV-MR
    RDX RP-CAP RP ASM-SINK ENC-CMP-RM  C-AE short JCC,
-   RSI RP-RESULT RP ASM-SINK ENC-MOV-RM
+   RSI RP-BUF RP ASM-SINK ENC-LEA
    RDI RP-DST RP ASM-SINK ENC-MOV-RM
    RCX RDX ASM-SINK ENC-MOV-RR  RCX ASM-SINK ENC-INC
    copy X64CODE:LBL,
@@ -944,19 +918,13 @@ $687461706C616572 constant REALPATH-NAME
    8 >R8 RDI MEM-AT ASM-SINK ENC-MOV8-MR
    RSI ASM-SINK ENC-INC  RDI ASM-SINK ENC-INC
    RCX ASM-SINK ENC-DEC  C-NE copy JCC,
-   release X64CODE:LBL,
-   RDI RP-RESULT RP ASM-SINK ENC-MOV-RM
-   RAX RP-FREE RP ASM-SINK ENC-MOV-RM  C-CALL,
-   RAX RP-LEN RP ASM-SINK ENC-MOV-RM  done JMP,
+   RAX RDX ASM-SINK ENC-MOV-RR  done JMP,
    short X64CODE:LBL,
-   RAX -2 >IMM32 ASM-SINK ENC-MOV-RI32  RAX RP-LEN RP ASM-SINK ENC-MOV-MR
-   release JMP,
-   badcap X64CODE:LBL,
    RAX -2 >IMM32 ASM-SINK ENC-MOV-RI32  done JMP,
    failed X64CODE:LBL,
    RAX -1 >IMM32 ASM-SINK ENC-MOV-RI32
    done X64CODE:LBL,
-   RSP RP-FRAME >IMM8 ASM-SINK ENC-ADD-RI8
+   RSP RP-FRAME >IMM32 ASM-SINK ENC-ADD-RI32
    0 G-PUSH ;
 
 \ The twins of habu1.f's Linux process bodies. A failure answers -1, except

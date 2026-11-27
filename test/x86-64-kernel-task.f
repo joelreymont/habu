@@ -95,7 +95,7 @@ $5ABE11 constant PUSHED
    past JMP,
    name LBL,  s ASM-SINK VEC:APPEND  0 ASM-SINK VEC:PUSH c!
    past LBL,
-   RSI name MOVABS,  X64KERNEL:DLSYM,  0 G-PUSH ;
+   RSI name MOVABS,  X64HARNESS:DLSYM,  0 G-PUSH ;
 
 \ pthread_create(&thread, NULL, the entry the row answers, &descriptor).
 : CREATE, ( -- )

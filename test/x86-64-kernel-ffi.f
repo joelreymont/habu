@@ -88,7 +88,7 @@ $F constant JUNK                        \ the ABI rows' argbuf[6..9): no place
 
 : LIBC, ( str -- )
    C-TEXT, {: name:label :}
-   RSI name MOVABS,  X64KERNEL:DLSYM,  0 G-PUSH ;
+   RSI name MOVABS,  X64HARNESS:DLSYM,  0 G-PUSH ;
 
 \ A SysV function of six register and n stack integer arguments. It folds each
 \ argument place in order into rax as one hex digit, rax * 16 + the place, then

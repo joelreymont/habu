@@ -377,3 +377,22 @@ EXPORT NAME-CELL
 ;using
 ;using
 ;package
+
+package X64HARNESS
+using X64ASM
+
+private
+
+EXPORT X64KERNEL:LIBC-ENTRY,
+
+public
+
+\ rax = dlsym(RTLD_DEFAULT, the NUL-terminated name at rsi),
+\ or 0 if the loader has no such name.
+: DLSYM, ( -- )
+   s" dlsym" LIBC-ENTRY,
+   RDI ZERO-REG,
+   X64KERNEL:C-CALL, ;
+
+;using
+;package
