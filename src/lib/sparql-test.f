@@ -888,7 +888,7 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    {: pre:str post:str n:n bound:n a:^ :}
    a TEXT-VEC {: q:^ :} pre post n q WIDE-QUERY
    a TEXT-VEC {: w:^ :} bound w WIDE-DOC
-   q $ s" 1048576" a ANSWER {: sql:^ doc:^ :}
+   q $ a NODE-STORE a ANSWER-ON {: sql:^ doc:^ :}
    doc $ s" {" STR:STARTS-WITH? dup TTRUE 0= if doc $ type cr exit then
    w $ a UNQUOTE $ JSON:PARSE a ROWS
    doc $ JSON:PARSE a ROWS SAME-ROWS? TTRUE ;
@@ -904,6 +904,31 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
 
 \ 300 triples and their variables pass what a statement may read.
 : MANY ( -- ) [: MANY-IN ;] ARENA:WITH ;
+
+\ Appends ` ?s ?p ?vK .`, a pattern every source matches.
+: SCAN+ ( ^VEC:vector<u8> n -- )
+   {: q:^ k:n :}
+   s"  ?s ?p ?" q VEC:APPEND q k V+ s"  ." q VEC:APPEND ;
+
+\ The statement of SELECT * of n patterns every source matches.
+: SCANS ( n ^ARENA:arena -- ^VEC:vector<u8> bool )
+   {: n:n a:^ :}
+   a TEXT-VEC {: q:^ :} s" SELECT * WHERE {" q VEC:APPEND
+   n 0 ?do q i SCAN+ loop s"  }" q VEC:APPEND
+   q $ s" 1048576" a STORE a COMPILED ;
+
+\ A pattern reads each source it matches: 100 patterns pass what a
+\ statement may read, 10 do not.
+: BRANCHED-IN ( ^ARENA:arena -- )
+   {: a:^ :}
+   s" 100 patterns of every source" T-LABEL
+   100 a SCANS {: sql:^ ok:bool :} ok TFALSE
+   sql $ s" : expected at most 512 patterns, sources they match and variables, found the end of the query; split the query, or state predicates so that fewer sources match"
+   STR:CONTAINS? TTRUE
+   s" 10 patterns of every source" T-LABEL
+   10 a SCANS nip TTRUE ;
+
+: BRANCHED ( -- ) [: BRANCHED-IN ;] ARENA:WITH ;
 
 \ One constant more than a PostgreSQL call takes parameters.
 : CONSTANTS-IN ( ^ARENA:arena -- )
@@ -922,6 +947,7 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
 
 \ A binding object of more variables than one PostgreSQL call takes, all
 \ bound, or all but the first unbound; a `*` fixes no order of its names.
+\ The node sources alone keep each pattern to one read.
 : WIDE ( -- )
    s" ," s" " 51 51 [: WIDE-IN ;] ARENA:WITH
    s"  OPTIONAL { t:5 rdfs:label " s"  }" 101 1 [: WIDE-IN ;] ARENA:WITH ;
@@ -1680,7 +1706,7 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    TYPED-COLUMNS DRIVEN JOINS
    NULL-TESTS SUBJECT-ROWS FILTERS FILTER-EQUALITIES GRAPHS NAMED-GRAPHS OPTIONALS
    UNIONS MINUSES FILTER-EXISTS
-   SUBSTITUTIONS MANY CONSTANTS WIDE FORMS
+   SUBSTITUTIONS MANY BRANCHED CONSTANTS WIDE FORMS
    PROJECTIONS GROUPING AGGREGATES ORDERED-CONCATS TYPED-AGGREGATES
    ONLY-COLUMNS
    TYPED-FILTERS BRANCH-GROUPING ORDERS DISTINCTS STAR-COUNTS

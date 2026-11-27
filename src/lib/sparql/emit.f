@@ -2588,12 +2588,14 @@ STRUCTURE pruning DERIVE addr
    rest LEN 0= if t cols exit then
    plan t branches rest cols BESIDE cols ;
 
-\ Sets the item's branches, one per description source it reads.
+\ Sets the item's branches, one per description source it reads. Each
+\ is a scan PostgreSQL plans: one read, the first being the item's own.
 : BRANCHES ( ^plan ^item -- )
    {: plan it:^ :}
    plan it ORIGINS {: origins:^ :}
    plan AL 0 [type] relation VEC:NEW {: branches:^ :}
    origins LEN 0 ?do
+      i 0<> if plan +READ then
       plan it origins i VEC:AT @ LIVE-OF {: recs:^ :}
       branches VEC:PUSH {: b:^ :}
       plan it ITEM-NODE @ recs b SOURCE-BRANCH
