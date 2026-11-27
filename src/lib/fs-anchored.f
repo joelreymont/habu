@@ -149,6 +149,19 @@ FUNCTION: A-CLOSE-CALL close ( n -- i32 ) ;FUNCTION
    work A-NEXT@ work A-CUR!
    -1 work A-NEXT! ;
 
+\ A file walk states its last entry before opening it: a FIFO or device open
+\ acts on it and a socket's errno differs by platform. A symlink opens to ELOOP.
+: A-ENTRY-CHECK ( ^u8 n ^u8 -- ) {: work:^ parent:n name:^ :}
+   parent name work A-STAT-BUF AT-NOFOLLOW STAT-AT-CALL
+   0<> if E-FS-OPEN ERRNO-FAIL then
+   work A-STAT-BUF LIBC-MODE@ S-IFMT and {: kind:n :}
+   kind S-IFREG <> kind S-IFLNK <> and if E-FS-STAT throw then ;
+\ The opened file's own type: an entry swapped in after A-ENTRY-CHECK's stat is
+\ rejected here, a FIFO among them opened O_NONBLOCK so the open does not wait.
+: A-REGULAR ( ^u8 -- ) {: work:^ :}
+   work A-CUR@ work A-STAT-BUF FSTAT-CALL 0<> if E-FS-STAT ERRNO-FAIL then
+   work A-STAT-BUF LIBC-MODE@ S-IFMT and S-IFREG <> if E-FS-STAT throw then ;
+
 \ A-VALIDATE checks every component before the first open. Splitting ends each
 \ component through FFI:CSTR! inside this call's snapshot, never in the caller's
 \ path.
@@ -158,8 +171,10 @@ FUNCTION: A-CLOSE-CALL close ( n -- i32 ) ;FUNCTION
       {: at:n :}
       path at A-COMPONENT-END {: stop:n :}
       stop at - path STR:DATA at + PATHZ-CAP at - SPAN:MAKE FFI:CSTR! drop
-      stop path STR:LEN = file A-FLAGS {: flags:n :}
+      stop path STR:LEN = {: last:bool :}
+      last file A-FLAGS {: flags:n :}
       work A-CUR@ dup 0 < if drop parent then {: from:n :}
+      last file and if work from path STR:DATA at + A-ENTRY-CHECK then
       work from path STR:DATA at + flags A-OPEN-NEXT
       stop path STR:LEN < if stop 1 + else stop then
    repeat drop ;
@@ -171,34 +186,34 @@ FUNCTION: A-CLOSE-CALL close ( n -- i32 ) ;FUNCTION
    path start src STR:LEN = false A-FLAGS work A-OPEN-BASE
    path src STR:LEN >str start work -1 false A-WALK
    src work ;
-: A-OPEN-AT-RUN ( fd str ^u8 -- fd str ^u8 )
-   {: anchor:fd src:str work:^ :}
+: A-OPEN-AT-RUN ( fd str ^u8 bool -- fd str ^u8 bool )
+   {: anchor:fd src:str work:^ file:bool :}
    src work A-SNAPSHOT {: path:^ :}
    path src STR:LEN >str false A-VALIDATE {: start:n :}
-   path src STR:LEN >str start work anchor FD>N false A-WALK
-   anchor src work ;
+   path src STR:LEN >str start work anchor FD>N file A-WALK
+   file if work A-REGULAR then
+   anchor src work file ;
 
-\ The walk's descriptor, its code (0 when it opened) and that code's cause.
-: A-DIR-AT ( fd str -- n n n ) {: anchor:fd src:str :}
+\ The walk's descriptor, its code (0 when it opened) and that code's cause. An
+\ opened descriptor leaves the work area first, so cleanup does not close it.
+: A-OPEN-AT ( fd str bool -- n n n ) {: anchor:fd src:str file:bool :}
    COMPILE-READS:MISS
    0 CAUSE!
    A-WORK {: work:^ :}
-   anchor src work [: A-OPEN-AT-RUN ;] catch {: code:n :}
-   drop drop drop
+   anchor src work file [: A-OPEN-AT-RUN ;] catch {: code:n :}
+   drop drop drop drop
    ERRNO {: cause:n :}
    work A-CUR@ {: opened:n :}
    code 0= if -1 work A-CUR! then
    opened work code cause A-SETTLE ;
 
-\ TRY-OPEN-DIR-AT's cause for the walk's code: EINVAL for a rejected path.
-: A-DIR-CAUSE ( n n -- n ) {: code:n cause:n :}
+\ A TRY word's cause for the walk's code: EINVAL for a rejected path.
+: A-TRY-CAUSE ( n n -- n ) {: code:n cause:n :}
    code E-FS-PATH = code E-FFI-NUL = or if EINVAL exit then
-   code E-FS-OPEN <> code E-FS-IO <> and if cause CAUSE! code throw then
+   code E-FS-OPEN <> code E-FS-IO <> and code E-FS-STAT <> and if
+      cause CAUSE! code throw
+   then
    cause ;
-
-: A-REGULAR ( ^u8 -- ) {: work:^ :}
-   work A-CUR@ work A-STAT-BUF FSTAT-CALL 0<> if E-FS-STAT ERRNO-FAIL then
-   work A-STAT-BUF LIBC-MODE@ S-IFMT and S-IFREG <> if E-FS-STAT throw then ;
 
 : A-READ-STEP ( ^u8 ^u8 n -- n ) {: work:^ dst:^ count:n :}
    begin
@@ -229,10 +244,7 @@ FUNCTION: A-CLOSE-CALL close ( n -- i32 ) ;FUNCTION
    again ;
 : A-READ-RUN ( fd str ^VEC:vector<u8> ^u8 -- fd str ^VEC:vector<u8> ^u8 )
    {: anchor:fd src:str v:^ work:^ :}
-   src work A-SNAPSHOT {: path:^ :}
-   path src STR:LEN >str false A-VALIDATE {: start:n :}
-   path src STR:LEN >str start work anchor FD>N true A-WALK
-   work A-REGULAR
+   anchor src work true A-OPEN-AT-RUN drop drop drop drop
    work v A-READ-CONTENT
    anchor src v work ;
 
@@ -273,16 +285,16 @@ public
    work code cause A-FINISH
    opened >FD ;
 : OPEN-DIR-AT ( fd str -- fd )
-   A-DIR-AT {: opened:n code:n cause:n :}
+   false A-OPEN-AT {: opened:n code:n cause:n :}
    cause CAUSE!
    code 0<> if code throw then
    opened >FD ;
 \ OPEN-DIR-AT's walk; none where it throws E-FS-OPEN or E-FS-IO, or a rejection
 \ with EINVAL. On Linux a symlink component is ENOTDIR (O_DIRECTORY first).
 : TRY-OPEN-DIR-AT ( fd str -- option<fd> )
-   A-DIR-AT {: opened:n code:n cause:n :}
+   false A-OPEN-AT {: opened:n code:n cause:n :}
    code 0= if 0 CAUSE! opened >FD OPTION:SOME exit then
-   code cause A-DIR-CAUSE CAUSE!
+   code cause A-TRY-CAUSE CAUSE!
    OPTION:NONE ;
 \ Appends the regular file the walk reaches to the vector, read until read
 \ answers 0. A file not regular is E-FS-STAT, a failed open or read E-FS-OPEN or
@@ -301,6 +313,13 @@ public
    failed 0<> if v old VEC:RESIZE then
    why CAUSE!
    failed 0<> if failed throw then ;
+\ READ-FILE-AT's walk and regular check without the read: none where it throws,
+\ FS:ERRNO as it sets it (0 for an entry not regular) or EINVAL for a rejection.
+: TRY-OPEN-FILE-AT ( fd str -- option<fd> )
+   true A-OPEN-AT {: opened:n code:n cause:n :}
+   code 0= if 0 CAUSE! opened >FD OPTION:SOME exit then
+   code cause A-TRY-CAUSE CAUSE!
+   OPTION:NONE ;
 : CLOSE-DIR ( fd -- )
    0 CAUSE!
    FD>N A-CLOSE-CALL 0<> if E-FS-IO ERRNO-FAIL then ;
@@ -375,9 +394,6 @@ public
 \ Descriptors are borrowed; opens add O_NOFOLLOW|O_CLOEXEC. A name empty, . or
 \ .., over PATH-CAP, or with / or NUL is EINVAL. FS:ERRNO: the errno, else 0.
 
-\ O_RDONLY|O_NONBLOCK; a symlink at the name is ELOOP.
-: TRY-OPEN-READ-AT ( fd str -- option<fd> )
-   A-FILE-FLAGS A-OPEN-NAME ;
 \ An existing file, O_RDWR|O_NONBLOCK, a symlink ELOOP; nothing is created.
 : TRY-OPEN-WRITE-AT ( fd str -- option<fd> )
    A-FILE-FLAGS A-RDWR or A-OPEN-NAME ;

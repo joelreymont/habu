@@ -69,6 +69,9 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
       none OF false TTRUE -1 >FD ENDOF
       some OF FS:ERRNO 0 T= ENDOF
    ;MATCH ;
+: SIZE ( fd -- n ) FS:FD-STAMP nip nip ;
+: OPENED-SIZE ( option<fd> -- n )
+   SOME {: f:fd :} f SIZE f FS:CLOSE-DIR ;
 
 : FD-ENTRY ( str -- )
    drop 1 OPEN-FDS +! ;
@@ -189,6 +192,17 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    FS:ERRNO 0 T=
    root FS:CLOSE-DIR ;
 
+: FILE-OPENS ( -- )
+   ROOT FS:OPEN-DIR {: root:fd :}
+   root s" child/file" FS:TRY-OPEN-FILE-AT OPENED-SIZE 8 T=
+   root s" child/missing" FS:TRY-OPEN-FILE-AT FS:ENOENT NONE-WITH
+   root s" child/.." FS:TRY-OPEN-FILE-AT FS:EINVAL NONE-WITH
+   root s\" bad\zname" FS:TRY-OPEN-FILE-AT FS:EINVAL NONE-WITH
+   s" an entry that is not a regular file is none with errno 0" T-LABEL
+   root s" child" FS:TRY-OPEN-FILE-AT 0 NONE-WITH
+   root s" fifo" FS:TRY-OPEN-FILE-AT 0 NONE-WITH
+   root FS:CLOSE-DIR ;
+
 : ERRORS ( -- )
    ROOT FS:OPEN-DIR {: root:fd :}
    root FD>N ANCHOR !
@@ -285,6 +299,11 @@ TASK:MIN-STACK TASK:TASK PAR-B
    [: SEARCH-B FS:OPEN-DIR FS:CLOSE-DIR ;] catch 0 T=
    SEARCH FS:OPEN-DIR {: top:fd :}
    [: top s" a/b/f" s" found" READ-CHECK ;] catch 0 T=
+   top s" a/b/f" FS:TRY-OPEN-FILE-AT OPENED-SIZE 5 T=
+   s" a search-only last entry is none with errno 0, never opened" T-LABEL
+   top s" a" FS:TRY-OPEN-FILE-AT 0 NONE-WITH
+   s" a link as the last entry is none with ELOOP" T-LABEL
+   top s" l" FS:TRY-OPEN-FILE-AT FS:ELOOP NONE-WITH
    s" a link above the path is rejected" T-LABEL
    [: SEARCH-LINK-B FS:OPEN-DIR drop ;] E-FS-OPEN TTHROWSQ
    [: top s" l/b/f" READ$ drop ;] E-FS-OPEN TTHROWSQ
@@ -324,9 +343,6 @@ create LINK-BUF PATH-CAP allot
 : D ( -- fd ) DIR @ >FD ;
 : FALSE-WITH ( bool n -- ) {: ok:bool want:n :}
    ok TFALSE FS:ERRNO want T= ;
-: SIZE ( fd -- n ) FS:FD-STAMP nip nip ;
-: OPENED-SIZE ( option<fd> -- n )
-   SOME {: f:fd :} f SIZE f FS:CLOSE-DIR ;
 : STAT-SIZE ( str -- n ) {: s:str :}
    D s FS:TRY-STAT-AT TTRUE FS:STAT-SIZE@ ;
 : ABSENT ( str -- ) {: s:str :}
@@ -337,11 +353,6 @@ create LINK-BUF PATH-CAP allot
    D s" sub/x" q execute  D s\" a\zb" q execute
    D LONG PATH-CAP 1 + >str q execute ;
 
-: READS ( -- )
-   D s" file" FS:TRY-OPEN-READ-AT OPENED-SIZE 8 T=
-   D s" missing" FS:TRY-OPEN-READ-AT FS:ENOENT NONE-WITH
-   D s" link" FS:TRY-OPEN-READ-AT FS:ELOOP NONE-WITH
-   [: FS:TRY-OPEN-READ-AT FS:EINVAL NONE-WITH ;] REJECTED ;
 : WRITES ( -- )
    D s" file" FS:TRY-OPEN-WRITE-AT SOME {: f:fd :}
    f s" AT" FD:WRITE-FULL f FS:CLOSE-DIR
@@ -452,7 +463,7 @@ create LINK-BUF PATH-CAP allot
    t D s" kept" FS:TRY-LINK-AT FS:EEXIST FALSE-WITH
    [: LINK-AS FS:EINVAL FALSE-WITH ;] REJECTED
    t FS:CLOSE-DIR
-   D s" kept" FS:TRY-OPEN-READ-AT SOME {: plain:fd :}
+   D s" kept" FS:TRY-OPEN-FILE-AT SOME {: plain:fd :}
    plain FD>N PLAIN !
    [: PLAIN @ >FD FS:TEMP-AT drop ;] E-FS-OPEN TTHROWSQ
    FS:ERRNO FS:ENOTDIR T=
@@ -464,16 +475,15 @@ create LINK-BUF PATH-CAP allot
    root s" mv" FS:TRY-OPEN-DIR-AT SOME {: mv:fd :}
    root s" mv" root s" mv-moved" FS:TRY-RENAME-AT TTRUE
    root s" mv" FS:TRY-STAT-AT FS:ENOENT FALSE-WITH
-   mv s" f" FS:TRY-OPEN-READ-AT OPENED-SIZE 8 T=
+   mv s" f" FS:TRY-OPEN-FILE-AT OPENED-SIZE 8 T=
    mv FS:CLOSE-DIR root FS:CLOSE-DIR ;
 
 : NAMED ( -- )
    NAMED-SETUP
    ROOT FS:OPEN-DIR {: root:fd :}
    root s" at" FS:TRY-OPEN-DIR-AT SOME FD>N DIR !
-   root s" fifo" FS:TRY-OPEN-READ-AT SOME FS:CLOSE-DIR
    root FS:CLOSE-DIR
-   FD-PATHS READS WRITES ENTRIES DIRS STATS MAKES RENAMES REMOVES
+   FD-PATHS WRITES ENTRIES DIRS STATS MAKES RENAMES REMOVES
    TEMPS
    MOVED-ANCHOR
    D FS:CLOSE-DIR ;
@@ -519,7 +529,7 @@ HB-TARGET-LINUX? 0= [if]
 public
 : MAIN ( -- )
    T-RESET SETUP
-   [: BASIC BAD-PATHS REPLACED TYPES ERRORS LEAKS PARALLEL
+   [: BASIC BAD-PATHS REPLACED TYPES FILE-OPENS ERRORS LEAKS PARALLEL
       SEARCH-ONLY NAMED FOLLOWS ;]
    [: BUF @ VEC:DELETE TMP$ FS:REMOVE-TREE ;] finally
    T-REPORT s" fs-anchored-test: ok" type cr ;
