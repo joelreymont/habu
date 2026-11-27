@@ -1358,12 +1358,13 @@ CAST: >RECORD ( n -- ^t )
    b d DOC-BLOCK !
    d PHASE-ANNOTATIONS ENTER ;
 
+\ An Annotation with a value attribute is a constant one, whatever its term.
 : IN-ANNOTATIONS ( XML:reader ^doc -- XML:reader )
    {: d:^ :}
    d SPACE-EDM4 s" Annotation" IS? if
-      d RESTRICTION-TERM? if
+      FIND-VALUE 0= if d RESTRICTION-TERM? if
          d d DOC-BLOCK @ BLOCK-RESTRICTIONS RESTRICTION-START exit
-      then
+      then then
       d d DOC-BLOCK @ BLOCK-ANNOTATIONS ANNOTATION-START exit
    then
    d SKIP-START ;

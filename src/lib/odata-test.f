@@ -10,8 +10,9 @@
 \ name with types they do not derive from; a navigation of another type
 \ leading to no set; sets and properties hidden by each rule, in listings and
 \ copies; the hidden names found in a query option's text; properties and
-\ navigations looked up by name; and the records of expanded navigations
-\ given in order, or rejected with COPY-ENTITY's texts.
+\ navigations looked up by name; a constant annotation named like a
+\ restriction kept; and the records of expanded navigations given in order,
+\ or rejected with COPY-ENTITY's texts.
 \ Run: bin/hb --load src/lib/odata-test.f
 
 require src/lib/string.f
@@ -310,6 +311,17 @@ TYPED-VARIABLE LINK ^VEC:vector<u8>  \ and this one
    s" test/fixtures/odata/mismatched-end.xml"
    s" 7:9: expected `</EntityType>`, found `EntityTypo`; close elements in the reverse of the order they were opened"
    XML:E-MALFORMED REJECTS-CODE ;
+
+\ A constant annotation whose term is named like a restriction is kept.
+: TEST-CONSTANT-RESTRICTION ( -- )
+   ARENA:NEW {: a:^ :}
+   a s" test/fixtures/odata/constant-restriction.xml" MODEL
+   s" As" ODATA:ENTITY-SET MATCH nullable
+      none OF s" odata-test: no set As" 1 die ENDOF
+      some OF ENDOF
+   ;MATCH ODATA:ENTITY-TYPE
+   s" N" s" SortRestrictions" ODATA:TYPE-ANNOTATION$ TTRUE s" x" T$=
+   a ARENA:RELEASE ;
 
 : TEST-METADATA-SITE-TEXTS ( -- )
    s" test/fixtures/odata/missing-property-type.xml"
@@ -1022,6 +1034,7 @@ variable VALUE-LEN
    TEST-DERIVED
    TEST-SINGLETON-TARGET
    TEST-REJECTIONS
+   TEST-CONSTANT-RESTRICTION
    TEST-METADATA-SITE-TEXTS
    TEST-RESOLVE-SITE-TEXTS
    TEST-PAGES
