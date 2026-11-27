@@ -5370,16 +5370,18 @@ STRUCTURE pruning DERIVE addr
       state each NODE-B@
    repeat drop false ;
 
-\ Whether r's solutions are a union's of two or more branches and no
-\ GROUP BY key or aggregate calls EXISTS, which each would compile again.
+\ Whether r's union may group per branch, which writes each key and
+\ aggregate per branch: none may call EXISTS; their copies stay in MOST.
 : BRANCHED? ( ^plan n ^relation -- bool )
    {: plan query:n r:^ :}
-   r RELATION-BRANCHES @ LEN 2 < if false exit then
+   r RELATION-BRANCHES @ LEN {: branches:n :}
+   branches 2 < if false exit then
    plan TREE {: state :}
-   state state query QUERY-AGGREGATES EXISTS-IN? if false exit then
+   state query QUERY-AGGREGATES {: calls:n :}
    state query GROUP-BY-NODE {: grouping:n :}
-   grouping 0= if true exit then
-   state state grouping NODE-A@ EXISTS-IN? 0= ;
+   grouping 0= if 0 else state grouping NODE-A@ then {: keys:n :}
+   state calls EXISTS-IN? state keys EXISTS-IN? or if false exit then
+   state calls LIST-LENGTH state keys LIST-LENGTH + branches * MOST > 0= ;
 
 \ Whether each branch binds var always to a term no other binds it to.
 : APART? ( ^plan ^VEC:vector<relation> n -- bool )

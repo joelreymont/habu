@@ -264,6 +264,35 @@ package SPARQL
    s" SELECT * WHERE { ?s ?p ?o } ORDER BY " q VEC:APPEND
    q k s"  " [: HEAVY-SPO-VAR ;] HEAVY-LIST ;
 
+: HEAVY-AGGREGATE ( ^VEC:vector<u8> n str -- ) {: q:^ i:n call:str :}
+   s" (" q VEC:APPEND  call q VEC:APPEND  s" (?o) AS ?c" q VEC:APPEND
+   i FMT:INT$ q VEC:APPEND  s" )" q VEC:APPEND ;
+
+\ SELECT with k calls of the aggregate over ?o.
+: HEAVY-SELECT ( ^VEC:vector<u8> n str -- ) {: q:^ k:n call:str :}
+   s" SELECT " q VEC:APPEND
+   q k s"  " [: call HEAVY-AGGREGATE ;] HEAVY-LIST ;
+
+: HEAVY-COUNTS ( ^VEC:vector<u8> n -- ) {: q:^ k:n :}
+   q k s" COUNT" HEAVY-SELECT  s"  WHERE { ?s ?p ?o }" q VEC:APPEND ;
+
+: HEAVY-KEYS ( ^VEC:vector<u8> n -- ) {: q:^ k:n :}
+   s" SELECT ?k0 WHERE { ?s ?p ?o } GROUP BY" q VEC:APPEND
+   k 0 ?do
+      s"  (?o AS ?k" q VEC:APPEND  i FMT:INT$ q VEC:APPEND
+      s" )" q VEC:APPEND
+   loop ;
+
+: HEAVY-SAMPLES ( ^VEC:vector<u8> n -- ) {: q:^ k:n :}
+   q k s" SAMPLE" HEAVY-SELECT
+   s"  WHERE { ?s ?p ?o } GROUP BY ?s" q VEC:APPEND ;
+
+: HEAVY-ONE-COUNTS ( ^VEC:vector<u8> n ^VEC:vector<u8> ^VEC:vector<n> -- )
+   {: q:^ k:n names:^ ends:^ :}
+   q HEAVY-PREFIXES  q k s" COUNT" HEAVY-SELECT
+   s"  WHERE { ?s " q VEC:APPEND  names ends 0 HEAVY-PREDICATE q VEC:APPEND
+   q HEAVY-O ;
+
 : HEAVY-TEXT ( n ^VEC:vector<u8> [ ^VEC:vector<u8> n -- ] -- str )
    {: k:n q:^ make :}
    q 0 VEC:RESIZE  q k make execute  q VEC:BYTES ;
@@ -358,6 +387,10 @@ package SPARQL
    s" exists" store q sql [: s" FILTER EXISTS" HEAVY-NEST ;] HEAVY-FAMILY
    s" minus" store q sql [: s" MINUS" HEAVY-NEST ;] HEAVY-FAMILY
    s" opt" store q sql [: s" OPTIONAL" HEAVY-NEST ;] HEAVY-FAMILY
+   s" counts" store q sql [: HEAVY-COUNTS ;] HEAVY-FAMILY
+   s" samples" store q sql [: HEAVY-SAMPLES ;] HEAVY-FAMILY
+   s" one-counts" store q sql [: names ends HEAVY-ONE-COUNTS ;] HEAVY-FAMILY
+   s" keys" store q sql [: HEAVY-KEYS ;] HEAVY-FAMILY
    s" opt-nested" store q sql [: HEAVY-OPT-NESTED ;] HEAVY-SHAPE
    s" opt-nested-bind" store q sql [: HEAVY-OPT-NESTED-BIND ;] HEAVY-SHAPE
    s" opt-nested-sum" store q sql [: HEAVY-OPT-NESTED-SUM ;] HEAVY-SHAPE
