@@ -14,7 +14,7 @@ import sys
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
-SETUP = '''
+SETUP = r'''
 require src/lib/aio.f
 require src/lib/heap.f
 require src/lib/vector.f
