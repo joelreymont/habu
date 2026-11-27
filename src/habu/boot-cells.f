@@ -4,7 +4,7 @@ package BOOT
 public
 \ The running engine's heap floor, a DATA offset in the fixed header.
 $47E0 constant HEAP-START-CELL
-\ The bounds DP-CHECK holds a new DP to, absolute: every arm64 start writes
+\ The bounds DP-CHECK holds a new DP to, absolute: every image's header holds
 \ DATA + DATA-START and DATA + DATA-SIZE - PROF-CNT-BYTES.
 $7E0 constant DP-FLOOR-CELL
 $7E8 constant DP-CEILING-CELL
