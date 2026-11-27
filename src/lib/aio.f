@@ -627,7 +627,9 @@ TASK:+USER FLOOR n
 
 \ ---- adoption ----------------------------------------------------------------
 \ The record becomes the holder's, answering whether the holder must arm it:
-\ it was still pushed, so the worker's arm had not held when the CAS won.
+\ it was still pushed, so the worker's arm had not held when the CAS won. The
+\ worker's arm may hold after all, so both arm: waiting for its verdict would
+\ put the worker's system call in the holder's path.
 : ADOPT-OWNER ( ^n -- bool ) {: r:^ :}
    TASK:SELF-N {: me:n :}
    r REC.OWNER atomic@ {: o:n :}
