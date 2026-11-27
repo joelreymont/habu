@@ -283,6 +283,20 @@ package SPARQL
       s" )" q VEC:APPEND
    loop ;
 
+\ ORDER BY with k equal keys over one source.
+: HEAVY-ORDERED ( ^VEC:vector<u8> n str str str -- )
+   {: q:^ k:n head:str group:str key:str :}
+   q HEAVY-PREFIXES  head q VEC:APPEND
+   s"  WHERE { ?s zen:has ?o }" q VEC:APPEND  group q VEC:APPEND
+   s"  ORDER BY" q VEC:APPEND  q key k HEAVY-REPEAT ;
+
+: HEAVY-COUNT-KEYS ( ^VEC:vector<u8> n -- )
+   s" SELECT (COUNT(?o) AS ?c)" s"  GROUP BY ?s" s"  COUNT(?o)"
+   HEAVY-ORDERED ;
+
+: HEAVY-STR-KEYS ( ^VEC:vector<u8> n -- )
+   s" SELECT *" s" " s"  STR(?o)" HEAVY-ORDERED ;
+
 : HEAVY-SAMPLES ( ^VEC:vector<u8> n -- ) {: q:^ k:n :}
    q k s" SAMPLE" HEAVY-SELECT
    s"  WHERE { ?s ?p ?o } GROUP BY ?s" q VEC:APPEND ;
@@ -391,6 +405,8 @@ package SPARQL
    s" samples" store q sql [: HEAVY-SAMPLES ;] HEAVY-FAMILY
    s" one-counts" store q sql [: names ends HEAVY-ONE-COUNTS ;] HEAVY-FAMILY
    s" keys" store q sql [: HEAVY-KEYS ;] HEAVY-FAMILY
+   s" count-keys" store q sql [: HEAVY-COUNT-KEYS ;] HEAVY-FAMILY
+   s" str-keys" store q sql [: HEAVY-STR-KEYS ;] HEAVY-FAMILY
    s" opt-nested" store q sql [: HEAVY-OPT-NESTED ;] HEAVY-SHAPE
    s" opt-nested-bind" store q sql [: HEAVY-OPT-NESTED-BIND ;] HEAVY-SHAPE
    s" opt-nested-sum" store q sql [: HEAVY-OPT-NESTED-SUM ;] HEAVY-SHAPE

@@ -323,10 +323,14 @@ STRUCTURE pinned DERIVE addr
 \ stored.
 STRUCTURE aggregate DERIVE addr
    FIELD node n
+   FIELD digest n  \ the node's EXPRESSION-HASH
    FIELD sql ^rel  \ the call within the grouped query, its column above
    FIELD always bool  \ no group leaves it unbound
    FIELD native n  \ the shape whose column it reads natively, else -1
 ;STRUCTURE
+
+\ An ORDER BY or GROUP BY key's expression and its EXPRESSION-HASH.
+STRUCTURE hashed DERIVE addr FIELD node n FIELD digest n ;STRUCTURE
 
 \ What a term's text says: whether the term is an IRI and, if not, its
 \ datatype IRI, decoded.
@@ -602,11 +606,14 @@ defer EXISTS-SQL ( ^plan n -- )
    plan TREE plan node TERM-JSON COPY$ {: text:str :}
    plan node text +TEXTED plan k PARAMETER@ ! text ;
 
+: ABSORB-TEXT ( ^SIPHASH:state str -- )
+   {: sip text:str :}
+   sip text STR:LEN SIPHASH:ABSORB-WORD sip text ABSORB$ ;
+
 : STRING-HASH ( ^plan str -- n )
    {: plan text:str :}
    plan PLAN-STRINGS INTERNS-HASH {: sip :}
-   sip text str> nip SIPHASH:ABSORB-WORD
-   sip text ABSORB$ sip SIPHASH:FINISH ;
+   sip text ABSORB-TEXT sip SIPHASH:FINISH ;
 
 \ The string's parameter number, added on its first use. The text must
 \ live as long as the plan.
@@ -1931,6 +1938,81 @@ STRUCTURE pruning DERIVE addr
    plan TREE b VARIABLE? var xor if false exit then
    var if plan a VAR-NAME plan b VAR-NAME STR:= exit then
    a b = ;
+
+\ Whether the node is an operator, call, list cell or ORDER BY condition
+\ but a call of RAND, UUID or STRUUID, which is new at each call.
+: HEADED? ( ^syntax n -- bool )
+   {: state node:n :}
+   state node NODE-K {: k:n :}
+   k N-CALL = k N-UNARY = or k N-BINARY = or
+   k N-LIST = or k N-ORDER = or 0= if false exit then
+   state node s" RAND UUID STRUUID" CALL-IN? 0= ;
+
+\ Whether nodes a and b of one kind are one head by text and flags; a node
+\ that is not HEADED? is one with no other.
+: SAME-HEAD? ( ^syntax n n -- bool )
+   {: state a:n b:n :}
+   state a HEADED? 0= if false exit then
+   state a TEXT$ state b TEXT$ STR:=
+   state a NODE-FLAGS@ state b NODE-FLAGS@ = and ;
+
+\ Whether expressions a and b are one: terms SAME-NODE? finds one, or one
+\ head over parts that are one.
+: SAME-EXPRESSION? ( ^plan n n -- bool )
+   {: plan a:n b:n :}
+   a b = if true exit then
+   plan TREE {: state :}
+   a 0= b 0= or if false exit then
+   state a NODE-K {: k:n :}
+   state b NODE-K k <> if false exit then
+   k N-UNDEF <= if plan a b SAME-NODE? exit then
+   state a b SAME-HEAD? 0= if false exit then
+   plan state a NODE-A@ state b NODE-A@ RECURSE 0= if false exit then
+   plan state a NODE-B@ state b NODE-B@ RECURSE 0= if false exit then
+   plan state a NODE-C@ state b NODE-C@ RECURSE ;
+
+\ Absorbs expression e, or 0, so that expressions SAME-EXPRESSION? finds
+\ one absorb the same words.
+: ABSORB-EXPRESSION ( ^plan ^SIPHASH:state n -- )
+   {: plan sip e:n :}
+   e 0= if sip -1 SIPHASH:ABSORB-WORD exit then
+   plan TREE {: state :}
+   state e NODE-K {: k:n :}
+   k N-UNDEF <= if
+      sip k SIPHASH:ABSORB-WORD
+      state e VARIABLE? if sip state e TEXT$ ABSORB-TEXT exit then
+      sip e SIPHASH:ABSORB-WORD exit
+   then
+   state e HEADED? 0= if sip e SIPHASH:ABSORB-WORD exit then
+   sip k SIPHASH:ABSORB-WORD sip state e TEXT$ ABSORB-TEXT
+   sip state e NODE-FLAGS@ SIPHASH:ABSORB-WORD
+   plan sip state e NODE-A@ RECURSE
+   plan sip state e NODE-B@ RECURSE
+   plan sip state e NODE-C@ RECURSE ;
+
+: EXPRESSION-HASH ( ^plan n -- n )
+   {: plan e:n :}
+   plan PLAN-STRINGS INTERNS-HASH {: sip :}
+   plan sip e ABSORB-EXPRESSION sip SIPHASH:FINISH ;
+
+\ Whether seen holds an expression one with e; adds e if not.
+: SEEN? ( ^plan ^VEC:vector<hashed> n -- bool )
+   {: plan seen:^ e:n :}
+   plan e EXPRESSION-HASH {: h:n :}
+   seen VEC:COUNT 0 ?do
+      seen i VEC:AT HASHED-DIGEST @ h = if
+         plan seen i VEC:AT HASHED-NODE @ e SAME-EXPRESSION? if
+            true unloop exit
+         then
+      then
+   loop
+   seen VEC:PUSH {: k:^ :} e k HASHED-NODE ! h k HASHED-DIGEST ! false ;
+
+\ A vector of keys, room for those of the list.
+: NEW-SEEN ( ^plan n -- ^VEC:vector<hashed> )
+   {: plan list:n :}
+   plan AL 0 [type] hashed VEC:NEW {: seen:^ :}
+   seen plan TREE list LIST-LENGTH VEC:RESERVE seen ;
 
 \ Whether the row is the source's by its subject slot for the node.
 : ROW-OF? ( ^plan ^subject-row n ^source -- bool )
@@ -3651,13 +3733,24 @@ STRUCTURE pruning DERIVE addr
    plan e SQL-EXPRESSION
    outer plan PLAN-SCOPE ! out plan PLAN-OUT ! v ;
 
-\ The index of the call among the plan's aggregates, or -1.
-: FIND-AGGREGATE ( ^plan n -- n )
-   {: plan call:n :}
+\ The index of the plan's aggregate that is one with the call of hash h,
+\ or -1.
+: HASHED-AGGREGATE ( ^plan n n -- n )
+   {: plan call:n h:n :}
    plan PLAN-AGGREGATES @ {: as:^ :}
    as VEC:COUNT 0 ?do
-      as i VEC:AT AGGREGATE-NODE @ call = if i unloop exit then
+      as i VEC:AT AGGREGATE-DIGEST @ h = if
+         plan as i VEC:AT AGGREGATE-NODE @ call SAME-EXPRESSION? if
+            i unloop exit
+         then
+      then
    loop -1 ;
+
+\ The index of the plan's aggregate that is one with expression e, or -1.
+: FIND-AGGREGATE ( ^plan n -- n )
+   {: plan e:n :}
+   plan TREE e AGGREGATE-CALL? 0= if -1 exit then
+   plan e plan e EXPRESSION-HASH HASHED-AGGREGATE ;
 
 \ The variable node n is, -1 for another node or a name no pattern has.
 : FOUND-VAR ( ^plan n -- n )
@@ -5030,30 +5123,21 @@ STRUCTURE pruning DERIVE addr
    plan NEW-SQL {: v:^ :}
    v plan k SHAPE@ SHAPE-OUT @ e +APPLY v ;
 
-\ Whether seen holds var; adds it if not.
-: SEEN? ( ^VEC:vector<n> n -- bool )
-   {: seen:^ var:n :}
-   seen VEC:COUNT 0 ?do
-      seen i VEC:AT @ var = if true unloop exit then
-   loop var seen VEC:PUSH ! false ;
-
-\ Whether m is an ORDER BY condition other than one of a variable seen
-\ holds; its variable joins seen.
-: NEW-KEY? ( ^plan ^VEC:vector<n> n -- bool )
+\ Whether m is an ORDER BY condition whose expression seen does not
+\ hold; that expression joins seen.
+: NEW-KEY? ( ^plan ^VEC:vector<hashed> n -- bool )
    {: plan seen:^ m:n :}
    plan TREE {: state :}
    state m NODE-K N-ORDER <> if false exit then
-   state m NODE-A@ {: e:n :}
-   state e NODE-K N-VAR <> if true exit then
-   seen plan e VAR SEEN? 0= ;
+   plan seen state m NODE-A@ SEEN? 0= ;
 
-\ List n's ORDER BY keys over r, `,`-joined. A variable an earlier key sorts
-\ by adds none: rows that tie on that key hold one value for it.
+\ List n's ORDER BY keys over r, `,`-joined. An expression an earlier key
+\ sorts by adds none: rows that tie on that key hold one value for it.
 : CONDITION-KEYS ( ^plan ^relation n -- ^rel )
    {: plan r:^ list:n :}
    plan TREE {: state :}
    plan NEW-SQL {: v:^ :}
-   plan AL 0 [type] n VEC:NEW {: seen:^ :}
+   plan list NEW-SEEN {: seen:^ :}
    list begin dup 0<> while
       {: each:n :} state each NODE-A@ {: m:n :}
       plan seen m NEW-KEY? if
@@ -5112,20 +5196,29 @@ STRUCTURE pruning DERIVE addr
    state call s" MIN MAX SAMPLE" CALL-IN? 0= if false exit then
    plan r state state call NODE-A@ NODE-A@ BOUND? ;
 
-\ The query's aggregates over the relation, into the plan.
+\ The call of hash h over the relation, a new aggregate of the plan.
+: +AGGREGATE ( ^plan n ^relation n n -- )
+   {: plan query:n r:^ call:n h:n :}
+   plan r call CALL-SQL {: sql:^ :}
+   plan PLAN-AGGREGATES @ VEC:PUSH {: a:^ :}
+   call a AGGREGATE-NODE ! h a AGGREGATE-DIGEST ! sql a AGGREGATE-SQL !
+   plan query r call BOUND-CALL? a AGGREGATE-ALWAYS !
+   plan r call NATIVE-SHAPE a AGGREGATE-NATIVE ! ;
+
+\ The query's aggregates over the relation, into the plan, one for calls
+\ that are one.
 : AGGREGATES ( ^plan n ^relation -- )
    {: plan query:n r:^ :}
    plan TREE {: state :}
+   state query QUERY-AGGREGATES {: calls:n :}
    plan AL 0 [type] aggregate VEC:NEW {: as:^ :}
-   state query QUERY-AGGREGATES begin dup 0<> while
+   as state calls LIST-LENGTH VEC:RESERVE  as plan PLAN-AGGREGATES !
+   calls begin dup 0<> while
       {: list:n :} state list NODE-A@ {: call:n :}
-      plan r call CALL-SQL {: sql:^ :}
-      as VEC:PUSH {: a:^ :}
-      call a AGGREGATE-NODE ! sql a AGGREGATE-SQL !
-      plan query r call BOUND-CALL? a AGGREGATE-ALWAYS !
-      plan r call NATIVE-SHAPE a AGGREGATE-NATIVE !
+      plan call EXPRESSION-HASH {: h:n :}
+      plan call h HASHED-AGGREGATE 0< if plan query r call h +AGGREGATE then
       state list NODE-B@
-   repeat drop as plan PLAN-AGGREGATES ! ;
+   repeat drop ;
 
 \ Appends the test of each expression of the list over the scope to v.
 : CONDITIONS ( ^plan n ^relation ^rel -- )
@@ -5147,10 +5240,10 @@ STRUCTURE pruning DERIVE addr
       state list NODE-B@
    repeat drop ;
 
-\ A GROUP BY key: a bound variable binds its anchor in g and `(e AS ?v)`
-\ binds ?v to e's term; another expression's term goes to keys.
-: GROUP-KEY ( ^plan ^relation ^relation n ^rel -- )
-   {: plan r:^ g:^ e:n keys:^ :}
+\ GROUP BY key e: a bound variable binds its anchor in g, `(e AS ?v)` ?v
+\ to e's term; another expression's term goes to keys unless seen has it.
+: GROUP-KEY ( ^plan ^relation ^relation ^VEC:vector<hashed> n ^rel -- )
+   {: plan r:^ g:^ seen:^ e:n keys:^ :}
    plan TREE {: state :}
    g RELATION-BINDINGS @ {: gs:^ :}
    state e NODE-K N-ALIAS = if
@@ -5160,6 +5253,7 @@ STRUCTURE pruning DERIVE addr
       plan r state e NODE-A@ SURE? gs LAST BINDING-ALWAYS ! exit
    then
    state e NODE-K N-VAR <> if
+      plan seen e SEEN? if exit then
       keys s" ," +SEP keys plan r e EXPRESSION-SQL +REL exit
    then
    r RELATION-BINDINGS @ {: bs:^ :}
@@ -5170,8 +5264,9 @@ STRUCTURE pruning DERIVE addr
 : GROUP-KEYS ( ^plan n ^relation ^relation ^rel -- )
    {: plan exprs:n r:^ g:^ keys:^ :}
    plan TREE {: state :}
+   plan exprs NEW-SEEN {: seen:^ :}
    exprs begin dup 0<> while
-      {: list:n :} plan r g state list NODE-A@ keys GROUP-KEY
+      {: list:n :} plan r g seen state list NODE-A@ keys GROUP-KEY
       state list NODE-B@
    repeat drop ;
 

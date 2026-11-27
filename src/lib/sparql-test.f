@@ -707,6 +707,14 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    s"  AND t1.kind = sparql_test.id(" 1
    s" {'head':{'vars':['k','n']},'results':{'bindings':[{'k':{'type':'uri','value':'urn:test:10'},'n':{'type':'literal','value':'2','datatype':'http://www.w3.org/2001/XMLSchema#integer'}}]}}"
    ON-NODES
+   \ Dropping a repeated key, or merging calls that differ only in DISTINCT or
+   \ the separator, changes these answers.
+   s" SELECT (COUNT(?s) AS ?n) (COUNT(?s) AS ?m) WHERE { ?s t:20 ?o } GROUP BY STR(?o) STR(?o) ORDER BY DESC(COUNT(?s)) DESC(COUNT(?s))"
+   s" {'head':{'vars':['n','m']},'results':{'bindings':[{'n':{'type':'literal','value':'2','datatype':'http://www.w3.org/2001/XMLSchema#integer'},'m':{'type':'literal','value':'2','datatype':'http://www.w3.org/2001/XMLSchema#integer'}},{'n':{'type':'literal','value':'1','datatype':'http://www.w3.org/2001/XMLSchema#integer'},'m':{'type':'literal','value':'1','datatype':'http://www.w3.org/2001/XMLSchema#integer'}}]}}"
+   ORDERED
+   s" SELECT (COUNT(?o) AS ?n) (COUNT(DISTINCT ?o) AS ?d) (STRLEN(GROUP_CONCAT(?o; SEPARATOR=',')) AS ?a) (STRLEN(GROUP_CONCAT(?o; SEPARATOR='||')) AS ?b) WHERE { ?s t:20 ?o }"
+   s" {'head':{'vars':['n','d','a','b']},'results':{'bindings':[{'n':{'type':'literal','value':'3','datatype':'http://www.w3.org/2001/XMLSchema#integer'},'d':{'type':'literal','value':'2','datatype':'http://www.w3.org/2001/XMLSchema#integer'},'a':{'type':'literal','value':'32','datatype':'http://www.w3.org/2001/XMLSchema#integer'},'b':{'type':'literal','value':'34','datatype':'http://www.w3.org/2001/XMLSchema#integer'}}]}}"
+   EXPECT
    \ No column holds the constant.
    s" SELECT ?l WHERE { ?s rdfs:label ?l FILTER(?l = 'Lathe'@en) }"
    s"  AND false" 1
