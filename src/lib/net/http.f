@@ -143,7 +143,7 @@ SCRATCH-VARIABLE CLAIMED          \ slots the started workers have taken
 SCRATCH-VARIABLE ENDED-COUNT      \ tasks that reached the end of their body
 SCRATCH-VARIABLE LEFT-COUNT       \ tasks that left their body, however they left it
 SCRATCH-VARIABLE KILLED-COUNT     \ tasks a stop had to kill past its bound
-SCRATCH-VARIABLE START-ERROR      \ first failed start hook's actual throw code
+SCRATCH-VARIABLE START-ERROR      \ first throw code of a start hook or the listener's arming
 SCRATCH-VARIABLE STARTED          \ workers successfully activated this start
 SCRATCH-VARIABLE ACCEPTED-COUNT   \ connections the listener has taken since START
 variable LOGGING                  \ set by LOG: each request read writes its line
@@ -728,11 +728,17 @@ variable EXIT-HOOK-N
    again ;
 
 
-: SERVE-JOBS ( -- )
-   [: RUN-START-HOOKS ;] catch {: code:n :}
+\ START waits once for each task's signal; a step's throw is recorded first, so
+\ START reads it, and then ends the task.
+: START-STEP ( [ -- ] -- )
+   catch {: code:n :}
    code 0 <> if 0 code START-ERROR atomic-cas drop then
    START-READY TASK:SIGNAL-SEM
-   code 0 <> if code throw then
+   code 0 <> if code throw then ;
+
+
+: SERVE-JOBS ( -- )
+   [: RUN-START-HOOKS ;] START-STEP
    WORKER-LOOP
    1 ENDED-COUNT atomic-add drop ;
 
@@ -939,6 +945,9 @@ variable EXIT-HOOK-N
 
 
 : ACCEPT-UNTIL-STOPPED ( -- )
+   \ Armed before START returns, so every descriptor the listener waits with is
+   \ held before a later shortage could deny one; a failure is START's to throw.
+   [: ARM-ACCEPT ARM-WAKE ;] START-STEP
    LISTEN-LOOP
    1 ENDED-COUNT atomic-add drop ;
 
@@ -1129,17 +1138,18 @@ MEM-MAX-N NS-PER-MS / constant MAX-DEADLINE-MS
    0 RUNNING ! ;
 
 
-\ JOIN waits through each task's AT-EXIT hook. Its error result is either the
-\ original startup throw or E-TASK-NO-RESULT from a worker stopped normally;
-\ START retains the published hook error while consuming each outcome.
+\ The outcome is dropped: an error is the startup throw START already holds in
+\ START-ERROR, or E-TASK-NO-RESULT from a task stopped normally.
+: JOIN-TASK ( ^n -- )
+   TASK:JOIN
+   MATCH result
+      ok OF drop ENDOF
+      err OF drop ENDOF
+   ;MATCH ;
+
+
 : JOIN-STARTED ( -- )
-   STARTED @ 0 ?do
-      i WORKER-TCB @ TASK:JOIN
-      MATCH result
-         ok OF drop ENDOF
-         err OF drop ENDOF
-      ;MATCH
-   loop ;
+   STARTED @ 0 ?do i WORKER-TCB @ JOIN-TASK loop ;
 
 
 \ Under JOB-LOCK: n stop jobs, behind every job queued before them.
@@ -1446,6 +1456,12 @@ public
    listener-code 0 <> if
       LISTENER-TASK TASK:KILL
       listener-code ROLLBACK-START
+   then
+   START-READY TASK:WAIT-SEM
+   START-ERROR atomic@ {: arm-code:n :}
+   arm-code 0 <> if
+      LISTENER-TASK JOIN-TASK
+      arm-code ROLLBACK-START
    then ;
 
 

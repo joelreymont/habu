@@ -1,9 +1,10 @@
-\ The HTTP listener keeps listening through an accept that fails for want of
-\ descriptors (src/lib/net/http.f ACCEPT-FAILED). Its own process: it lowers
-\ RLIMIT_NOFILE, fills the descriptor table and pipes stderr, process-wide
-\ state. The client takes the last free descriptor, so accept is EMFILE; the
-\ listener's stderr line is the failure event, and once the fillers close the
-\ same listener answers a fresh connection.
+\ The HTTP server short of descriptors (src/lib/net/http.f). Its own process: it
+\ lowers RLIMIT_NOFILE, fills the descriptor table and pipes stderr, process-wide
+\ state. A START short of one fails and leaves no server, logging a failed bind;
+\ once started, the listener keeps listening through an accept that fails for
+\ want of descriptors (ACCEPT-FAILED). The client takes the last free
+\ descriptor, so accept is EMFILE; the listener's stderr line is the failure
+\ event, and once the fillers close the same listener answers a fresh connection.
 require src/lib/net/http-response.f
 require src/lib/net/http-router.f
 require src/lib/test/assert.f
@@ -62,6 +63,7 @@ variable PIPE-R
 variable PIPE-W
 variable SAVED-ERR
 variable READ-ERRNO
+variable THREAD-SEEN
 
 
 : OK ( HTTP:request HTTP:response -- ) {: asked:HTTP:request answer:HTTP:response :}
@@ -72,6 +74,12 @@ variable READ-ERRNO
    RLIMIT-NOFILE LIMITS GET-LIMIT 0 T=
    soft LIMITS !
    RLIMIT-NOFILE LIMITS SET-LIMIT 0 T= ;
+
+
+: LOWER-LIMIT ( -- )
+   RLIMIT-NOFILE LIMITS GET-LIMIT 0 T=
+   LIMITS @ SAVED-SOFT !
+   SOFT-LIMIT LIMIT! ;
 
 
 \ Duplicates stdin until the soft limit rejects one: true when it did, false
@@ -201,9 +209,7 @@ variable READ-ERRNO
 
 : STARVED-CASE ( -- )
    STDERR-TO-PIPE
-   RLIMIT-NOFILE LIMITS GET-LIMIT 0 T=
-   LIMITS @ SAVED-SOFT !
-   SOFT-LIMIT LIMIT!
+   LOWER-LIMIT
    s" the soft limit leaves no descriptor" T-LABEL FILL TTRUE
    PIPE-W @ FD:STDERR FD>N DUP2 FD:STDERR FD>N T=
    CLOSE-LAST-FILLER
@@ -223,9 +229,33 @@ variable READ-ERRNO
    fresh TCP4:CLOSE DROP-STATUS ;
 
 
+: TRY-START ( -- n )
+   [: SERVER-CONFIG HTTP:START ;] catch ;
+
+
+: START-FAILED ( n -- ) {: code:n :}
+   s" a failed start leaves no server" T-LABEL HTTP:RUNNING? TFALSE
+   code E-TASK-THREAD = if true THREAD-SEEN ! then
+   CLOSE-LAST-FILLER ;
+
+
+\ START fails cleanly while a descriptor is short, the listener's queue included.
+: SHORT-START-CASE ( -- )
+   LOWER-LIMIT
+   s" the soft limit leaves no descriptor to start" T-LABEL FILL TTRUE
+   false THREAD-SEEN !
+   begin TRY-START dup 0 <> FILLED @ 0 > and while START-FAILED repeat
+   s" START succeeds once descriptors are free" T-LABEL 0 T=
+   s" the listener's queue was short once" T-LABEL THREAD-SEEN @ TTRUE
+   CLOSE-FILLERS
+   SAVED-SOFT @ LIMIT! ;
+
+
+\ SHORT-START-CASE comes first, before any listener holds its queue, and leaves
+\ its server running for STARVED-CASE.
 : RUN ( -- )
    s" GET" s" /ok" [: OK ;] HTTP:ROUTE
-   SERVER-CONFIG HTTP:START
+   SHORT-START-CASE
    STARVED-CASE
    HTTP:STOP
    HTTP:ENDED-TASKS HTTP:TASK-TOTAL T= ;
