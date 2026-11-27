@@ -5761,4 +5761,9 @@ STRUCTURE pruning DERIVE addr
 
 INSTALL-EMIT
 
+: COMPILE-IN ( str str ^VEC:vector<u8> [ str -- ] ^ARENA:arena -- )
+   {: query:str store:str sql:^ params arena:^ :}
+   query arena PARSE {: state:^ :}
+   state store arena READ-STORE sql params EMIT ;
+
 ;package

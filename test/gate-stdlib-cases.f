@@ -418,6 +418,7 @@ SUITE json-rpc
 TEST:SUITE sparql
    src/lib/sparql/syntax-test.f
    src/lib/sparql/store-test.f
+   src/lib/sparql/emit-test.f
 TEST:;SUITE
 
 TEST:SUITE regex

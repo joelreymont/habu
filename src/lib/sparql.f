@@ -28,21 +28,12 @@
 \ STORAGE CLASS. CALLER-OWNED: COMPILE releases all it allocates.
 
 require src/lib/sparql/emit-expression.f
-require src/lib/sparql/parse.f
 require src/lib/sparql/syntax.f
-require src/lib/sparql/store.f
 require src/lib/reason.f
 require src/lib/sparql/emit.f
 require src/lib/vector.f
 
 package SPARQL
-private
-
-: COMPILE-IN ( str str ^VEC:vector<u8> [ str -- ] ^ARENA:arena -- )
-   {: query:str store:str sql:^ params arena:^ :}
-   query arena PARSE {: state:^ :}
-   state store arena READ-STORE sql params EMIT ;
-
 public
 
 : COMPILE ( str str ^VEC:vector<u8> [ str -- ] -- bool )
