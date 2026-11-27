@@ -9,6 +9,7 @@ require src/lib/test/assert.f
 require src/lib/sparql/parse.f
 require src/lib/sparql/syntax.f
 require src/lib/sparql/lex.f
+require src/lib/sparql/iri.f
 require src/lib/sparql/segs.f
 require src/lib/vector.f
 require src/lib/reason.f
@@ -43,7 +44,10 @@ MIGRATION
    over swap NODE-B@ NODE-K ;
 
 : OBJECT$ ( ^syntax n -- str )
-   over swap NODE-C@ TEXT$ ;
+   {: state triple:n :}
+   state triple NODE-C@ {: object:n :}
+   state object NODE-K N-IRI = if state object IRI$ exit then
+   state object TEXT$ ;
 
 \ The query's first triple has a predicate of kind n and an object with the
 \ second text.
@@ -138,7 +142,7 @@ NAMES
    0 state SYNTAX-NODES @ SEG-COUNT 1 ?do
       state i NODE-K N-IRI = if drop i then
    loop
-   state swap TEXT$ ;
+   state swap IRI$ ;
 
 : RESOLVES-IN ( str str ^ARENA:arena -- )
    {: ref:str want:str arena :}

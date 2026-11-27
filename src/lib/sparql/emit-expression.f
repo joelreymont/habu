@@ -10,6 +10,7 @@ require src/lib/sparql/emit.f
 require src/lib/sparql/statement.f
 require src/lib/sparql/write.f
 require src/lib/sparql/syntax.f
+require src/lib/sparql/iri.f
 require src/lib/vector.f
 require src/lib/sparql/expression.f
 
@@ -63,7 +64,7 @@ private
    plan state call 0 ARGUMENT@ SQL-EXPRESSION plan s" ," SQL+
    state SYNTAX-DECLARED-BASE @ {: base:n :}
    base 0= if plan s" NULL::text" SQL+
-   else plan state base TEXT$ STRING+ then
+   else plan state base IRI$ STRING+ then
    plan s" )" SQL+ ;
 
 \ The aggregate call's SQL among the plan's aggregates.

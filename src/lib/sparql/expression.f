@@ -304,7 +304,7 @@ defer ORDER-CONDITION ( ^syntax -- n )
    then
    state READ-TERM {: term:n :}
    state term NODE-K N-IRI = state s" (" IS$ and if
-      state state term TEXT$ READ-CALL
+      state state term IRI$ READ-CALL
    else term then ;
 
 \ Longest-token parsing makes -01 a literal and - 01 an expression.

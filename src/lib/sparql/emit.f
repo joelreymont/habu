@@ -411,14 +411,25 @@ defer EXISTS-SQL ( ^plan n -- )
 : TYPE$ ( ^syntax n -- str )
    NODE-K N-IRI = if s" uri" else s" literal" then ;
 
+\ A headed IRI's term, its value written as the head's bytes then the text.
+: HEADED-TERM ( ^JSON:writer ^syntax n -- ^JSON:writer )
+   {: writer state term:n :}
+   writer JSON:WRITE-OBJECT-START
+   s" type" s" uri" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" value" JSON:WRITE-KEY JSON:WRITE-STRING-START
+   state term HEAD$ JSON:WRITE-STRING-PART
+   state term TEXT$ JSON:WRITE-STRING-PART
+   JSON:WRITE-STRING-END JSON:WRITE-OBJECT-END ;
+
 : WRITE-TERM ( ^JSON:writer ^syntax n -- ^JSON:writer )
    {: writer state term:n :}
+   state term NODE-C@ 0<> if writer state term HEADED-TERM exit then
    writer state term TYPE$ state term TEXT$ TERM-START
    state term NODE-B@ dup 0<> if
       {: language:n :}
       s" xml:lang" state language TEXT$ +TERM-MEMBER
    else drop state term NODE-A@ dup 0<> if
-      state swap TEXT$ {: dtype:str :}
+      state swap IRI$ {: dtype:str :}
       dtype s" http://www.w3.org/2001/XMLSchema#string" STR:= 0= if
          s" datatype" dtype +TERM-MEMBER
       then
@@ -1055,7 +1066,7 @@ defer EXISTS-SQL ( ^plan n -- )
    {: plan node:n k:^ :}
    plan TREE {: state :}
    state node NODE-K N-IRI <> if false exit then
-   plan k KEY-SET@ KEY-SET-PLACES @ state node TEXT$ MAP:HAS? ;
+   plan k KEY-SET@ KEY-SET-PLACES @ state node IRI$ MAP:HAS? ;
 
 \ Whether a constant of the pattern fits the slot: a column whose shape
 \ holds it and whose key set, if it has a key, lists it; or the slot's
@@ -1581,7 +1592,7 @@ STRUCTURE pruning DERIVE addr
    plan k KEY-SET@ {: set:^ :}
    where alias +SQL where s" ." +SQL
    where k KEY-COL @ +SQL where s"  = ANY(E'" +SQL
-   where set plan TREE node TEXT$ KEYS$ +ESCAPED
+   where set plan TREE node IRI$ KEYS$ +ESCAPED
    where s" '::" +SQL where set KEY-SET-TYPE @ +SQL where s" )" +SQL ;
 
 \ Appends to where that the column slot holds the constant, through its

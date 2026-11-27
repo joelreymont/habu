@@ -121,14 +121,15 @@ private
    {: state index:n :}
    state SYNTAX-NAMES index [: state swap NODE-NAME-HASH ;] +INTERN ;
 
-\ A term's key: its kind, text, datatype node and language tag, which
-\ compares and hashes as if lower case.
-: TERM-HASH ( ^syntax n str n str -- n )
-   {: state kind:n text:str datatype:n language:str :}
+\ A term's key: its kind, its text after a head's bytes, its datatype node
+\ and its language tag, which compares and hashes as if lower case.
+: TERM-HASH ( ^syntax n str str n str -- n )
+   {: state kind:n head:str text:str datatype:n language:str :}
    state SYNTAX-INTERNS INTERNS-HASH {: sip :}
    sip kind SIPHASH:ABSORB-WORD
    sip datatype SIPHASH:ABSORB-WORD
-   sip text str> nip SIPHASH:ABSORB-WORD
+   sip head str> nip text str> nip + SIPHASH:ABSORB-WORD
+   sip head ABSORB$
    sip text ABSORB$
    language str> {: tag size:n :}
    size 0 ?do sip tag i + c@ STR:ASCII-LOWER SIPHASH:ABSORB-BYTE loop
@@ -139,15 +140,41 @@ private
    {: state index:n :}
    state index NODE {: node :}
    node NODE-B @ {: tag:n :}
-   state node NODE-KIND @ node NODE-TEXT @ node NODE-A @
-   tag 0= if s" " else state tag TEXT$ then TERM-HASH ;
+   state node NODE-KIND @ state index HEAD$ node NODE-TEXT @
+   node NODE-A @ tag 0= if s" " else state tag TEXT$ then TERM-HASH ;
 
-: SAME-TERM? ( n ^syntax n str n str -- bool )
-   {: index state kind:n text:str datatype:n language:str :}
+\ Whether the text is the first part then the second.
+: SPLIT-SAME? ( str str str -- bool )
+   {: text:str first:str second:str :}
+   text str> {: bytes size:n :}
+   first str> nip {: length:n :}
+   length second str> nip + size <> if false exit then
+   bytes length >str first STR:= 0= if false exit then
+   bytes length + size length - >str second STR:= ;
+
+\ Whether two texts of two parts each are equal, the first's head no
+\ longer than the second's.
+: SHORTER-SAME? ( str str str str -- bool )
+   {: a-head:str a-tail:str b-head:str b-tail:str :}
+   b-head str> {: bytes size:n :}
+   a-head str> nip {: length:n :}
+   bytes length >str a-head STR:= 0= if false exit then
+   a-tail bytes length + size length - >str b-tail SPLIT-SAME? ;
+
+: SAME-PARTS? ( str str str str -- bool )
+   {: a-head:str a-tail:str b-head:str b-tail:str :}
+   a-head str> nip b-head str> nip <= if
+      a-head a-tail b-head b-tail SHORTER-SAME? exit
+   then b-head b-tail a-head a-tail SHORTER-SAME? ;
+
+: SAME-TERM? ( n ^syntax n str str n str -- bool )
+   {: index state kind:n head:str text:str datatype:n language:str :}
    state index NODE {: node :}
    node NODE-KIND @ kind <> if false exit then
    node NODE-A @ datatype <> if false exit then
-   node NODE-TEXT @ text STR:= 0= if false exit then
+   state index HEAD$ node NODE-TEXT @ head text SAME-PARTS? 0= if
+      false exit
+   then
    node NODE-B @ {: tag:n :}
    tag 0= if language str> nip 0= exit then
    state tag TEXT$ language STR:=CI ;
@@ -160,23 +187,32 @@ private
    size 0 ?do text i + dup c@ STR:ASCII-LOWER swap c! loop
    state N-LITERAL tag TEXT-NODE ;
 
-\ The IRI or literal node of the key, made when the query has none yet.
-: SHARED-TERM ( ^syntax n str n str -- n )
-   {: state kind:n text:str datatype:n language:str :}
-   state kind text datatype language TERM-HASH {: hash:n :}
+\ The IRI or literal node of the key, made when the query has none yet;
+\ its text follows the first keep bytes of the head, 0 for none.
+: SHARED-TERM ( ^syntax n n n str n str -- n )
+   {: state kind:n head:n keep:n text:str datatype:n language:str :}
+   state head keep HEAD-BYTES {: bytes:str :}
+   state kind bytes text datatype language TERM-HASH {: hash:n :}
    state SYNTAX-INTERNS {: table:^ :}
-   table hash [: state kind text datatype language SAME-TERM? ;]
+   table hash [: state kind bytes text datatype language SAME-TERM? ;]
       INTERNED dup 0<> if exit then drop
    state kind text TERM-NODE {: term:n :}
-   datatype state term NODE NODE-A !
+   state term NODE {: node :}
+   datatype node NODE-A !
+   head node NODE-C ! keep node NODE-D !
    language str> nip 0<> if
-      state language LANGUAGE-NODE state term NODE NODE-B !
+      state language LANGUAGE-NODE node NODE-B !
    then
    table term [: state swap NODE-HASH ;] +INTERN term ;
 
+\ The IRI that is the head's first n bytes then the text.
+: HEADED-IRI ( ^syntax n n str -- n )
+   {: state head:n keep:n text:str :}
+   state N-IRI head keep text 0 s" " SHARED-TERM ;
+
 : IRI-NODE ( ^syntax str -- n )
    {: state text:str :}
-   state N-IRI text 0 s" " SHARED-TERM ;
+   state 0 0 text HEADED-IRI ;
 
 \ The IRI node the prefix is declared as, 0 for none.
 : PREFIX-NODE ( ^syntax str -- n )
@@ -198,14 +234,15 @@ private
    state fix s" : <...>" JOIN$ {: full:str :}
    state s" a declared prefix" full REJECT ;
 
-: EXPAND-NAME ( ^syntax str -- str )
+\ The prefix's IRI node as the head, all its bytes kept, then the local
+\ part decoded.
+: EXPAND-NAME ( ^syntax str -- n n str )
    {: state name:str :}
    name str> {: text size:n :}
    name 58 CHAR-OFF {: colon:n :}
-   state state text colon >str PREFIX-IRI TEXT$ {: iri:str :}
-   state text colon 1+ + size colon - 1- >str false DECODE$
-      {: local:str :}
-   state iri local JOIN$ ;
+   state text colon >str PREFIX-IRI {: prefix:n :}
+   prefix state prefix IRI$ str> nip
+   state text colon 1+ + size colon - 1- >str false DECODE$ ;
 
 : READ-IRI ( ^syntax -- n )
    {: state :}
@@ -215,11 +252,12 @@ private
    else
       state T-NAME s" an IRI or prefixed name" REQUIRE-KIND
       state text size >str EXPAND-NAME
-   then state swap IRI-NODE state NEXT-TOKEN ;
+   then {: head:n keep:n tail:str :}
+   state head keep tail HEADED-IRI state NEXT-TOKEN ;
 
 : LITERAL-NODE ( ^syntax str n -- n )
    {: state text:str datatype:n :}
-   state N-LITERAL text datatype s" " SHARED-TERM ;
+   state N-LITERAL 0 0 text datatype s" " SHARED-TERM ;
 
 \ The literal of the text and the language tag at the cursor.
 : READ-LANGUAGE ( ^syntax str -- n )
@@ -229,7 +267,7 @@ private
    state NEXT-TOKEN
    state s" http://www.w3.org/1999/02/22-rdf-syntax-ns#langString" IRI-NODE
       {: datatype:n :}
-   state N-LITERAL value datatype tag SHARED-TERM ;
+   state N-LITERAL 0 0 value datatype tag SHARED-TERM ;
 
 \ A string token's value, decoded; the token is read.
 : STRING-VALUE ( ^syntax -- str )

@@ -75,6 +75,28 @@ private
    from out ln BYTE-COPY tail out ln + rn BYTE-COPY
    out size >str ;
 
+\ An IRI node's text follows the first d bytes of IRI node c, 0 for none.
+\ A head is whole: it is made whole before it becomes one.
+: HEAD-BYTES ( ^syntax n n -- str )
+   {: state head:n keep:n :}
+   head 0= if s" " exit then
+   state head TEXT$ str> drop keep >str ;
+
+\ The head's bytes of node n, empty for none.
+: HEAD$ ( ^syntax n -- str )
+   {: state index:n :}
+   state index NODE {: node :}
+   state node NODE-C @ node NODE-D @ HEAD-BYTES ;
+
+\ IRI node n's whole text; a headed node is made whole, once.
+: IRI$ ( ^syntax n -- str )
+   {: state index:n :}
+   state index NODE {: node :}
+   node NODE-C @ 0= if node NODE-TEXT @ exit then
+   state state index HEAD$ node NODE-TEXT @ JOIN$ {: whole:str :}
+   whole node NODE-TEXT !
+   0 node NODE-C ! 0 node NODE-D ! whole ;
+
 \ Cuts the last segment of the path that starts at n.
 : POP-SEGMENT ( ^VEC:vector<u8> n -- )
    {: out from:n :}
@@ -93,17 +115,37 @@ private
    then
    segment out VEC:APPEND ;
 
+\ The length of the path's first segment, its slash included.
+: SEGMENT-LEN ( str -- n )
+   {: path:str :}
+   path 47 CHAR-OFF 1+ path str> nip min ;
+
 \ Appends the path, dot segments applied, to the path that starts at n.
 : PATH+ ( ^VEC:vector<u8> n str -- )
    {: out from:n path:str :}
    path str> {: text size:n :}
    0 begin dup size < while
       {: start:n :}
-      text start + size start - >str {: rest:str :}
-      rest 47 CHAR-OFF 1+ size start - min {: length:n :}
+      text start + size start - >str SEGMENT-LEN {: length:n :}
       out from text start + length >str SEGMENT+
       start length +
    repeat drop ;
+
+: DOT-SEGMENT? ( str -- bool )
+   {: segment:str :}
+   segment s" ." STR:= segment s" ./" STR:= or
+   segment s" .." STR:= or segment s" ../" STR:= or ;
+
+\ Whether PATH+ appends the path as it is.
+: DOT-FREE? ( str -- bool )
+   {: path:str :}
+   path str> {: text size:n :}
+   0 begin dup size < while
+      {: start:n :}
+      text start + size start - >str SEGMENT-LEN {: length:n :}
+      text start + length >str DOT-SEGMENT? if false exit then
+      start length +
+   repeat drop true ;
 
 : PATH-DIRECTORY ( str -- str )
    str> {: text size:n :}
@@ -137,7 +179,7 @@ private
 : DECLARE-BASE ( ^syntax n str -- )
    {: state node:n written:str :}
    node state SYNTAX-DECLARED-BASE !
-   state state node TEXT$ IRI-SPLIT {: base :}
+   state state node IRI$ IRI-SPLIT {: base :}
    state written IRI-SPLIT {: ref :}
    base state SYNTAX-BASE !
    ref IRI-SCHEME @ str> nip 0<> if
@@ -192,22 +234,69 @@ private
 \ One byte is the slash of a base with an authority and no path.
 : RESOLVED-MOST ( ^syntax str -- n )
    {: state text:str :}
-   state state SYNTAX-DECLARED-BASE @ TEXT$ str> nip
+   state state SYNTAX-DECLARED-BASE @ IRI$ str> nip
       text str> nip + 1+ ;
 
-: RESOLVE-IRI ( ^syntax str -- str )
+: RESOLVED$ ( ^syntax str ^iri -- str )
+   {: state text:str ref :}
+   state SYNTAX-ARENA @ ARENA:ALLOCATOR 0 [type] u8 VEC:NEW {: out :}
+   out state text RESOLVED-MOST VEC:RESERVE
+   state out ref RESOLVED+ out ref FRAGMENT+
+   out 0 VEC:TRIM out VEC:BYTES ;
+
+\ Where the part of the base's text starts in it.
+: BASE-AT ( ^syntax str -- n )
+   {: state part:str :}
+   state state SYNTAX-DECLARED-BASE @ IRI$ str> drop {: base :}
+   part str> drop base - ;
+
+\ The base's bytes up to the directory after the path start n, or -1 when
+\ they are not the directory.
+: DIRECTORY-KEPT ( ^syntax n -- n )
+   {: state start:n :}
+   state state SYNTAX-DECLARED-BASE @ IRI$ str> {: text size:n :}
+   state SYNTAX-DIRECTORY @ {: directory:str :}
+   start directory str> nip + {: end:n :}
+   end size > if -1 exit then
+   text start + end start - >str directory STR:= if end else -1 then ;
+
+\ The base's bytes an empty path keeps: through its path, or its query
+\ when the reference has none.
+: QUERY-KEPT ( ^syntax ^iri -- n )
+   {: state ref :}
+   state SYNTAX-BASE @ {: base :}
+   ref I-QUERY IRI-HAS? base I-QUERY IRI-HAS? 0= or if
+      state base IRI-PATH @ BASE-AT base IRI-PATH @ str> nip + exit
+   then
+   state base IRI-QUERY @ BASE-AT base IRI-QUERY @ str> nip + ;
+
+\ How many of the base's bytes the reference's resolution starts with, the
+\ reference as written following them; -1 when RESOLVED+ changes its path.
+: BASE-KEPT ( ^syntax ^iri -- n )
+   {: state ref :}
+   state SYNTAX-BASE @ {: base :}
+   ref IRI-PATH @ {: path:str :}
+   path DOT-FREE? 0= if -1 exit then
+   ref I-AUTHORITY IRI-HAS? if base IRI-SCHEME @ str> nip 1+ exit then
+   path str> nip 0= if state ref QUERY-KEPT exit then
+   state base IRI-PATH @ BASE-AT {: start:n :}
+   path s" /" STR:STARTS-WITH? if start exit then
+   state start DIRECTORY-KEPT ;
+
+\ The resolved IRI as a head IRI node, the bytes of it kept and the rest:
+\ no head for one with a scheme or a path RESOLVED+ changes.
+: RESOLVE-IRI ( ^syntax str -- n n str )
    {: state text:str :}
    state text IRI-SPLIT {: ref :}
    ref IRI-SCHEME @ str> nip 0<> if
-      text exit
+      0 0 text exit
    then
    state SYNTAX-DECLARED-BASE @ 0= if
       state s" an absolute IRI"
          s" write the full IRI or declare BASE <...>" REJECT
    then
-   state SYNTAX-ARENA @ ARENA:ALLOCATOR 0 [type] u8 VEC:NEW {: out :}
-   out state text RESOLVED-MOST VEC:RESERVE
-   state out ref RESOLVED+ out ref FRAGMENT+
-   out 0 VEC:TRIM out VEC:BYTES ;
+   state ref BASE-KEPT {: keep:n :}
+   keep 0< if 0 0 state text ref RESOLVED$ exit then
+   state SYNTAX-DECLARED-BASE @ keep text ;
 
 ;package
