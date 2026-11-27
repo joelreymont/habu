@@ -221,8 +221,8 @@ private
 \ The parameters one PostgreSQL call takes.
 65535 constant PARAMETERS
 
-\ A parameter of the statement: a term node, or 0 and a string. A term's
-\ text is empty until TERM-TEXT copies its JSON there.
+\ A parameter with a text: 0 and a string, or a term node and the JSON
+\ TERM-TEXT copied.
 STRUCTURE argument DERIVE addr FIELD node n FIELD text str ;STRUCTURE
 
 \ A variable's name, or `_:` and a blank node's label or `#` and number,
@@ -376,7 +376,9 @@ STRUCTURE walk DERIVE addr
 STRUCTURE plan DERIVE addr
    FIELD syntax ^syntax
    FIELD store ^store
-   FIELD arguments ^segs<argument>
+   \ Parameter k's value: a term node, or the invert of its place in texted.
+   FIELD arguments ^segs<n>
+   FIELD texted ^segs<argument>  \ the parameters with a text
    FIELD strings interns  \ the string parameters' numbers by text
    FIELD variables ^VEC:vector<name>
    FIELD reads n  \ MOST bounds it
@@ -547,19 +549,40 @@ defer EXISTS-SQL ( ^plan n -- )
    {: plan most:str fix:str :}
    plan TREE dup SYNTAX-SOURCE @ str> nip most fix REJECT-TOKEN ;
 
-: PARAMETER@ ( ^plan n -- ^argument )
+: PARAMETER@ ( ^plan n -- ^n )
    {: plan k:n :} plan PLAN-ARGUMENTS @ k 1- SEG-AT ;
 
-\ A new parameter, of the term node or of 0 and the string; its number.
-: NEW-PARAMETER ( ^plan n str -- n )
+\ Parameter k's text, empty for a term TERM-TEXT has not copied.
+: PARAMETER-TEXT ( ^plan n -- str )
+   {: plan k:n :}
+   plan k PARAMETER@ @ {: v:n :}
+   v 0< 0= if s" " exit then
+   plan PLAN-TEXTED @ v invert SEG-AT ARGUMENT-TEXT @ ;
+
+\ Parameter k's term node, 0 for a string.
+: PARAMETER-NODE ( ^plan n -- n )
+   {: plan k:n :}
+   plan k PARAMETER@ @ {: v:n :}
+   v 0< 0= if v exit then
+   plan PLAN-TEXTED @ v invert SEG-AT ARGUMENT-NODE @ ;
+
+\ Appends the node, 0 for a string, and the text to texted; the value of
+\ their parameter.
+: +TEXTED ( ^plan n str -- n )
    {: plan node:n text:str :}
+   plan PLAN-TEXTED @ {: all:^ :}
+   all SEG-PUSH {: a:^ :}
+   node a ARGUMENT-NODE ! text a ARGUMENT-TEXT !
+   all SEG-COUNT 1- invert ;
+
+\ A new parameter of the value; its number.
+: NEW-PARAMETER ( ^plan n -- n )
+   {: plan v:n :}
    plan PLAN-ARGUMENTS @ {: args:^ :}
    args SEG-COUNT PARAMETERS = if
       plan s" at most 65535 constants" s" split the query" TOO-MANY
    then
-   args SEG-PUSH {: a:^ :}
-   node a ARGUMENT-NODE ! text a ARGUMENT-TEXT !
-   args SEG-COUNT ;
+   v args SEG-PUSH ! args SEG-COUNT ;
 
 \ The term node's parameter number, kept as its value from its first use.
 : TERM-PARAMETER ( ^plan n -- n )
@@ -567,16 +590,17 @@ defer EXISTS-SQL ( ^plan n -- )
    plan TREE {: state :}
    state node NODE-VALUE@ {: k:n :}
    k 0<> if k exit then
-   plan node s" " NEW-PARAMETER dup state node rot NODE-VALUE! ;
+   plan node NEW-PARAMETER dup state node rot NODE-VALUE! ;
 
 \ The IRI or literal node's JSON text, copied once into its parameter's
-\ argument, which it gives the node: it lives as long as the plan.
+\ argument: it lives as long as the plan.
 : TERM-TEXT ( ^plan n -- str )
    {: plan node:n :}
-   plan plan node TERM-PARAMETER PARAMETER@ {: a:^ :}
-   a ARGUMENT-TEXT @ {: text:str :}
-   text STR:LEN 0<> if text exit then
-   plan TREE plan node TERM-JSON COPY$ dup a ARGUMENT-TEXT ! ;
+   plan node TERM-PARAMETER {: k:n :}
+   plan k PARAMETER-TEXT {: had:str :}
+   had STR:LEN 0<> if had exit then
+   plan TREE plan node TERM-JSON COPY$ {: text:str :}
+   plan node text +TEXTED plan k PARAMETER@ ! text ;
 
 : STRING-HASH ( ^plan str -- n )
    {: plan text:str :}
@@ -590,12 +614,12 @@ defer EXISTS-SQL ( ^plan n -- )
    {: plan text:str :}
    plan PLAN-STRINGS {: table:^ :}
    table plan text STRING-HASH
-      [: plan swap PARAMETER@ ARGUMENT-TEXT @ text STR:= ;]
+      [: plan swap PARAMETER-TEXT text STR:= ;]
       INTERNED {: found:n :}
    found 0<> if found exit then
-   plan 0 text NEW-PARAMETER {: k:n :}
+   plan plan 0 text +TEXTED NEW-PARAMETER {: k:n :}
    table k
-      [: plan swap PARAMETER@ ARGUMENT-TEXT @ plan swap STRING-HASH ;]
+      [: plan swap PARAMETER-TEXT plan swap STRING-HASH ;]
       +INTERN k ;
 
 \ Appends parameter k, `$k`.
@@ -5698,7 +5722,7 @@ STRUCTURE pruning DERIVE addr
    args SEG-COUNT 0 ?do
       i 0<> if v s" ," +SQL then
       v s" ($" +SQL v i 1+ +INT
-      args i SEG-AT ARGUMENT-NODE @ 0<> if v s" ::jsonb" +SQL then
+      plan i 1+ PARAMETER-NODE 0<> if v s" ::jsonb" +SQL then
       v s" ::text)" +SQL
    loop v s" )" +SQL
    plan AL s" t0" false v NEW-CTE ;
@@ -5729,7 +5753,8 @@ STRUCTURE pruning DERIVE addr
    plan NEW-SQL plan PLAN-EMPTY !
    al [type] binding ALLOC:NEW plan PLAN-COLUMN !
    state SYNTAX-ARENA @ NEW-WRITER plan PLAN-WRITER !
-   al [type] argument SEG-NEW plan PLAN-ARGUMENTS !
+   al [type] n SEG-NEW plan PLAN-ARGUMENTS !
+   al [type] argument SEG-NEW plan PLAN-TEXTED !
    al 0 [type] name VEC:NEW plan PLAN-VARIABLES !
    NULL-PTR plan PLAN-OUTER !
    al 0 [type] aggregate VEC:NEW plan PLAN-AGGREGATES !
@@ -5749,9 +5774,9 @@ STRUCTURE pruning DERIVE addr
    al sql NEW-SINK r WRITE-REL
    plan PLAN-ARGUMENTS @ {: args:^ :}
    args SEG-COUNT 0 ?do
-      args i SEG-AT {: a:^ :}
-      a ARGUMENT-NODE @ {: node:n :}
-      node 0<> if plan node TERM-JSON else a ARGUMENT-TEXT @ then
+      plan i 1+ PARAMETER-NODE {: node:n :}
+      node 0<> if plan node TERM-JSON
+      else plan i 1+ PARAMETER-TEXT then
       params execute
    loop ;
 
