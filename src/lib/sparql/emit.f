@@ -3105,6 +3105,41 @@ STRUCTURE pruning DERIVE addr
    plan items triple state triple NODE-A@ verb state triple NODE-C@
    EXPAND ;
 
+\ The triple of s p and each object, a further one at its list cell.
+: OBJECTS-ITEMS ( ^plan ^VEC:vector<item> n -- )
+   {: plan items:^ run:n :}
+   plan TREE {: state :}
+   state run NODE-A@ state run NODE-B@ {: s:n p:n :}
+   plan items plan run s p state run NODE-C@ TRIPLE-NODE PATTERN-ITEM
+   state run NODE-D@ begin dup 0<> while
+      {: cell:n :} state cell NODE-A@ {: o:n :}
+      plan items plan cell s p o TRIPLE-NODE PATTERN-ITEM
+      state cell NODE-B@
+   repeat drop ;
+
+\ The object of the member's rdf:rest triple: the next member's blank
+\ node, else the run's rdf:nil.
+: REST-OBJECT ( ^syntax n n -- n )
+   {: state run:n cell:n :}
+   state cell NODE-D@ {: next:n :}
+   next 0<> if next exit then
+   state run NODE-D@ ;
+
+\ Each member's rdf:first and rdf:rest triples, at its list cell.
+: COLLECTION-ITEMS ( ^plan ^VEC:vector<item> n -- )
+   {: plan items:^ run:n :}
+   plan TREE {: state :}
+   state run NODE-B@ state run NODE-C@ {: first:n rest:n :}
+   state run NODE-A@ {: head:n :}
+   state state head NODE NODE-VALUE @ CELL head
+   begin dup 0<> while
+      {: b:n cell:n :} state cell NODE-A@ {: m:n :}
+      plan items plan cell b first m TRIPLE-NODE PATTERN-ITEM
+      state run cell REST-OBJECT {: next:n :}
+      plan items plan cell b rest next TRIPLE-NODE PATTERN-ITEM
+      next state cell NODE-B@
+   repeat 2drop ;
+
 \ Whether the group's patterns are all joined.
 : JOINED? ( ^syntax n -- bool )
    {: state group:n :}
@@ -3138,6 +3173,8 @@ STRUCTURE pruning DERIVE addr
       {: list:n :} state list NODE-A@ {: node:n :}
       state node NODE-K case
          N-TRIPLE of plan items node PATTERN-ITEM endof
+         N-OBJECTS of plan items node OBJECTS-ITEMS endof
+         N-COLLECTION of plan items node COLLECTION-ITEMS endof
          N-GROUP of
             state node JOINED? if plan node items filters RECURSE
             else plan items plan node CLOSED GROUP-ITEM then

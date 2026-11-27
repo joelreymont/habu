@@ -190,6 +190,29 @@ defer QUERY-SCOPE ( ^syntax n -- ^var-set )
    state names state triple NODE-B@ SCOPE-ADD
    state names state triple NODE-C@ SCOPE-ADD ;
 
+\ The objects of list n as those of triples whose subject and predicate
+\ are already in.
+: OBJECTS-SCOPE ( ^syntax ^var-set n n -- )
+   {: state names list:n bgp:n :}
+   list begin dup 0<> while
+      {: cell:n :} state cell NODE-A@ {: object:n :}
+      state object bgp BLANK-LABEL
+      state names object SCOPE-ADD
+      state cell NODE-B@
+   repeat drop ;
+
+\ A triple, an N-OBJECTS or an N-COLLECTION as its triples; a member's
+\ blank node, rdf:first, rdf:rest and rdf:nil add no label or name.
+: TRIPLES-SCOPE ( ^syntax ^var-set n n -- )
+   {: state names pattern:n bgp:n :}
+   state pattern NODE-K N-COLLECTION = if
+      state names state pattern NODE-A@ bgp OBJECTS-SCOPE exit
+   then
+   state pattern bgp TRIPLE-LABELS
+   state names pattern TRIPLE-SCOPE
+   state pattern NODE-K N-OBJECTS <> if exit then
+   state names state pattern NODE-D@ bgp OBJECTS-SCOPE ;
+
 : BIND-SCOPE ( ^syntax n ^var-set -- )
    {: state binding:n names :}
    state state binding NODE-A@ false EXPRESSION-CHECK
@@ -202,10 +225,9 @@ defer QUERY-SCOPE ( ^syntax n -- ^var-set )
       {: bgp:n list:n :}
       state list NODE-A@ {: pattern:n :}
       state pattern NODE-K {: kind:n :}
-      kind N-TRIPLE = if
+      kind N-TRIPLE = kind N-OBJECTS = or kind N-COLLECTION = or if
          bgp 0= if pattern else bgp then {: current:n :}
-         state pattern current TRIPLE-LABELS
-         state names pattern TRIPLE-SCOPE current
+         state names pattern current TRIPLES-SCOPE current
       else
          kind N-BIND = if
             state pattern names BIND-SCOPE 0

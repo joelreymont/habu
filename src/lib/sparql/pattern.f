@@ -1,5 +1,7 @@
-\ Graph patterns expand predicate/object lists and RDF collections into
-\ triples. Explicit groups retain their boundaries for FILTER and BIND scope.
+\ Graph patterns read predicate/object lists and RDF collections as runs
+\ that emission expands into their triples. Explicit groups retain their
+\ boundaries for FILTER and BIND scope. A run ends where a member's own
+\ pattern is appended, so the expansion keeps the triples' order.
 
 require src/lib/sparql/expression.f
 require src/lib/sparql/syntax.f
@@ -10,6 +12,13 @@ package SPARQL
 private
 
 64 constant F-GENERATED
+\ s p o, o2, ...: a triple whose d is the list of the further objects.
+\ A run's value is its last list cell.
+22 constant N-OBJECTS
+\ A collection's members: a their list, b rdf:first, c rdf:rest, d rdf:nil
+\ when the collection ends here. A member's list cell holds its blank
+\ node's serial in value and in d the next member's, 0 for rdf:nil.
+23 constant N-COLLECTION
 defer PATH ( ^syntax n -- n )
 defer GRAPH-NODE ( ^syntax -- n )
 defer PROPERTY-LIST ( ^syntax n bool -- )
@@ -21,11 +30,24 @@ defer SUBQUERY ( ^syntax -- n )
    state pattern state group NODE-A@ CONS
       state group NODE NODE-A ! ;
 
-: TRIPLE+ ( ^syntax n n n -- )
+: TRIPLE+ ( ^syntax n n n -- n )
    {: state subject:n predicate:n object:n :}
    state N-TRIPLE subject predicate BINARY-NODE {: node:n :}
    object state node NODE NODE-C !
-   state node APPEND-PATTERN ;
+   state node APPEND-PATTERN node ;
+
+\ Whether pattern n is the group's last.
+: LAST? ( ^syntax n -- bool )
+   {: state pattern:n :}
+   state state SYNTAX-GROUP @ NODE-A@ {: list:n :}
+   list 0= if false exit then
+   state list NODE-A@ pattern = ;
+
+\ Links list cell n after the run's last list cell, its value.
+: LINK-LAST ( ^syntax n n -- )
+   {: state run:n list:n :}
+   list state state run NODE NODE-VALUE @ NODE NODE-B !
+   list state run NODE NODE-VALUE ! ;
 
 : PATH-IRI ( ^syntax -- n )
    {: state :}
@@ -99,36 +121,54 @@ defer SUBQUERY ( ^syntax -- n )
    state TOKEN-K T-VAR = if state READ-TERM
    else state 1 PATH then ;
 
+\ The generated blank node of serial n.
+: CELL ( ^syntax n -- n )
+   {: state serial:n :}
+   state N-BNODE ADD-NODE {: node:n :}
+   serial state node NODE NODE-VALUE !
+   F-GENERATED state node NODE NODE-FLAGS ! node ;
+
 : ANONYMOUS ( ^syntax -- n )
    {: state :}
-   state N-BNODE ADD-NODE {: node:n :}
    1 state SYNTAX-SERIAL +!
-   state SYNTAX-SERIAL @ state node NODE NODE-VALUE !
-   F-GENERATED state node NODE NODE-FLAGS ! node ;
+   state state SYNTAX-SERIAL @ CELL ;
+
+: RDF-FIRST ( ^syntax -- n )
+   s" http://www.w3.org/1999/02/22-rdf-syntax-ns#first" IRI-NODE ;
+
+: RDF-REST ( ^syntax -- n )
+   s" http://www.w3.org/1999/02/22-rdf-syntax-ns#rest" IRI-NODE ;
+
+: RDF-NIL ( ^syntax -- n )
+   s" http://www.w3.org/1999/02/22-rdf-syntax-ns#nil" IRI-NODE ;
+
+\ Adds the member, its blank node's serial given, to the run while that
+\ is the group's last pattern, else to a new run; answers the run and the
+\ member's list cell.
+: MEMBER+ ( ^syntax n n n n -- n n )
+   {: state run:n first:n cell:n member:n :}
+   state member 0 CONS {: list:n :}
+   cell state list NODE NODE-VALUE !
+   state run LAST? if state run list LINK-LAST run list exit then
+   state N-COLLECTION list first BINARY-NODE {: new:n :}
+   list state new NODE NODE-VALUE !
+   state new APPEND-PATTERN new list ;
 
 : COLLECTION ( ^syntax -- n )
    {: state :}
-   state s" )" ACCEPT$ if
-      state s" http://www.w3.org/1999/02/22-rdf-syntax-ns#nil" IRI-NODE exit
-   then
+   state s" )" ACCEPT$ if state RDF-NIL exit then
    state ANONYMOUS {: head:n :}
-   head begin
-      {: current:n :}
-      state current
-         state s" http://www.w3.org/1999/02/22-rdf-syntax-ns#first" IRI-NODE
-         state GRAPH-NODE TRIPLE+
+   0 state head NODE NODE-VALUE @ begin
+      {: run:n cell:n :}
+      state run state RDF-FIRST cell state GRAPH-NODE MEMBER+
+      {: last:n list:n :}
       state s" )" ACCEPT$ if
-         state current
-            state s" http://www.w3.org/1999/02/22-rdf-syntax-ns#rest" IRI-NODE
-            state s" http://www.w3.org/1999/02/22-rdf-syntax-ns#nil" IRI-NODE
-            TRIPLE+
-         head exit
+         state RDF-REST state last NODE NODE-C !
+         state RDF-NIL state last NODE NODE-D ! head exit
       then
-      state ANONYMOUS {: next:n :}
-      state current
-         state s" http://www.w3.org/1999/02/22-rdf-syntax-ns#rest" IRI-NODE
-         next TRIPLE+
-      next
+      1 state SYNTAX-SERIAL +! state SYNTAX-SERIAL @ {: next:n :}
+      state next CELL state list NODE NODE-D !
+      state RDF-REST state last NODE NODE-C ! last next
    again ;
 
 : GRAPH-NODE-BODY ( ^syntax -- n )
@@ -154,12 +194,23 @@ defer SUBQUERY ( ^syntax -- n )
    state TOKEN$ s" a" STR:= or
    state s" (" IS$ or state s" ^" IS$ or state s" !" IS$ or ;
 
+\ Adds the object to the run, a triple or N-OBJECTS.
+: MORE-OBJECTS ( ^syntax n n -- )
+   {: state run:n object:n :}
+   state object 0 CONS {: list:n :}
+   state run NODE-K N-TRIPLE <> if state run list LINK-LAST exit then
+   N-OBJECTS state run NODE NODE-KIND !
+   list state run NODE NODE-D !
+   list state run NODE NODE-VALUE ! ;
+
 : OBJECT-LIST ( ^syntax n n -- )
    {: state subject:n predicate:n :}
-   begin
-      state subject predicate state GRAPH-NODE TRIPLE+
+   0 begin
+      state GRAPH-NODE {: run:n object:n :}
+      state run LAST? if state run object MORE-OBJECTS run
+      else state subject predicate object TRIPLE+ then
       state s" ," ACCEPT$ 0=
-   until ;
+   until drop ;
 
 : READ-PROPERTIES ( ^syntax n bool -- )
    {: state subject:n required:bool :}
