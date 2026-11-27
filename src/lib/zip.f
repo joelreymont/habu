@@ -184,16 +184,13 @@ create CP437-HIGH
    STAT ENTRY-STAT-VALID @ STAT-SIZE-VALID and 0= if E-READ throw then
    STAT ENTRY-STAT-SIZE @ dup SIZE-CHECK ;
 
-: CRC-FEED ( n str -- n ) {: crc:n data:str :}
-   crc data STR:LEN 0 ?do data STR:DATA i + c@ CRC-BYTE loop ;
-
 : OPEN-INPUT ( ^n n -- input ) {: owner:^ idx:n :}
    owner idx MEMBER-AT {: member:^ :}
    NEXT-ID {: ident:n :}
    NODE-ALLOC {: node:^ :}
    ident node ID !
    owner node INPUT-OWNER !
-   U32-MAX node INPUT-CRC !
+   0 node INPUT-CRC !
    member REPLACED? if
       member REPLACEMENT @ node INPUT-DATA !
       member REPLACE-LEN @ node INPUT-LEN !
@@ -230,7 +227,7 @@ create CP437-HIGH
       node INPUT-OFF @ node INPUT-COMPRESSED @ <> if E-READ throw then
    then
    node INPUT-KIND @ 1 <> if
-      node INPUT-CRC @ U32-MAX xor node INPUT-EXPECT @ <> if E-READ throw then
+      node INPUT-CRC @ node INPUT-EXPECT @ <> if E-READ throw then
    then
    1 node INPUT-DONE ! ;
 

@@ -9,6 +9,7 @@ require src/lib/span.f
 require src/lib/utf8-scalar.f
 require src/lib/zip-state.f
 require src/lib/zip-types.f
+require src/lib/zlib.f
 
 package ZIP
 using FFI
@@ -204,11 +205,16 @@ $14 constant LOCATOR-BYTES
 
 : MEMBER-AT ( ^n n -- ^n ) {: node:^ idx:n :}
    node MEMBERS @ idx MEMBER-CELLS * cells + ;
-: CRC-BIT ( n -- n )
-   dup 1 and 0 <> if 1 rshift $EDB88320 xor else 1 rshift then ;
-: CRC-BYTE ( n n -- n ) xor 8 0 ?do CRC-BIT loop ;
-: CRC32 ( str -- n ) {: data:str :}
-   U32-MAX data STR:LEN 0 ?do data STR:DATA i + c@ CRC-BYTE loop U32-MAX xor ;
+\ zlib's crc32 reads at most U32-MAX bytes a call; a member may be longer.
+: CRC-STEP ( n str -- n str ) {: crc:n data:str :}
+   data STR:LEN U32-MAX min {: step:n :}
+   crc data STR:DATA step >str ZLIB:CRC32-FEED
+   data STR:DATA step + data STR:LEN step - >str ;
+\ The finalized CRC-32 of bytes whose earlier part's CRC-32 is n, followed by
+\ these bytes: a member's CRC-32 is fed piece by piece from 0.
+: CRC-FEED ( n str -- n )
+   begin dup STR:LEN 0 > while CRC-STEP repeat drop ;
+: CRC32 ( str -- n ) 0 swap CRC-FEED ;
 
 : CENTRAL-PTR ( ^n ^n -- ^u8 )
    CENTRAL-OFF @ CENTRAL-BYTES RAW-SPAN ;
