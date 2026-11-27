@@ -193,7 +193,6 @@ CODEGEN:BUFFER TEXT
    ANSWER UNKNOWN-TAG @ <> if E-SCRIPT-MISMATCH throw then ;
 
 : CHECK-REGENERATION ( -- )
-   UNICODE-SCRIPT-TOOL:LOAD-PINNED
    UNICODE-SCRIPT-TOOL:RENDER {: generated:str :}
    DATA-PATH$ READ-INPUT {: buf:str :}
    generated buf STR:= 0= if E-SCRIPT-MISMATCH throw then ;

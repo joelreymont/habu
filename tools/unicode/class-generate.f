@@ -166,11 +166,10 @@ public
    RESET
    LOAD-UNICODE-FILE
    LOAD-PROPERTIES-FILE
-   LOAD-BRACKETS-FILE
-   READY? 0= if E-STATE throw then ;
+   LOAD-BRACKETS-FILE ;
 
+\ Renders the tables the last LOAD-PINNED loaded.
 : RENDER ( -- str )
-   READY? 0= if E-STATE throw then
    OUTPUT CODEGEN:RESET
    OUT-PREAMBLE
    s" LETTER" LETTER-COUNT [: LETTER-RANGE@ ;] OUT-TABLE
@@ -191,7 +190,6 @@ public
 
 \ Writes into RENDER's buffer: RENDER's answer is stale after it.
 : RENDER-VISIBLE ( -- str )
-   READY? 0= if E-STATE throw then
    OUTPUT CODEGEN:RESET
    OUT-VISIBLE-PREAMBLE
    s" HIDDEN" HIDDEN-COUNT [: HIDDEN-RANGE@ ;] OUT-TABLE

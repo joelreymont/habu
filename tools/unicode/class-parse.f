@@ -12,7 +12,6 @@ public
 -7801 s" a Unicode data range is reversed, outside the scalars, in the surrogates, out of order or overlapping another, or a table index is out of range"
    ERROR:FAULT E-RANGE
 -7802 s" the pinned Unicode data has more ranges or names than a table holds" ERROR:FAULT E-CAPACITY
--7803 s" a table was rendered before the pinned Unicode data was loaded" ERROR:FAULT E-STATE
 -7805 s" a Unicode data file cannot be read or its SHA-256 is not the pinned one: restore the pinned file" ERROR:FAULT E-DIGEST
 
 private
@@ -75,9 +74,6 @@ variable OPEN-N
 RANGE-CAPACITY TYPED-BUFFER CLOSE-CP n
 RANGE-CAPACITY TYPED-BUFFER CLOSE-PAIR n
 variable CLOSE-N
-variable UNICODE-READY
-variable SPACE-READY
-variable BRACKETS-READY
 
 variable SOURCE-PREV
 variable PENDING
@@ -382,9 +378,6 @@ private
 public
 
 : RESET ( -- )
-   FALSE-VALUE UNICODE-READY !
-   FALSE-VALUE SPACE-READY !
-   FALSE-VALUE BRACKETS-READY !
    0 LETTER-N !
    0 NUMBER-N !
    0 SPACE-N ! 0 NL-N ! 0 OTHER-N ! 0 UPPER-N ! 0 OTHER-UPPER-N ! 0 MARK-N !
@@ -392,28 +385,18 @@ public
    0 OPEN-N ! 0 CLOSE-N ! ;
 
 : PARSE-UNICODE ( str -- )
-   FALSE-VALUE UNICODE-READY !
    0 LETTER-N ! 0 NUMBER-N ! 0 NL-N ! 0 UPPER-N ! 0 MARK-N !
    0 MATH-N ! 0 SO-N ! 0 HIDDEN-N !
    -1 SOURCE-PREV ! FALSE-VALUE PENDING !
-   SCAN-UNICODE
-   TRUE-VALUE UNICODE-READY ! ;
+   SCAN-UNICODE ;
 
 : PARSE-PROPERTIES ( str -- )
-   FALSE-VALUE SPACE-READY !
    0 SPACE-N ! 0 OTHER-N ! 0 OTHER-UPPER-N !
-   SCAN-PROPS
-   TRUE-VALUE SPACE-READY ! ;
+   SCAN-PROPS ;
 
 : PARSE-BRACKETS ( str -- )
-   FALSE-VALUE BRACKETS-READY !
    0 OPEN-N ! 0 CLOSE-N !
-   SCAN-BRACKETS
-   TRUE-VALUE BRACKETS-READY ! ;
-
-: READY? ( -- bool )
-   UNICODE-READY @ 0= 0= SPACE-READY @ 0= 0= and
-   BRACKETS-READY @ 0= 0= and ;
+   SCAN-BRACKETS ;
 
 : LETTER-COUNT ( -- n )   LETTER-N @ ;
 : NUMBER-COUNT ( -- n )   NUMBER-N @ ;

@@ -299,7 +299,6 @@ create GOT CAPACITY allot
    loop ;
 
 : CHECK-REGENERATION ( -- )
-   UNICODE-CASE-TOOL:LOAD-PINNED
    UNICODE-CASE-TOOL:RENDER {: generated:str :}
    DATA-PATH$ READ-INPUT {: buf:str :}
    generated buf STR:= 0= if MISMATCH then ;
