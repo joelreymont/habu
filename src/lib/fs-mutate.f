@@ -406,16 +406,31 @@ private
    value 10 mod 48 + dst next SPAN:U8!
    next 1+ ;
 
+\ Writes value at off as exactly width digits, zero-padded, and answers the
+\ offset past them.
+: PADDED-U+ ( n SPAN:span<u8> n n -- n ) {: value:n dst off:n width:n :}
+   value 0 < if E-FS-PATH throw then
+   width 0= if
+      value 0<> if E-FS-PATH throw then
+      off exit
+   then
+   value 10 / dst off width 1- RECURSE {: next:n :}
+   value 10 mod 48 + dst next SPAN:U8!
+   next 1+ ;
+
 : PATH-COLLISION? ( str -- bool ) {: s:str :}
    s EXISTS? if 0 0= exit then
    s SYMLINK? ;
 
-\ The longest `.tmp-<seed>-<attempt>` name FS:RESERVE-SIBLING and
-\ ATOMIC-WRITE-FILE give a sibling: the largest seed, the largest nonnegative
-\ cell `-1 1 rshift`, and the last attempt, so whether a directory has room for
-\ its sibling never depends on the seed it drew.
-6 -1 1 rshift U-DIGITS +
-ATOMIC-RETRIES 1- U-DIGITS + constant SIBLING-LEN-MAX
+\ A sibling's seed takes the digits of the largest nonnegative cell, its
+\ attempt those of the last attempt.
+-1 1 rshift U-DIGITS constant SEED-DIGITS
+ATOMIC-RETRIES 1- U-DIGITS constant TRY-DIGITS
+
+\ The length of every `.tmp-<seed>-<attempt>` name FS:RESERVE-SIBLING and
+\ ATOMIC-WRITE-FILE give a sibling, so whether a directory has room for its
+\ sibling never depends on the seed it drew.
+6 SEED-DIGITS + TRY-DIGITS + constant SIBLING-LEN-MAX
 
 : SIBLING-Z ( -- ^u8 )
    ATOMIC-PATH SPAN:$ STR:DATA ;
@@ -427,10 +442,11 @@ ATOMIC-RETRIES 1- U-DIGITS + constant SIBLING-LEN-MAX
       1-
    repeat ;
 
-\ `<prefix>.tmp-<seed>-<attempt>` in this task's ATOMIC-PATH. The prefix
-\ is a destination's directory with its slash, or empty for a name relative to
+\ `<prefix>.tmp-<seed>-<attempt>` in this task's ATOMIC-PATH, seed and
+\ attempt zero-padded so the name is SIBLING-LEN-MAX bytes. The prefix is a
+\ destination's directory with its slash, or empty for a name relative to
 \ that directory's descriptor. A prefix that leaves no room within PATH-CAP
-\ for the longest sibling name is E-FS-CAPACITY whatever the seed, a semantic
+\ for the sibling name is E-FS-CAPACITY whatever the seed, a semantic
 \ rejection.
 : BUILD-SIBLING ( str n n -- str ) {: pre:str seed attempt :}
    CAUSE-CLEAR
@@ -439,9 +455,9 @@ ATOMIC-RETRIES 1- U-DIGITS + constant SIBLING-LEN-MAX
    ATOMIC-PATH {: dst :}
    pre dst SPAN:COPY
    s" .tmp-" dst pre STR:LEN SPAN:SKIP SPAN:COPY
-   seed dst pre STR:LEN 5 + ATOMIC-U+ {: off:n :}
+   seed dst pre STR:LEN 5 + SEED-DIGITS PADDED-U+ {: off:n :}
    DASH dst off SPAN:U8!
-   attempt dst off 1+ ATOMIC-U+ {: u:n :}
+   attempt dst off 1+ TRY-DIGITS PADDED-U+ {: u:n :}
    dst u SPAN:TAKE SPAN:$ ;
 
 \ Habu's portable `open` flags do not include O_EXCL. This narrow libc call

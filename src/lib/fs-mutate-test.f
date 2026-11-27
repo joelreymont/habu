@@ -1101,7 +1101,7 @@ public
    NAMED-DIR$ FS:REMOVE-DIR ;
 
 \ FS:ATOMIC-TARGET's realpath drops the /. pad, and the target's directory
-\ leaves no room within PATH-CAP for even the shortest sibling, /.tmp-0-0.
+\ leaves no room within PATH-CAP for a sibling.
 : ATOMIC-PATH-CAP ( -- )
    PATH-CAP 8 - {: least:n :}
    least PATH-CAP least - 1 and + FMT-DEEP-DIR {: deep:str :}
@@ -1114,6 +1114,18 @@ public
    dir PATH-CAP >str s" capped" FS:ATOMIC-WRITE-FILE
    dir PATH-CAP >str FMT-READ-BUF 64 FS:READ-ALL 6 T=
    FMT-READ-BUF 6 >str s" capped" T$= ;
+
+\ Every sibling name is 27 bytes, whatever the seed: `.tmp-`, the 19 digits
+\ of the largest cell, `-` and the 2 of the last of 64 attempts.
+: ATOMIC-SIBLING-LEN ( -- )
+   s" a reserved sibling's name is 27 bytes whatever the seed" T-LABEL
+   NAMED-DIR$ FS:MAKE-DIR
+   1 NAMED$ FS:RESERVE-SIBLING {: sib:str fd:n :}
+   fd FS:CLOSE-FD 0 T=
+   sib STR:DATA NAMED-DIR$ STR:LEN >str NAMED-DIR$ T$=
+   sib STR:LEN NAMED-DIR$ STR:LEN 1+ 27 + T=
+   sib FS:REMOVE-FILE
+   NAMED-DIR$ FS:REMOVE-DIR ;
 ;package
 
 \ A base of the longest length FS:MKTEMP-DIR-IN builds in still takes a temp.
@@ -2163,6 +2175,7 @@ public
    255 FS-TEST:ATOMIC-NAMED
    FS-TEST:ATOMIC-NAME-TOO-LONG
    FS-TEST:ATOMIC-PATH-CAP
+   FS-TEST:ATOMIC-SIBLING-LEN
    FMT-TEST-TEMPS
    FMT-TEST-TEMP-SLASH
    FMT-TEST-MKTEMP
