@@ -28,7 +28,7 @@ private
 
 \ THE CONTEXT, by byte offset:
 \   CHAIN  $14 at $00   the hash words after the last whole block, as DIGEST! writes them
-\   TOTAL    8 at $18   message bytes fed so far, little-endian through src/lib/le.f
+\   TOTAL    8 at $18   message bytes fed so far, little-endian
 \   TAIL   $40 at $20   the block being filled; TOTAL mod $40 of its bytes are live
 \   PAD    $40 at $60   the padding block FINISH builds and consumes
 $00 constant CHAIN-OFF

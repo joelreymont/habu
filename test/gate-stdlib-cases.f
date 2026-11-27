@@ -629,6 +629,10 @@ SUITE crypto-sha1
    src/lib/crypto/sha1-test.f
 ;SUITE
 
+SUITE crypto-md5
+   src/lib/crypto/md5-test.f
+;SUITE
+
 SUITE float-parse
    src/lib/float-test.f
    src/lib/fmath-test.f
