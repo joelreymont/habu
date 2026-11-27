@@ -386,20 +386,26 @@ STRUCTURE link DERIVE addr FIELD node n FIELD next ^link ;STRUCTURE
       else list node 1+ count then
    repeat 2drop state swap REVERSE ;
 
-\ `?name` for variable node n.
-: VAR-FIX ( ^syntax n -- str )
-   {: state name:n :}
-   state s" ?" state state name TEXT$ FIX-NAME JOIN$ ;
-
 \ The set's variables as a fix writes them, `?a ?b`, in order of first use.
+\ A first pass sizes the text, so its bytes are written once.
 : VARS-FIX ( ^syntax n ^var-set -- str )
    {: state query:n set :}
-   s" " state query set STAR-NAMES begin dup 0<> while
-      {: text:str list:n :}
-      text STR:LEN 0= if text else state text s"  " JOIN$ then
-      state swap  state state list NODE-A@ VAR-FIX  JOIN$
+   state query set STAR-NAMES {: names:n :}
+   names 0= if s" " exit then
+   0 names begin dup 0<> while
+      {: sum:n list:n :}
+      sum  state  state state list NODE-A@ TEXT$  FIX-NAME STR:LEN + 2 +
       state list NODE-B@
-   repeat drop ;
+   repeat drop 1- {: size:n :}
+   state SYNTAX-ARENA @ ARENA:ALLOCATOR size ALLOC:BYTES drop {: out :}
+   0 names begin dup 0<> while
+      {: at:n list:n :}
+      at 0<> if 32 out at + c! at 1+ else at then {: from:n :}
+      [char] ? out from + c!
+      state  state state list NODE-A@ TEXT$  FIX-NAME str> {: text width:n :}
+      text out from 1+ + width BYTE-COPY
+      from 1+ width +  state list NODE-B@
+   repeat 2drop  out size >str ;
 
 \ Whether the query uses the variable of the name.
 : USED? ( ^syntax str -- bool )
