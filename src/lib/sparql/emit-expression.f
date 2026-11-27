@@ -8,6 +8,7 @@
 
 require src/lib/sparql/emit.f
 require src/lib/sparql/statement.f
+require src/lib/sparql/write.f
 require src/lib/sparql/syntax.f
 require src/lib/vector.f
 require src/lib/sparql/expression.f
@@ -33,12 +34,11 @@ private
 : TERM+ ( ^plan n -- )
    {: plan node:n :}
    plan TREE node VARIABLE? 0= if
-      plan plan plan node TERM-JSON TERM-ARG SQL+ exit
+      plan plan PLAN-OUT @ plan node TERM-JSON +TERM-ARG exit
    then
-   plan PLAN-SCOPE @ {: bs:^ :}
-   bs plan node VAR FIND-VAR {: k:n :}
-   k 0< if plan s" NULL::jsonb" SQL+ exit then
-   plan plan bs k VEC:AT TERM-SQL SQL+ ;
+   plan PLAN-SCOPE @ plan node VAR LOOKUP {: b:^ :}
+   b NULL-PTR = if plan s" NULL::jsonb" SQL+ exit then
+   plan plan PLAN-OUT @ b +TERM ;
 
 : IF+ ( ^plan n -- )
    {: plan call:n :} plan TREE {: state :}
@@ -70,7 +70,7 @@ private
 : AGGREGATE+ ( ^plan n -- )
    {: plan call:n :}
    plan PLAN-AGGREGATES @ plan call FIND-AGGREGATE VEC:AT {: a:^ :}
-   plan a AGGREGATE-SQL @ SQL+ ;
+   plan PLAN-OUT @ a AGGREGATE-SQL @ +SPLICE ;
 
 : LOWER+ ( ^plan str -- )
    {: plan text:str :} plan PLAN-OUT @ {: out:^ :}
@@ -116,10 +116,10 @@ private
 
 : BOUND+ ( ^plan n -- )
    {: plan call:n :}
-   plan PLAN-SCOPE @ {: bs:^ :}
-   bs plan plan TREE call 0 ARGUMENT@ VAR FIND-VAR {: k:n :}
-   k 0< if plan s" false" SQL+ exit then
-   plan s" (" SQL+ plan bs k VEC:AT BINDING-SQL @ SQL+
+   plan plan TREE call 0 ARGUMENT@ VAR {: var:n :}
+   plan PLAN-SCOPE @ var LOOKUP {: b:^ :}
+   b NULL-PTR = if plan s" false" SQL+ exit then
+   plan s" (" SQL+ plan PLAN-OUT @ b +BINDING
    plan s"  IS NOT NULL)" SQL+ ;
 
 : CALL-TEST+ ( ^plan n -- )
@@ -145,13 +145,13 @@ private
    plan node negative INFIX-IS?
    dup if plan s" (NOT " SQL+ then ;
 
-: NATIVE+ ( ^plan n n n -- )
-   {: plan c:n k:n e:n :} plan plan c k e NATIVE-SQL SQL+ ;
+: NATIVE+ ( ^plan n ^binding n -- )
+   {: plan c:n k:^ e:n :} plan plan PLAN-OUT @ c k e +NATIVE ;
 
 \ `(a IN (list))` or NOT IN of the node's native operands in class c.
 : NATIVE-IN+ ( ^plan n n -- )
    {: plan node:n c:n :} plan TREE {: state :}
-   plan node IN-NATIVE {: k:n :}
+   plan node IN-NATIVE {: k:^ :}
    plan s" (" SQL+ plan c k state node NODE-A@ NATIVE+
    plan node s" NOT IN" INFIX-IS? if plan s"  NOT" SQL+ then
    plan s"  IN (" SQL+
@@ -184,7 +184,7 @@ private
 \ `(a op b)` of the node's native operands in class c.
 : NATIVE-PAIR+ ( ^plan n n str bool -- )
    {: plan node:n c:n op:str ordered:bool :} plan TREE {: state :}
-   plan node PAIR-NATIVE {: k:n :}
+   plan node PAIR-NATIVE {: k:^ :}
    plan s" (" SQL+ plan c k state node NODE-A@ NATIVE+
    ordered c TEXTUAL = and if plan s\"  COLLATE \"C\"" SQL+ then
    plan s"  " SQL+ plan op SQL+ plan s"  " SQL+

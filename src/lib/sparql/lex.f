@@ -2,6 +2,7 @@
 \ String and local-name escapes are decoded later, when reading terms.
 
 require src/lib/sparql/syntax.f
+require src/lib/sparql/segs.f
 require src/lib/utf8-scalar.f
 require src/lib/vector.f
 
@@ -178,7 +179,7 @@ private
 
 : TOKEN+ ( ^syntax n n -- )
    {: state kind:n start:n :}
-   state SYNTAX-TOKENS @ VEC:PUSH {: token :}
+   state SYNTAX-TOKENS @ SEG-PUSH {: token :}
    kind token TOKEN-KIND !
    state SYNTAX-SOURCE @ str> drop start +
    state SYNTAX-POSITION @ start - >str token TOKEN-TEXT ! ;

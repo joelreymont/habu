@@ -28,46 +28,85 @@ STRUCTURE sink DERIVE addr
 
 \ `WITH ` or `WITH RECURSIVE ` before the rel's first CTE, a comma
 \ before any other.
-: CTE-SEP ( ^sink ^rel ^cte -- )
-   {: k:^ r:^ c:^ :}
-   c r REL-WITH @ <> if k s" ," SINK+ exit then
-   r REL-RECURSIVE @ if s" WITH RECURSIVE " else s" WITH " then
-   k swap SINK+ ;
+: CTE-SEP$ ( ^rel ^cte -- str )
+   {: r:^ c:^ :}
+   c r REL-WITH @ <> if s" ," exit then
+   r REL-RECURSIVE @ if s" WITH RECURSIVE " else s" WITH " then ;
 
-\ The CTE's name and AS, which its body follows.
-: CTE-HEAD ( ^sink ^cte -- )
-   {: k:^ c:^ :}
-   k c CTE-NAME @ SINK+
-   c CTE-MATERIALIZED @ if s"  AS MATERIALIZED " else s"  AS " then
-   k swap SINK+ ;
+\ The AS after the CTE's name, which its body follows.
+: CTE-AS$ ( ^cte -- str )
+   CTE-MATERIALIZED @ if s"  AS MATERIALIZED " else s"  AS " then ;
 
-\ The rel's WITH and a space, when it has CTEs, then its pieces from
-\ first through last, which a view's next may pass, then its open text.
-\ It writes each CTE's body and child rel too, as one word, since either
-\ may hold the other.
+\ The piece after p in the rel's text, NULL-PTR after its last, which a
+\ view's next may pass.
+: NEXT-PIECE ( ^rel ^piece -- ^piece )
+   {: r:^ p:^ :}
+   p r REL-LAST @ = if NULL-PTR else p PIECE-NEXT @ then ;
+
+\ The rel's WITH and a space when it has CTEs, its pieces, its open text; one
+\ word writes CTE bodies and child rels, since either may hold the other.
 : WRITE-REL ( ^sink ^rel -- )
    {: k:^ r:^ :}
    r REL-WITH @ begin dup NULL-PTR <> while
-      {: c:^ :} k r c CTE-SEP k c CTE-HEAD
-      k c CTE-BODY @ RECURSE c CTE-NEXT @
+      {: c:^ :} k r c CTE-SEP$ SINK+ k c CTE-NAME @ SINK+
+      k c CTE-AS$ SINK+ k c CTE-BODY @ RECURSE c CTE-NEXT @
    repeat drop
    r REL-WITH @ NULL-PTR <> if k s"  " SINK+ then
    r REL-FIRST @ begin dup NULL-PTR <> while
       {: p:^ :} p PIECE-REL @ {: ch:^ :}
       ch NULL-PTR = if k p PIECE-TEXT @ SINK+ else k ch RECURSE then
-      p r REL-LAST @ = if NULL-PTR else p PIECE-NEXT @ then
+      r p NEXT-PIECE
    repeat drop
-   r REL-OPEN @ NULL-PTR <> if k r REL-OPEN @ VEC:BYTES SINK+ then ;
+   r OPEN? if k r OPEN$ SINK+ then ;
 
-\ The rel's WITH and text. The bytes hold until the rel is appended to
-\ again, as a vector's do.
+\ The bytes WRITE-REL writes of the rel, counted without writing or
+\ allocating.
+: SQL-LEN ( ^rel -- n )
+   {: r:^ :}
+   0 r REL-WITH @ begin dup NULL-PTR <> while
+      {: c:^ :} r c CTE-SEP$ STR:LEN + c CTE-NAME @ STR:LEN +
+      c CTE-AS$ STR:LEN + c CTE-BODY @ RECURSE + c CTE-NEXT @
+   repeat drop
+   r REL-WITH @ NULL-PTR <> if 1+ then
+   r REL-FIRST @ begin dup NULL-PTR <> while
+      {: p:^ :} p PIECE-REL @ {: ch:^ :}
+      ch NULL-PTR = if p PIECE-TEXT @ STR:LEN else ch RECURSE then +
+      r p NEXT-PIECE
+   repeat drop
+   r REL-LEN @ + ;
+
+\ The rel's copies and those of each CTE body and child rel it holds, as
+\ SQL-LEN walks them, counted without writing or allocating.
+: COPIES ( ^rel -- n )
+   {: r:^ :}
+   r REL-COPIES @ r REL-WITH @ begin dup NULL-PTR <> while
+      {: c:^ :} c CTE-BODY @ RECURSE + c CTE-NEXT @
+   repeat drop
+   r REL-FIRST @ begin dup NULL-PTR <> while
+      {: p:^ :} p PIECE-REL @ {: ch:^ :}
+      ch NULL-PTR <> if ch RECURSE + then
+      r p NEXT-PIECE
+   repeat drop ;
+
+\ The rel's WITH and text: a leaf's open text in place, any other rel
+\ written into a new vector, which nothing appends to.
 : SQL$ ( ^rel -- str )
    {: r:^ :}
-   r REL-FIRST @ NULL-PTR = r REL-WITH @ NULL-PTR = and if
-      r REL-OPEN @ NULL-PTR = if s" " exit then
-      r REL-OPEN @ VEC:BYTES exit
+   r LEAF? if
+      r OPEN? 0= if s" " exit then
+      r OPEN$ exit
    then
-   r REL-AL @ 0 [type] u8 VEC:NEW {: v:^ :}
-   r REL-AL @ v NEW-SINK r WRITE-REL v VEC:BYTES ;
+   r REL-TEXTS @ TEXTS-AL @ {: al:^ :}
+   al 0 [type] u8 VEC:NEW {: v:^ :}
+   al v NEW-SINK r WRITE-REL v VEC:BYTES ;
+
+\ Whether the rels write one text. Two leaves compare their open text;
+\ any other pair of distinct rels of one length is written and compared.
+: REL= ( ^rel ^rel -- bool )
+   {: a:^ b:^ :}
+   a b = if true exit then
+   a LEAF? b LEAF? and if a SQL$ b SQL$ STR:= exit then
+   a SQL-LEN b SQL-LEN <> if false exit then
+   a SQL$ b SQL$ STR:= ;
 
 ;package

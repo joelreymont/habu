@@ -257,12 +257,16 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
 \ document.
 : ALIKE ( str str str -- ) [: ALIKE-IN ;] ARENA:WITH ;
 
-: ALONE-IN ( str str str str ^ARENA:arena -- )
-   {: q:str keep:str gone:str w:str a:^ :}
-   q s" 1048576" a ANSWER {: sql:^ doc:^ :}
+\ The statement names keep but never gone, and the document is w.
+: ALONE-OF ( ^VEC:vector<u8> ^VEC:vector<u8> str str str ^ARENA:arena -- )
+   {: sql:^ doc:^ keep:str gone:str w:str a:^ :}
    sql $ keep STR:CONTAINS? TTRUE
    sql $ gone STR:CONTAINS? TFALSE
    doc $ w a UNQUOTE $ a false SAME? TTRUE ;
+
+: ALONE-IN ( str str str str ^ARENA:arena -- )
+   {: q:str keep:str gone:str w:str a:^ :}
+   q s" 1048576" a ANSWER keep gone w a ALONE-OF ;
 
 \ The query answers the expected document and its statement names keep
 \ but never gone.
@@ -750,6 +754,26 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    s" SELECT ?l WHERE { t:1 rdfs:label ?l OPTIONAL { ?s a 'Machine' { ?s rdfs:label 'Gone' OPTIONAL { ?s t:30 ?w } } } }"
    s" {'head':{'vars':['l']},'results':{'bindings':[{'l':{'type':'literal','value':'Lathe'}}]}}"
    EXPECT
+   \ Each group's FILTER drops a row by a variable only an outer group binds.
+   s" SELECT ?s ?a ?k ?c WHERE { ?s t:20 ?a OPTIONAL { ?s a ?k FILTER(?a != t:2) OPTIONAL { ?k rdfs:label ?c FILTER(?s != t:5) } } }"
+   s" {'head':{'vars':['s','a','k','c']},'results':{'bindings':[{'s':{'type':'uri','value':'urn:test:3'},'a':{'type':'uri','value':'urn:test:1'},'k':{'type':'uri','value':'urn:test:11'},'c':{'type':'literal','value':'Part'}},{'s':{'type':'uri','value':'urn:test:4'},'a':{'type':'uri','value':'urn:test:2'}},{'s':{'type':'uri','value':'urn:test:5'},'a':{'type':'uri','value':'urn:test:1'},'k':{'type':'uri','value':'urn:test:11'}}]}}"
+   EXPECT
+   \ The nested OPTIONAL's left side is empty: the group is its matches.
+   s" SELECT ?s ?b WHERE { ?s a t:11 OPTIONAL { OPTIONAL { ?s t:30 ?b } } }"
+   s" {'head':{'vars':['s','b']},'results':{'bindings':[{'s':{'type':'uri','value':'urn:test:3'},'b':{'type':'literal','value':'12','datatype':'http://www.w3.org/2001/XMLSchema#integer'}},{'s':{'type':'uri','value':'urn:test:4'},'b':{'type':'literal','value':'0.25','datatype':'http://www.w3.org/2001/XMLSchema#decimal'}},{'s':{'type':'uri','value':'urn:test:5'}}]}}"
+   EXPECT
+   \ The inner ?a meets only the outermost ?a: 5 has no weight, so no row.
+   s" SELECT ?a ?x ?c WHERE { ?a a t:11 OPTIONAL { ?x t:21 ?b OPTIONAL { ?a t:30 ?c } } }"
+   s" {'head':{'vars':['a','x','c']},'results':{'bindings':[{'a':{'type':'uri','value':'urn:test:3'},'x':{'type':'uri','value':'urn:test:1'},'c':{'type':'literal','value':'12','datatype':'http://www.w3.org/2001/XMLSchema#integer'}},{'a':{'type':'uri','value':'urn:test:4'},'x':{'type':'uri','value':'urn:test:1'},'c':{'type':'literal','value':'0.25','datatype':'http://www.w3.org/2001/XMLSchema#decimal'}},{'a':{'type':'uri','value':'urn:test:5'}}]}}"
+   EXPECT
+   \ The second OPTIONAL binds ?w only where the group left it unbound.
+   s" SELECT ?s ?m ?n ?w WHERE { ?s a t:11 OPTIONAL { ?s t:20 ?m . ?m t:21 ?n OPTIONAL { ?n t:30 ?w } } OPTIONAL { ?s t:30 ?w } }"
+   s" {'head':{'vars':['s','m','n','w']},'results':{'bindings':[{'s':{'type':'uri','value':'urn:test:3'},'m':{'type':'uri','value':'urn:test:1'},'n':{'type':'uri','value':'urn:test:2'},'w':{'type':'literal','value':'950.5','datatype':'http://www.w3.org/2001/XMLSchema#decimal'}},{'s':{'type':'uri','value':'urn:test:4'},'w':{'type':'literal','value':'0.25','datatype':'http://www.w3.org/2001/XMLSchema#decimal'}},{'s':{'type':'uri','value':'urn:test:5'},'m':{'type':'uri','value':'urn:test:1'},'n':{'type':'uri','value':'urn:test:2'},'w':{'type':'literal','value':'950.5','datatype':'http://www.w3.org/2001/XMLSchema#decimal'}}]}}"
+   EXPECT
+   \ The walks from 3 and 5 end at 1, next to 2: the FILTER drops them.
+   s" SELECT ?s ?e WHERE { ?s a t:11 OPTIONAL { ?s t:20+ ?e OPTIONAL { ?e t:21 ?c } FILTER(!BOUND(?c)) } }"
+   s" {'head':{'vars':['s','e']},'results':{'bindings':[{'s':{'type':'uri','value':'urn:test:3'}},{'s':{'type':'uri','value':'urn:test:4'},'e':{'type':'uri','value':'urn:test:2'}},{'s':{'type':'uri','value':'urn:test:5'}}]}}"
+   EXPECT
    s" SELECT ?s ?w WHERE { ?s a t:11 OPTIONAL { ?s t:30 ?w } }"
    s" {'head':{'vars':['s','w']},'results':{'bindings':[{'s':{'type':'uri','value':'urn:test:3'},'w':{'type':'literal','value':'12','datatype':'http://www.w3.org/2001/XMLSchema#integer'}},{'s':{'type':'uri','value':'urn:test:4'},'w':{'type':'literal','value':'0.25','datatype':'http://www.w3.org/2001/XMLSchema#decimal'}},{'s':{'type':'uri','value':'urn:test:5'}}]}}"
    EXPECT
@@ -1114,6 +1138,13 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    a TEXT-VEC {: out:^ :}
    sql a EDGE-SOURCES $ out RUN-TEXT TTRUE out ;
 
+\ The description with typed as its only source.
+: TYPED-STORE ( ^ARENA:arena -- ^VEC:vector<u8> )
+   {: a:^ :}
+   a TEXT-VEC {: out:^ :}
+   s" select jsonb_set(s,'{sources}',jsonb_path_query_array(s,'$.sources[7]'))::text from sparql_test.store(1048576) s"
+   out RUN TTRUE out ;
+
 \ The query answers alike on both descriptions; the text call is in the
 \ second's statement, and in the first's exactly when generic.
 : ALIKE-ON ( str bool str ^VEC:vector<u8> ^VEC:vector<u8> ^ARENA:arena -- )
@@ -1337,10 +1368,26 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
 \ `only`, the direct subject column s alone.
 : ONLY-SAME ( str -- ) [: ONLY-SAME-IN ;] ARENA:WITH ;
 
-\ A constant predicate one `only` set lists binds the value to that set's
-\ column, in one triple or one unique row; listed by two or none, to all.
-\ The subject's `only` leaves the value's columns alone, and a subject
-\ that is not unique pins no row.
+: ONLY-ALONE-IN ( str str str str ^ARENA:arena -- )
+   {: q:str keep:str gone:str w:str a:^ :}
+   q true false a HELD-STORE a ANSWER-ON {: osql:^ odoc:^ :}
+   q false false a HELD-STORE a ANSWER-ON {: psql:^ pdoc:^ :}
+   odoc $ w a UNQUOTE $ a false SAME? TTRUE
+   psql pdoc keep gone w a ALONE-OF ;
+
+\ ALONE on held without the value's `only`; with it, the query answers
+\ the same document.
+: ONLY-ALONE ( str str str str -- ) [: ONLY-ALONE-IN ;] ARENA:WITH ;
+
+: TYPED-ALONE-IN ( str str str str ^ARENA:arena -- )
+   {: q:str keep:str gone:str w:str a:^ :}
+   q a TYPED-STORE a ANSWER-ON keep gone w a ALONE-OF ;
+
+\ ALONE on the description of typed alone.
+: TYPED-ALONE ( str str str str -- ) [: TYPED-ALONE-IN ;] ARENA:WITH ;
+
+\ A value's `only` binds it to the one listing set's column, else to all;
+\ without `only`, a native binding meets the value by its root's column.
 : ONLY-COLUMNS ( -- )
    s" sparql.aggregate(" {: call:str :}
    s" SELECT ?s (SUM(?w) AS ?t) (MIN(?w) AS ?lo) WHERE { ?s t:81 ?w } GROUP BY ?s"
@@ -1354,6 +1401,10 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    s" SELECT (MIN(?w) AS ?lo) WHERE { ?s t:83 ?w }" true call ONLY
    s" SELECT (MIN(?w) AS ?lo) WHERE { ?s t:84 ?w }" true call ONLY
    s" SELECT ?s ?w WHERE { ?s t:84 ?w }" true s" o_text" SUBJECT-ONLY
+   s" SELECT ?s ?x WHERE { ?s t:82 ?w OPTIONAL { ?x rdfs:label ?w } }"
+   s" ON t3.v1 = t2.o_text WHERE" s" sparql_test.string(COALESCE("
+   s" {'head':{'vars':['s','x']},'results':{'bindings':[{'s':{'type':'uri','value':'urn:test:40'},'x':{'type':'uri','value':'urn:test:40'}},{'s':{'type':'uri','value':'urn:test:41'},'x':{'type':'uri','value':'urn:test:42'}}]}}"
+   ONLY-ALONE
    s" SELECT ?s ?p ?w WHERE { ?s ?p ?w }" ONLY-SAME
    s" SELECT ?s ?p ?w WHERE { ?s t:81 3 . ?s ?p ?w }" ONLY-SAME ;
 
@@ -1409,6 +1460,16 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    s" SELECT DISTINCT ?o WHERE { ?s t:20 ?o } ORDER BY DESC(?o)"
    s" {'head':{'vars':['o']},'results':{'bindings':[{'o':{'type':'uri','value':'urn:test:2'}},{'o':{'type':'uri','value':'urn:test:1'}}]}}"
    ORDERED ;
+
+\ COUNT(DISTINCT *) counts the named variables only: the path meets t:1
+\ from t:1 through t:3 and through t:5, and _:b binds t:3 and t:5.
+: STAR-COUNTS ( -- )
+   s" SELECT (COUNT(DISTINCT *) AS ?n) WHERE { ?s ^t:20/t:20 ?o FILTER(?s = t:1) }"
+   s" {'head':{'vars':['n']},'results':{'bindings':[{'n':{'type':'literal','value':'1','datatype':'http://www.w3.org/2001/XMLSchema#integer'}}]}}"
+   EXPECT
+   s" SELECT (COUNT(DISTINCT *) AS ?n) WHERE { _:b t:20 ?o FILTER(?o = t:1) }"
+   s" {'head':{'vars':['n']},'results':{'bindings':[{'n':{'type':'literal','value':'1','datatype':'http://www.w3.org/2001/XMLSchema#integer'}}]}}"
+   EXPECT ;
 
 \ A subquery binds only what it projects; its ?s below is not the outer ?s.
 : SUBQUERIES ( -- )
@@ -1503,6 +1564,11 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    s" SELECT ?v WHERE { VALUES ?v { t:1 t:999 } ?v t:25? ?v }"
    s" {'head':{'vars':['v']},'results':{'bindings':[{'v':{'type':'uri','value':'urn:test:1'}}]}}"
    EXPECT
+   \ Neither a predicate position nor an OPTIONAL's subject proves its
+   \ variable a node: t:25 is in no triple's subject or object.
+   s" SELECT ?p WHERE { t:50 ?p t:51 OPTIONAL { ?p t:20 ?o } ?p t:25? ?p }"
+   s" {'head':{'vars':['p']},'results':{'bindings':[]}}"
+   EXPECT
    \ With neither end bound, each of the default graph's 37 nodes, the
    \ labels and numbers included, answers itself once; the cycle adds 6.
    s" SELECT (COUNT(*) AS ?n) WHERE { ?x t:25* ?y }"
@@ -1530,7 +1596,12 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    \ A BIND reads the end of the walk before it.
    s" SELECT ?x ?z WHERE { t:60 t:26+ ?x BIND(STR(?x) AS ?z) }"
    s" {'head':{'vars':['x','z']},'results':{'bindings':[{'x':{'type':'uri','value':'urn:test:61'},'z':{'type':'literal','value':'urn:test:61'}},{'x':{'type':'uri','value':'urn:test:62'},'z':{'type':'literal','value':'urn:test:62'}}]}}"
-   EXPECT ;
+   EXPECT
+   \ A walk over typed's slot, whose columns span roots, steps by its
+   \ column of the end's root.
+   s" SELECT ?x WHERE { ?x t:80+ t:1 }" s" p.an = w.e" s" w.n"
+   s" {'head':{'vars':['x']},'results':{'bindings':[{'x':{'type':'uri','value':'urn:test:40'}}]}}"
+   TYPED-ALONE ;
 
 : SESSION ( -- )
    s" src/lib/sparql/runtime.sql" RUN-SQL
@@ -1542,7 +1613,7 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    SUBSTITUTIONS MANY CONSTANTS WIDE FORMS
    PROJECTIONS GROUPING AGGREGATES ORDERED-CONCATS TYPED-AGGREGATES
    ONLY-COLUMNS
-   TYPED-FILTERS BRANCH-GROUPING ORDERS DISTINCTS
+   TYPED-FILTERS BRANCH-GROUPING ORDERS DISTINCTS STAR-COUNTS
    SUBQUERIES
    BINDS CHAINS UUIDS VOLATILE-BINDS DATA-BLOCKS PATHS ;
 

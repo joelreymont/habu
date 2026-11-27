@@ -14,6 +14,7 @@ require src/lib/utf8-scalar.f
 require src/lib/unicode/visible.f
 require src/core/rejection.f
 require src/lib/fmt.f
+require src/lib/sparql/segs.f
 
 package SPARQL
 
@@ -95,8 +96,8 @@ STRUCTURE iri DERIVE addr
 \ position to word-end has a colon.
 STRUCTURE syntax DERIVE addr
    FIELD arena ^ARENA:arena
-   FIELD nodes ^VEC:vector<node>
-   FIELD tokens ^VEC:vector<token>
+   FIELD nodes ^segs<node>
+   FIELD tokens ^segs<token>
    FIELD source str
    FIELD original str
    FIELD escapes ^VEC:vector<escape>
@@ -113,6 +114,7 @@ STRUCTURE syntax DERIVE addr
    FIELD group n
    FIELD labels ^n
    FIELD nesting n
+   FIELD terms n  \ the IRI and literal nodes made
 ;STRUCTURE
 
 \ The offset in the query as written of decoded offset n: the last escape
@@ -211,8 +213,8 @@ STRUCTURE syntax DERIVE addr
    {: state index:n x:str f:str :}
    state SYNTAX-SOURCE @ str> {: source length:n :}
    state SYNTAX-TOKENS @ {: tokens :}
-   index tokens VEC:COUNT < if
-      tokens index VEC:AT {: token :}
+   index tokens SEG-COUNT < if
+      tokens index SEG-AT {: token :}
       token TOKEN-TEXT @ {: y:str :}
       state y str> drop source - x y f REJECTED
    then
@@ -243,7 +245,7 @@ STRUCTURE syntax DERIVE addr
 : UNNEST ( ^syntax -- ) -1 swap SYNTAX-NESTING +! ;
 
 : NODE ( ^syntax n -- ^node )
-   swap SYNTAX-NODES @ swap VEC:AT ;
+   swap SYNTAX-NODES @ swap SEG-AT ;
 
 \ Rejects at the token node n was read at.
 : REJECT-NODE ( ^syntax n str str -- )
@@ -261,8 +263,8 @@ STRUCTURE syntax DERIVE addr
 
 : ADD-NODE ( ^syntax n -- n )
    {: state kind:n :}
-   state SYNTAX-NODES @ VEC:COUNT {: index:n :}
-   state SYNTAX-NODES @ VEC:PUSH {: node :}
+   state SYNTAX-NODES @ SEG-COUNT {: index:n :}
+   state SYNTAX-NODES @ SEG-PUSH {: node :}
    kind node NODE-KIND !
    state SYNTAX-CURSOR @ node NODE-TOKEN ! index ;
 
@@ -291,6 +293,13 @@ STRUCTURE syntax DERIVE addr
    {: state kind:n text:str :}
    state kind ADD-NODE {: index:n :}
    state index text TEXT! index ;
+
+\ An IRI or literal node; its value is its number among the query's terms.
+: TERM-NODE ( ^syntax n str -- n )
+   {: state kind:n text:str :}
+   state kind text TEXT-NODE {: index:n :}
+   state SYNTAX-TERMS @ state index NODE NODE-VALUE !
+   1 state SYNTAX-TERMS +! index ;
 
 : COPY$ ( ^syntax str -- str )
    {: state source:str :}
@@ -339,9 +348,9 @@ STRUCTURE syntax DERIVE addr
    text state SYNTAX-ORIGINAL !
    arena ARENA:ALLOCATOR 0 [type] escape VEC:NEW
       state SYNTAX-ESCAPES !
-   arena ARENA:ALLOCATOR 1 [type] node VEC:NEW
-      state SYNTAX-NODES !
-   arena ARENA:ALLOCATOR 0 [type] token VEC:NEW
+   arena ARENA:ALLOCATOR [type] node SEG-NEW {: nodes:^ :}
+   nodes 1 SEG-ENSURE  nodes state SYNTAX-NODES !
+   arena ARENA:ALLOCATOR [type] token SEG-NEW
       state SYNTAX-TOKENS ! state ;
 
 ;package

@@ -26,8 +26,9 @@
 \ group by the description source they were read from: one group is that
 \ source's FROM item, several a UNION ALL of one branch per group, and
 \ where a group's candidates read several columns at a slot, a variable
-\ binds their COALESCE and a constant is held by one of them. A pattern of
-\ one such group whose subject slot is a unique column reads the row an
+\ binds their COALESCE, a native binding meets it through the columns of
+\ its root, and a constant is held by one of them. A pattern of one such
+\ group whose subject slot is a unique column reads the row an
 \ earlier pattern of its subject reads from that source's FROM item by
 \ that column. A nested group, and a GRAPH of a named graph's IRI, with no
 \ OPTIONAL, MINUS, BIND or FILTER directly in it adds its items to its
@@ -41,10 +42,13 @@
 \ A group folds its items in order (SPARQL 1.1 section 18.2.2.6) into one
 \ FROM of CROSS JOINs: a joined item meets the bindings so far in the
 \ WHERE, an OPTIONAL is a LEFT JOIN whose ON holds the meeting and the
-\ OPTIONAL's FILTERs, a MINUS is a correlated NOT EXISTS. A BIND's variable
-\ is its expression, written at each read; one that calls RAND, UUID or
-\ STRUUID, or that PostgreSQL would plan as more than MOST-COPIED bytes, is
-\ a column of a derived table of the bindings so far. A VALUES is a joined
+\ OPTIONAL's FILTERs, a MINUS is a correlated NOT EXISTS. An OPTIONAL's
+\ group with an OPTIONAL in it, no BIND and no KNOWN binding joins as its
+\ own FROM in parentheses, its WHERE in the ON; any other is a derived
+\ table. A BIND's variable is its expression, written at each read; one
+\ that calls RAND, UUID or STRUUID, or that PostgreSQL would plan as more
+\ than MOST-COPIED bytes, is a column of a derived table of the bindings
+\ so far. A VALUES is a joined
 \ derived table of its data block's terms. The joined items up to the next
 \ OPTIONAL, MINUS or BIND fold in connected order, next the first written
 \ of those that share a variable with the bindings so far and have a given
@@ -107,9 +111,10 @@
 \
 \ A triple whose verb is a path expands before shape inference: `^p`
 \ swaps subject and object, `p/q` is two triples joined on a fresh
-\ variable, `p|q` a UNION of the two; `!(...)` matches the sources whose
-\ predicate is none of its IRIs, its inverse members with subject and
-\ object swapped, a UNION when it has both. `p+`, `p*` and `p?` are walks,
+\ variable, which no column carries once both are folded, `p|q` a UNION
+\ of the two; `!(...)` matches the sources whose predicate is none of its
+\ IRIs, its inverse members with subject and object swapped, a UNION when
+\ it has both. `p+`, `p*` and `p?` are walks,
 \ each folded after the joined items up to the next OPTIONAL, MINUS or
 \ BIND: a WITH RECURSIVE CTE of p's steps from its seeds, UNION
 \ (distinct) so a cycle ends. The seeds are a constant end or one the
@@ -121,7 +126,12 @@
 \ own end. A walk's steps, when its operand has a walk in it, are a CTE
 \ at the statement's WITH, which reads no scope, so a nested path writes
 \ each walk once; the active graph's subjects and objects are one CTE
-\ there, which the seeds of every walk from every node read.
+\ there, which the seeds of every walk from every node read. Where one of
+\ the steps' start and end forms is a term, the CTE carries n, the end in
+\ the start form, converted once per end so that a step compares columns,
+\ not a term the host parses per pair scanned; where the steps hold an,
+\ the start's columns of the end's root, a further step compares an with
+\ the end instead.
 \
 \ A query that GROUP BY or an aggregate groups reads its groups, a derived
 \ table grouped on its keys' anchors, native where native, whose columns
@@ -164,6 +174,7 @@ require src/lib/json/write.f
 require src/lib/fmt.f
 require src/lib/map.f
 require src/lib/sparql/syntax.f
+require src/lib/sparql/segs.f
 require src/lib/vector.f
 require src/lib/json/value.f
 require src/lib/sparql/iri.f
@@ -200,19 +211,31 @@ STRUCTURE argument DERIVE addr FIELD text str FIELD term bool ;STRUCTURE
 \ and its frame: 0 for the query's own, a subquery's serial for its own.
 STRUCTURE name DERIVE addr FIELD text str FIELD frame n ;STRUCTURE
 
-\ shape is a shape's index for a native column of it, else GENERIC or
-\ KNOWN; term is a KNOWN term's text; copies is the bytes of the expressions
-\ PostgreSQL copies for the derived tables' columns in sql; nullable, that
-\ sql is a column that may hold NULL which no condition of its relation's
-\ WHERE drops yet.
+\ A GENERIC binding's columns: slot k of the records under the alias, at
+\ most one non-null in a row.
+STRUCTURE spread DERIVE addr
+   FIELD recs ^VEC:vector<n>
+   FIELD slot n
+   FIELD alias str
+;STRUCTURE
+
+\ Nothing appends to sql once it is stored, and copies are set only on a
+\ rel no other binding holds.
 STRUCTURE binding DERIVE addr
    FIELD var n
-   FIELD shape n
-   FIELD sql str
-   FIELD term str
+   FIELD shape n  \ a native column's shape, else GENERIC or KNOWN
+   FIELD sql ^rel
+   FIELD term str  \ a KNOWN term's text
    FIELD always bool
-   FIELD copies n
-   FIELD nullable bool
+   FIELD nullable bool  \ sql may be NULL; no WHERE condition drops it yet
+   FIELD spread ^spread  \ a GENERIC binding's columns, else NULL-PTR
+;STRUCTURE
+
+\ A scope's layer of bindings over the one under it, NULL-PTR outermost; a
+\ variable's binding is its innermost one's; no layer changes under another.
+STRUCTURE layer DERIVE addr
+   FIELD bindings ^VEC:vector<binding>
+   FIELD under ^layer
 ;STRUCTURE
 
 \ A row the FROM reads once under the alias: of the FROM item `from`, by
@@ -224,7 +247,8 @@ STRUCTURE subject-row DERIVE addr
    FIELD alias str
 ;STRUCTURE
 
-\ branches are a union's when its solutions are the relation's, else empty.
+\ rows are NULL-PTR until the first is kept; branches are a union's when
+\ its solutions are the relation's, else NULL-PTR.
 STRUCTURE relation DERIVE addr
    FIELD from ^rel
    FIELD where ^rel
@@ -232,18 +256,18 @@ STRUCTURE relation DERIVE addr
    FIELD rows ^VEC:vector<subject-row>
    FIELD empty bool
    FIELD branches ^VEC:vector<relation>
+   FIELD optional bool  \ an OPTIONAL LEFT JOINed into from
+   FIELD bind bool  \ a BIND bound a variable here
 ;STRUCTURE
 
-\ One way an item matches: a source's index, or -1 for a derived table,
-\ and the binding each variable there gets.
+\ One way an item matches: a source's index, or -1 for a derived table.
 STRUCTURE choice DERIVE addr
    FIELD source n
    FIELD alive bool
-   FIELD kinds ^VEC:vector<binding>
 ;STRUCTURE
 
-\ An item of a group: a triple's or a BIND's node, or zero and a derived
-\ table with its columns.
+\ A group's item: a triple's or BIND's node, or zero and a derived table.
+\ A triple's columns are its variables by part, made with its first choice.
 STRUCTURE item DERIVE addr
    FIELD node n
    \ Zero for a joined item, else N-OPTIONAL, N-MINUS, N-BIND or N-PATH.
@@ -254,7 +278,9 @@ STRUCTURE item DERIVE addr
    FIELD choices ^VEC:vector<choice>
    FIELD graph str  \ the active graph's term
    FIELD union bool  \ whether UNION? holds of it once pruned
-   FIELD branches ^VEC:vector<relation>  \ a union's, else empty
+   FIELD branches ^VEC:vector<relation>  \ a union's, else NULL-PTR
+   \ An OPTIONAL group's WHERE when the group joins as it is, else NULL-PTR.
+   FIELD where ^rel
 ;STRUCTURE
 
 \ An IRI a joined triple puts in the row `row` reads by a unique
@@ -273,15 +299,13 @@ STRUCTURE pinned DERIVE addr
    FIELD verdicts ^VEC:vector<u8>
 ;STRUCTURE
 
-\ An aggregate call node and its SQL: the aggregate inside the grouped
-\ query, its column above it; always when no group leaves it unbound.
-\ native is the shape whose column the call reads natively over the
-\ grouped solutions, else -1.
+\ An aggregate call node and its SQL. Nothing appends to sql once it is
+\ stored.
 STRUCTURE aggregate DERIVE addr
    FIELD node n
-   FIELD sql str
-   FIELD always bool
-   FIELD native n
+   FIELD sql ^rel  \ the call within the grouped query, its column above
+   FIELD always bool  \ no group leaves it unbound
+   FIELD native n  \ the shape whose column it reads natively, else -1
 ;STRUCTURE
 
 \ What a term's text says: whether the term is an IRI and, if not, its
@@ -308,35 +332,38 @@ STRUCTURE node-test DERIVE addr
    FIELD test ^rel
 ;STRUCTURE
 
-\ terms and strings map a text to its parameter's number. graph is the
-\ active graph's text, empty for the default graph; frame is the
-\ variables' frame. An expression is written to out and reads the
-\ bindings in scope and the aggregates. outer is the substitution, empty
-\ outside EXISTS. ctes is the statement's CTEs. MOST bounds reads.
-\ places is a MAP map from a text to its place in known; nodes is by node
-\ index; sets holds the node CTEs written, one per active graph; tests
-\ the node tests built, one per active graph and key kind.
+\ An expression is written to out and reads the bindings in scope and the
+\ aggregates.
 STRUCTURE plan DERIVE addr
    FIELD syntax ^syntax
    FIELD store ^store
-   FIELD arguments ^VEC:vector<argument>
-   FIELD terms ^n
-   FIELD strings ^n
+   FIELD arguments ^segs<argument>
+   FIELD terms ^n  \ a term's text to its parameter's number
+   FIELD strings ^n  \ a string's text to its parameter's number
    FIELD variables ^VEC:vector<name>
-   FIELD reads n
+   FIELD reads n  \ MOST bounds it
    FIELD serial n
-   FIELD frame n
-   FIELD graph str
+   FIELD frame n  \ the variables'
+   FIELD graph str  \ the active graph's text, empty for the default graph
    FIELD out ^rel
-   FIELD scope ^VEC:vector<binding>
-   FIELD outer ^VEC:vector<binding>
-   FIELD ctes ^ctes
+   FIELD scope ^layer
+   FIELD outer ^layer  \ the substitution, NULL-PTR outside EXISTS
+   FIELD ctes ^ctes  \ the statement's
    FIELD aggregates ^VEC:vector<aggregate>
    FIELD known ^VEC:vector<known-term>
-   FIELD places ^n
-   FIELD nodes ^VEC:vector<node-term>
-   FIELD sets ^VEC:vector<node-set>
-   FIELD tests ^VEC:vector<node-test>
+   FIELD places ^n  \ a MAP map from a text to its place in known
+   FIELD rows ^segs<node-term>  \ by term number
+   FIELD sets ^VEC:vector<node-set>  \ the node CTEs written, one per graph
+   FIELD tests ^VEC:vector<node-test>  \ built, one per graph and key kind
+   FIELD texts ^texts  \ the statement's copied text
+   FIELD writer ^JSON:writer
+   \ While CONNECT orders a run, the variables each solution has.
+   FIELD bound ^VEC:vector<bool>
+   FIELD empty ^rel  \ shared by every placeholder binding
+   \ Refilled for each derived table column met into a scope; MEET keeps
+   \ no pointer to it.
+   FIELD column ^binding
+   FIELD fresh ^VEC:vector<n>  \ the variables EXPAND joins `x/y` on
 ;STRUCTURE
 
 defer SQL-EXPRESSION ( ^plan n -- )
@@ -353,14 +380,28 @@ defer EXISTS-SQL ( ^plan n -- )
 
 : AL ( ^plan -- ^ALLOC:allocator ) TREE SYNTAX-ARENA @ ARENA:ALLOCATOR ;
 
-: NEW-SQL ( ^plan -- ^rel ) AL NEW-REL ;
+: TEXTS ( ^plan -- ^texts ) PLAN-TEXTS @ ;
+
+: NEW-SQL ( ^plan -- ^rel ) TEXTS NEW-REL ;
 
 : +INT ( ^rel n -- ) FMT:INT$ +SQL ;
+
+\ Appends `vK`, variable K's column in a derived table.
+: +NAME ( ^rel n -- ) {: v:^ var:n :} v s" v" +SQL v var +INT ;
+
+\ Appends `alias.vK`.
+: +NAME-OF ( ^rel str n -- )
+   {: v:^ alias:str var:n :} v alias +SQL v s" ." +SQL v var +NAME ;
 
 : SQL+ ( ^plan str -- ) {: plan a:str :} plan PLAN-OUT @ a +SQL ;
 
 : WRITER ( ^plan -- ^JSON:writer )
-   TREE SYNTAX-ARENA @ NEW-WRITER ;
+   PLAN-WRITER @ JSON:RESET ;
+
+\ The writer's text, copied at its length: the next write reuses the writer.
+: WRITER$ ( ^plan ^JSON:writer -- str )
+   {: plan w :}
+   plan TREE w JSON:WRITTEN$ COPY$ ;
 
 : TYPE$ ( ^syntax n -- str )
    NODE-K N-IRI = if s" uri" else s" literal" then ;
@@ -418,9 +459,7 @@ defer EXISTS-SQL ( ^plan n -- )
 
 : NODE-TERM@ ( ^plan n -- ^node-term )
    {: plan node:n :}
-   plan PLAN-NODES @ {: nodes:^ :}
-   nodes node 1+ VEC:ENSURE
-   nodes node VEC:AT ;
+   plan PLAN-ROWS @ plan TREE node NODE NODE-VALUE @ SEG-AT ;
 
 \ The IRI or literal node's text.
 : TERM-JSON ( ^plan n -- str )
@@ -428,7 +467,7 @@ defer EXISTS-SQL ( ^plan n -- )
    plan node NODE-TERM@ {: row:^ :}
    row NODE-TERM-TEXT @ {: text:str :}
    text STR:LEN 0<> if text exit then
-   plan WRITER plan TREE node WRITE-TERM JSON:WRITTEN$
+   plan plan WRITER plan TREE node WRITE-TERM WRITER$
    dup row NODE-TERM-TEXT ! ;
 
 \ The IRI or literal node's term.
@@ -441,30 +480,44 @@ defer EXISTS-SQL ( ^plan n -- )
 \ Rejects the whole query: what it may have at most, and the fix.
 : TOO-MANY ( ^plan str str -- )
    {: plan most:str fix:str :}
-   plan TREE dup SYNTAX-TOKENS @ VEC:COUNT most fix REJECT-TOKEN ;
+   plan TREE dup SYNTAX-TOKENS @ SEG-COUNT most fix REJECT-TOKEN ;
 
-\ The text's parameter `$k`, added on its first use as a term or as a
+\ The text's parameter number k, added on its first use as a term or as a
 \ string. The text must live as long as the plan.
-: ARGUMENT ( ^plan str bool -- str )
+: PARAMETER ( ^plan str bool -- n )
    {: plan text:str term:bool :}
    term if plan PLAN-TERMS else plan PLAN-STRINGS then {: mp:^ :}
    mp plan TREE SYNTAX-ARENA @ MAP:ROOM
    mp @ text MAP:GET MATCH option
       none OF
-         plan PLAN-ARGUMENTS @ VEC:COUNT PARAMETERS = if
+         plan PLAN-ARGUMENTS @ SEG-COUNT PARAMETERS = if
             plan s" at most 65535 constants" s" split the query" TOO-MANY
          then
-         plan PLAN-ARGUMENTS @ VEC:PUSH {: a:^ :}
+         plan PLAN-ARGUMENTS @ SEG-PUSH {: a:^ :}
          text a ARGUMENT-TEXT ! term a ARGUMENT-TERM !
-         plan PLAN-ARGUMENTS @ VEC:COUNT dup mp @ text MAP:SET
+         plan PLAN-ARGUMENTS @ SEG-COUNT dup mp @ text MAP:SET
       ENDOF
       some OF ENDOF
-   ;MATCH {: k:n :}
-   plan NEW-SQL {: v:^ :}
-   v s" $" +SQL v k +INT v SQL$ ;
+   ;MATCH ;
 
-\ The JSON term's parameter, JSONB.
-: TERM-ARG ( ^plan str -- str ) true ARGUMENT ;
+\ Appends parameter k, `$k`.
+: +PARAMETER ( ^rel n -- )
+   {: v:^ k:n :} v s" $" +SQL v k +INT ;
+
+\ Appends the text's parameter.
+: +ARGUMENT ( ^plan ^rel str bool -- )
+   {: plan v:^ text:str term:bool :} v plan text term PARAMETER +PARAMETER ;
+
+\ A leaf of the text's parameter.
+: ARGUMENT ( ^plan str bool -- ^rel )
+   {: plan text:str term:bool :}
+   plan NEW-SQL {: v:^ :} plan v text term +ARGUMENT v ;
+
+\ A leaf of the JSON term's parameter, JSONB.
+: TERM-ARG ( ^plan str -- ^rel ) true ARGUMENT ;
+
+\ Appends the JSON term's parameter, JSONB.
+: +TERM-ARG ( ^plan ^rel str -- ) true +ARGUMENT ;
 
 \ Appends the text inside an E'' literal, each `\` and `'` doubled: `\'`
 \ is rejected under backslash_quote off and unsafe in a multibyte encoding.
@@ -476,21 +529,24 @@ defer EXISTS-SQL ( ^plan n -- )
       b v +BYTE c!
    loop ;
 
-\ The description's JSON term as a literal, JSONB.
-: TERM-LITERAL ( ^plan str -- str )
-   {: plan t:str :}
-   plan NEW-SQL {: v:^ :}
-   v s" E'" +SQL v t +ESCAPED v s" '::jsonb" +SQL v SQL$ ;
+\ Appends the description's JSON term as a literal, JSONB.
+: +TERM-LITERAL ( ^rel str -- )
+   {: v:^ t:str :} v s" E'" +SQL v t +ESCAPED v s" '::jsonb" +SQL ;
 
-\ The string's parameter, text.
-: TEXT-ARG ( ^plan str -- str ) false ARGUMENT ;
+\ A leaf of the description's JSON term as a literal.
+: TERM-LITERAL ( ^plan str -- ^rel )
+   {: plan t:str :} plan NEW-SQL {: v:^ :} v t +TERM-LITERAL v ;
+
+\ Appends the string's parameter, text.
+: +TEXT-ARG ( ^plan ^rel str -- ) false +ARGUMENT ;
 
 : STRING+ ( ^plan str -- )
-   {: plan a:str :} plan plan a TEXT-ARG SQL+ ;
+   {: plan a:str :} plan plan PLAN-OUT @ a +TEXT-ARG ;
 
-: NUMBER-ARG ( ^plan n -- str )
-   {: plan value:n :}
-   plan plan TREE s" " value FMT:INT$ JOIN$ TEXT-ARG ;
+\ Appends the number's parameter, text.
+: +NUMBER-ARG ( ^plan ^rel n -- )
+   {: plan v:^ value:n :}
+   plan v plan TREE s" " value FMT:INT$ JOIN$ +TEXT-ARG ;
 
 : VARIABLE? ( ^syntax n -- bool )
    NODE-K dup N-VAR = swap N-BNODE = or ;
@@ -541,46 +597,58 @@ defer EXISTS-SQL ( ^plan n -- )
    {: plan node:n :}
    plan plan node VAR-NAME plan PLAN-FRAME @ VAR-ID ;
 
-\ `vK`, variable K's column in a derived table.
-: COLUMN$ ( ^plan n -- str )
-   {: plan var:n :}
-   plan NEW-SQL {: v:^ :} v s" v" +SQL v var +INT v SQL$ ;
-
-: COLUMN-OF ( ^plan str n -- str )
+\ A leaf of `alias.vK`.
+: COLUMN-OF ( ^plan str n -- ^rel )
    {: plan alias:str var:n :}
-   plan NEW-SQL {: v:^ :}
-   v alias +SQL v s" ." +SQL v plan var COLUMN$ +SQL v SQL$ ;
+   plan NEW-SQL {: v:^ :} v alias var +NAME-OF v ;
 
+\ A new alias, `tK`.
 : NEXT-ALIAS ( ^plan -- str )
    {: plan :}
    plan +READ
    1 plan PLAN-SERIAL +!
-   plan NEW-SQL {: v:^ :}
-   v s" t" +SQL v plan PLAN-SERIAL @ +INT v SQL$ ;
+   plan TREE s" t" plan PLAN-SERIAL @ FMT:INT$ JOIN$ ;
 
-: NEW-BINDINGS ( ^plan -- ^VEC:vector<binding> )
-   AL 0 [type] binding VEC:NEW ;
+: LEN ( ^VEC:vector<t> -- n )
+   dup NULL-PTR = if drop 0 exit then VEC:COUNT ;
 
-: INIT-RELATION ( ^plan ^relation -- )
-   {: plan r:^ :}
-   plan NEW-SQL r RELATION-FROM !
-   plan NEW-SQL r RELATION-WHERE !
-   plan NEW-BINDINGS r RELATION-BINDINGS !
-   plan AL 0 [type] subject-row VEC:NEW r RELATION-ROWS !
-   plan AL 0 [type] relation VEC:NEW r RELATION-BRANCHES ! ;
+\ No bindings, with room for n.
+: NEW-BINDINGS ( ^plan n -- ^VEC:vector<binding> )
+   {: plan k:n :}
+   plan AL 0 [type] binding VEC:NEW {: list:^ :}
+   list k VEC:RESERVE list ;
 
+\ r becomes the FROM, the WHERE and the bindings, with no rows, no
+\ branches, no OPTIONAL and no BIND; its emptiness stays.
+: INIT-RELATION ( ^rel ^rel ^VEC:vector<binding> ^relation -- )
+   {: from:^ where:^ bs:^ r:^ :}
+   from r RELATION-FROM ! where r RELATION-WHERE !
+   bs r RELATION-BINDINGS !
+   NULL-PTR r RELATION-ROWS ! NULL-PTR r RELATION-BRANCHES !
+   false r RELATION-OPTIONAL ! false r RELATION-BIND ! ;
+
+: RELATION-OF ( ^plan ^rel ^rel ^VEC:vector<binding> -- ^relation )
+   {: plan from:^ where:^ bs:^ :}
+   plan AL [type] relation ALLOC:NEW {: r:^ :}
+   from where bs r INIT-RELATION r ;
+
+\ A relation of an empty FROM, WHERE and bindings.
 : NEW-RELATION ( ^plan -- ^relation )
    {: plan :}
-   plan AL [type] relation ALLOC:NEW {: r:^ :}
-   plan r INIT-RELATION r ;
+   plan plan NEW-SQL plan NEW-SQL plan 0 NEW-BINDINGS RELATION-OF ;
 
-: BIND ( ^VEC:vector<binding> n n str str -- )
-   {: list:^ var:n shape:n sql:str term:str :}
-   list VEC:PUSH {: b:^ :}
+\ b binds var in the shape to sql and the term, always and not nullable.
+: SET-BINDING ( ^binding n n ^rel str -- )
+   {: b:^ var:n shape:n sql:^ term:str :}
    var b BINDING-VAR ! shape b BINDING-SHAPE !
    sql b BINDING-SQL ! term b BINDING-TERM !
-   true b BINDING-ALWAYS ! 0 b BINDING-COPIES !
-   false b BINDING-NULLABLE ! ;
+   true b BINDING-ALWAYS ! false b BINDING-NULLABLE !
+   NULL-PTR b BINDING-SPREAD ! ;
+
+\ Appends a binding as SET-BINDING fills it.
+: BIND ( ^VEC:vector<binding> n n ^rel str -- )
+   {: list:^ var:n shape:n sql:^ term:str :}
+   list VEC:PUSH var shape sql term SET-BINDING ;
 
 \ The index of variable n's first binding in the list, or -1.
 : FIND-VAR ( ^VEC:vector<binding> n -- n )
@@ -588,6 +656,29 @@ defer EXISTS-SQL ( ^plan n -- )
    list VEC:COUNT 0 ?do
       list i VEC:AT BINDING-VAR @ var = if i unloop exit then
    loop -1 ;
+
+: NEW-LAYER ( ^plan ^VEC:vector<binding> ^layer -- ^layer )
+   {: plan bs:^ under:^ :}
+   plan AL [type] layer ALLOC:NEW {: l:^ :}
+   bs l LAYER-BINDINGS ! under l LAYER-UNDER ! l ;
+
+\ Variable n's binding in the scope, NULL-PTR where no layer binds it.
+: LOOKUP ( ^layer n -- ^binding )
+   {: scope:^ var:n :}
+   scope begin dup NULL-PTR <> while
+      {: l:^ :}
+      l LAYER-BINDINGS @ {: bs:^ :}
+      bs var FIND-VAR {: k:n :}
+      k -1 > if bs k VEC:AT exit then
+      l LAYER-UNDER @
+   repeat drop NULL-PTR ;
+
+\ Whether any layer of the scope binds a variable.
+: BINDS-ANY? ( ^layer -- bool )
+   begin dup NULL-PTR <> while
+      dup LAYER-BINDINGS @ VEC:COUNT 0<> if drop true exit then
+      LAYER-UNDER @
+   repeat drop false ;
 
 : SHAPE@ ( ^plan n -- ^shape )
    {: plan k:n :} plan PLAN-STORE @ STORE-SHAPES @ k VEC:AT ;
@@ -600,13 +691,30 @@ defer EXISTS-SQL ( ^plan n -- )
    {: v:^ f:str a:str :}
    v f +SQL v s" (" +SQL v a +SQL v s" )" +SQL ;
 
-\ The binding's value as a JSONB term.
-: TERM-SQL ( ^plan ^binding -- str )
-   {: plan b:^ :}
+\ Appends `f(` the rel `)`.
+: +APPLY ( ^rel str ^rel -- )
+   {: v:^ f:str a:^ :}
+   v f +SQL v s" (" +SQL v a +SPLICE v s" )" +SQL ;
+
+\ Appends the binding's value.
+: +BINDING ( ^rel ^binding -- ) BINDING-SQL @ +SPLICE ;
+
+\ Appends `f(` the binding's value `)`.
+: +CALL-OF ( ^rel str ^binding -- )
+   {: v:^ f:str b:^ :}
+   v f +SQL v s" (" +SQL v b +BINDING v s" )" +SQL ;
+
+\ Appends `f(` the JSON term's parameter `)`.
+: +CALL-TERM ( ^plan ^rel str str -- )
+   {: plan v:^ f:str t:str :}
+   v f +SQL v s" (" +SQL plan v t +TERM-ARG v s" )" +SQL ;
+
+\ Appends the binding's value as a JSONB term.
+: +TERM ( ^plan ^rel ^binding -- )
+   {: plan v:^ b:^ :}
    b BINDING-SHAPE @ {: shape:n :}
-   shape 0< if b BINDING-SQL @ exit then
-   plan NEW-SQL {: v:^ :}
-   v plan shape SHAPE@ SHAPE-OUT @ b BINDING-SQL @ +CALL v SQL$ ;
+   shape 0< if v b +BINDING exit then
+   v plan shape SHAPE@ SHAPE-OUT @ b +CALL-OF ;
 
 \ The shape's root: itself when it is within none.
 : ROOT ( ^plan n -- n ) SHAPE@ SHAPE-ROOT @ ;
@@ -640,10 +748,10 @@ defer EXISTS-SQL ( ^plan n -- )
       ENDOF
    ;MATCH ;
 
-\ Whether shape k holds the KNOWN binding's term.
-: HOLDS-KNOWN? ( ^plan n ^binding -- bool )
-   {: plan k:n b:^ :}
-   plan k plan plan b BINDING-TERM @ TERM-PLACE TERM@ HOLDS? ;
+\ Whether shape k holds the KNOWN term.
+: HOLDS-KNOWN? ( ^plan n str -- bool )
+   {: plan k:n t:str :}
+   plan k plan plan t TERM-PLACE TERM@ HOLDS? ;
 
 \ Whether shape x is within shape y, directly or through parts.
 : WITHIN? ( ^plan n n -- bool )
@@ -654,21 +762,21 @@ defer EXISTS-SQL ( ^plan n -- )
       plan swap SHAPE@ SHAPE-PARENT @
    repeat drop false ;
 
-\ Whether two bindings of one variable can hold one term: two terms that
-\ are one, a shape and a term it holds, a shape and itself or a shape it
-\ is within; other shapes, parts of one parent among them, hold disjoint
-\ terms.
-: COMPATIBLE? ( ^plan ^binding ^binding -- bool )
-   {: plan a:^ b:^ :}
-   a BINDING-SHAPE @ {: x:n :} b BINDING-SHAPE @ {: y:n :}
+\ Whether shape x, term s and shape y, term t can hold one term: equal terms,
+\ a shape and a term it holds, a shape and itself or one it is within.
+: KINDS-COMPATIBLE? ( ^plan n str n str -- bool )
+   {: plan x:n s:str y:n t:str :}
    x GENERIC = y GENERIC = or if true exit then
-   x KNOWN = y KNOWN = and if
-      a BINDING-TERM @ b BINDING-TERM @ STR:= exit
-   then
-   x KNOWN = if plan y a HOLDS-KNOWN? exit then
-   y KNOWN = if plan x b HOLDS-KNOWN? exit then
+   x KNOWN = y KNOWN = and if s t STR:= exit then
+   x KNOWN = if plan y s HOLDS-KNOWN? exit then
+   y KNOWN = if plan x t HOLDS-KNOWN? exit then
    x y = if true exit then
    plan x y WITHIN? plan y x WITHIN? or ;
+
+: COMPATIBLE? ( ^plan ^binding ^binding -- bool )
+   {: plan a:^ b:^ :}
+   plan a BINDING-SHAPE @ a BINDING-TERM @ b BINDING-SHAPE @ b BINDING-TERM @
+   KINDS-COMPATIBLE? ;
 
 \ A binding's rank as an anchor: native, then KNOWN, then GENERIC.
 : RANK ( ^binding -- n )
@@ -682,70 +790,131 @@ defer EXISTS-SQL ( ^plan n -- )
    {: b:^ list:^ :}
    list b BINDING-VAR @ b BINDING-SHAPE @ b BINDING-SQL @
    b BINDING-TERM @ BIND
-   b BINDING-COPIES @ list LAST BINDING-COPIES !
-   b BINDING-ALWAYS @ list LAST BINDING-ALWAYS ! ;
+   b BINDING-ALWAYS @ list LAST BINDING-ALWAYS !
+   b BINDING-SPREAD @ list LAST BINDING-SPREAD ! ;
 
 : COPY-SCOPE ( ^plan ^VEC:vector<binding> -- ^VEC:vector<binding> )
    {: plan scope:^ :}
-   plan NEW-BINDINGS {: copy:^ :}
+   plan 0 NEW-BINDINGS {: copy:^ :}
    scope VEC:COUNT 0 ?do scope i VEC:AT copy COPY-BINDING loop copy ;
 
-\ The condition that bindings a and o of one variable hold one term, the
-\ higher-ranked on the left: empty when they are one, `false` when no term
-\ fits both. Two KNOWN bindings that can meet are one term.
-: SAME-SQL ( ^plan ^binding ^binding -- str )
+: SLOT@ ( ^source n -- slot )
+   {: src:^ k:n :}
+   k 0= if src SOURCE-S @ exit then
+   k 1 = if src SOURCE-P @ exit then
+   src SOURCE-O @ ;
+
+\ The column's shape and no term, or KNOWN and the term's text.
+: SLOT-KIND ( slot -- n str )
+   MATCH slot
+      column OF {: c:str shape:n k o u:bool nn:bool :} shape s" " ENDOF
+      term OF {: t:str :} KNOWN t ENDOF
+   ;MATCH ;
+
+\ Appends the slot under the alias: its column, or its term's reference.
+: +SLOT-SQL ( ^rel slot str -- )
+   {: v:^ sl alias:str :}
+   sl MATCH slot
+      column OF {: c:str shape:n k o u:bool nn:bool :}
+         v alias +SQL v s" ." +SQL v c +SQL
+      ENDOF
+      term OF {: t:str :} v t +TERM-LITERAL ENDOF
+   ;MATCH ;
+
+: RECORD-SLOT ( ^plan n n -- slot )
+   {: plan r:n k:n :} plan r SOURCE@ k SLOT@ ;
+
+: SLOT-SHAPE ( ^plan ^VEC:vector<n> n n -- n )
+   {: plan recs:^ j:n k:n :}
+   plan recs j VEC:AT @ k RECORD-SLOT SLOT-KIND drop ;
+
+\ The spread's columns whose shape is one root with shape x: one alone,
+\ several in COALESCE, empty for none.
+: ROOT-COLUMNS ( ^plan n ^spread -- ^rel )
+   {: plan x:n sp:^ :}
+   sp SPREAD-RECS @ {: recs:^ :} sp SPREAD-SLOT @ {: k:n :}
+   plan NEW-SQL {: cs:^ :}
+   0 recs LEN 0 ?do
+      plan plan recs i k SLOT-SHAPE x ONE-ROOT? if
+         cs s" ," +SEP 1+
+         cs plan recs i VEC:AT @ k RECORD-SLOT
+         sp SPREAD-ALIAS @ +SLOT-SQL
+      then
+   loop 2 < if cs exit then
+   plan NEW-SQL {: v:^ :} v s" COALESCE(" +SQL
+   v cs +SPLICE v s" )" +SQL v ;
+
+\ The condition that bindings a and o, higher-ranked first, hold one term:
+\ empty if one, `false` if none fits; native meets GENERIC by its root.
+: SAME-SQL ( ^plan ^binding ^binding -- ^rel )
    {: plan a:^ o:^ :}
-   plan a o COMPATIBLE? 0= if s" false" exit then
-   a BINDING-SQL @ o BINDING-SQL @ STR:= if s" " exit then
+   plan a o COMPATIBLE? 0= if plan TEXTS s" false" TEXT-REL exit then
+   a BINDING-SQL @ o BINDING-SQL @ REL= if plan NEW-SQL exit then
    a BINDING-SHAPE @ KNOWN = o BINDING-SHAPE @ KNOWN = and if
-      s" " exit
+      plan NEW-SQL exit
    then
    a RANK o RANK < if o a else a o then {: x:^ y:^ :}
    x BINDING-SHAPE @ {: shape:n :}
    plan NEW-SQL {: v:^ :}
-   v x BINDING-SQL @ +SQL v s"  = " +SQL
+   v x +BINDING v s"  = " +SQL
    shape -1 > y BINDING-SHAPE @ 0< and if
-      v plan shape SHAPE@ SHAPE-IN @ y BINDING-SQL @ +CALL
-   else v y BINDING-SQL @ +SQL then v SQL$ ;
+      y BINDING-SPREAD @ {: sp:^ :}
+      sp NULL-PTR = if
+         v plan shape SHAPE@ SHAPE-IN @ y +CALL-OF v exit
+      then
+      plan shape sp ROOT-COLUMNS {: cs:^ :}
+      cs EMPTY? if plan TEXTS s" false" TEXT-REL exit then
+      v cs +REL
+   else v y +BINDING then v ;
 
+\ The constant's value, a binding outside any scope.
 : CONSTANT-VALUE ( ^plan n -- ^binding )
    {: plan node:n :}
    plan node TERM-JSON {: j:str :}
-   plan NEW-BINDINGS {: tmp:^ :}
-   tmp -1 KNOWN plan j TERM-ARG j BIND tmp LAST ;
+   plan AL [type] binding ALLOC:NEW {: b:^ :}
+   b -1 KNOWN plan j TERM-ARG j SET-BINDING b ;
 
-: +AND ( ^rel str -- )
-   {: where:^ a:str :}
-   where s"  AND " +SEP where a +SQL ;
+\ Appends ` AND `, unless where is empty, and the condition.
+: +AND ( ^rel ^rel -- )
+   {: where:^ a:^ :}
+   where s"  AND " +SEP a EMPTY? 0= if where a +REL then ;
 
-: +NULL-TEST ( ^rel str -- )
-   {: where:^ sql:str :}
-   where sql +AND where s"  IS NOT NULL" +SQL ;
+\ Appends to where that the binding is not NULL.
+: +NULL-TEST ( ^rel ^binding -- )
+   {: where:^ b:^ :}
+   where s"  AND " +SEP where b +BINDING
+   where s"  IS NOT NULL" +SQL ;
 
 : +NULL-OR ( ^rel ^binding -- )
    {: v:^ b:^ :}
    b BINDING-ALWAYS @ if exit then
-   v b BINDING-SQL @ +SQL v s"  IS NULL OR " +SQL ;
+   v b +BINDING v s"  IS NULL OR " +SQL ;
 
 \ Appends to where that s and o meet: one term, or a maybe one NULL.
 \ Answers whether that is a strict `=`, which drops a NULL of either.
 : +MEETS ( ^plan ^binding ^binding ^rel -- bool )
    {: plan s:^ o:^ where:^ :}
-   plan s o SAME-SQL {: eq:str :}
-   eq STR:LEN 0= if false exit then
+   plan s o SAME-SQL {: eq:^ :}
+   eq EMPTY? if false exit then
    s BINDING-ALWAYS @ o BINDING-ALWAYS @ and if
       where eq +AND true exit
    then
    where s"  AND " +SEP where s" (" +SQL
-   where s +NULL-OR where o +NULL-OR where eq +SQL where s" )" +SQL
+   where s +NULL-OR where o +NULL-OR
+   where eq +REL where s" )" +SQL
    false ;
 
 : TAKE ( ^binding ^binding -- )
    {: s:^ o:^ :}
    o BINDING-SHAPE @ s BINDING-SHAPE !
    o BINDING-SQL @ s BINDING-SQL !
-   o BINDING-TERM @ s BINDING-TERM !
-   o BINDING-COPIES @ s BINDING-COPIES ! ;
+   o BINDING-SPREAD @ s BINDING-SPREAD !
+   o BINDING-TERM @ s BINDING-TERM ! ;
+
+\ b reads sql, which its spread does not describe.
+: SET-SQL ( ^rel ^binding -- )
+   {: sql:^ b:^ :}
+   sql b BINDING-SQL ! NULL-PTR b BINDING-SPREAD ! ;
 
 \ s becomes the first bound of maybe bindings s and o: native where their
 \ shapes share a root, of the root where they differ, else a term.
@@ -755,14 +924,13 @@ defer EXISTS-SQL ( ^plan n -- )
    plan NEW-SQL {: v:^ :}
    v s" COALESCE(" +SQL
    plan x y ONE-ROOT? if
-      v s BINDING-SQL @ +SQL v s" ," +SQL v o BINDING-SQL @ +SQL
+      v s +BINDING v s" ," +SQL v o +BINDING
       plan x y UNITED s BINDING-SHAPE !
    else
-      v plan s TERM-SQL +SQL v s" ," +SQL v plan o TERM-SQL +SQL
+      plan v s +TERM v s" ," +SQL plan v o +TERM
       GENERIC s BINDING-SHAPE !
    then
-   v s" )" +SQL v SQL$ s BINDING-SQL !
-   o BINDING-COPIES @ s BINDING-COPIES +! ;
+   v s" )" +SQL v s SET-SQL ;
 
 \ s becomes its variable's value once o joins it; under an OPTIONAL o's
 \ side may be missing.
@@ -790,12 +958,12 @@ defer EXISTS-SQL ( ^plan n -- )
    then
    scope k VEC:AT {: s:^ :}
    plan s o where +MEETS {: strict:bool :}
-   s BINDING-SQL @ o BINDING-SQL @ STR:= {: same:bool :}
+   s BINDING-SQL @ o BINDING-SQL @ REL= {: same:bool :}
    o BINDING-NULLABLE @ same 0= and {: open:bool :}
    plan s o optional MERGE
    optional if exit then
    strict if false s BINDING-NULLABLE ! exit then
-   open if where o BINDING-SQL @ +NULL-TEST then ;
+   open if where o +NULL-TEST then ;
 
 : MEET-ALL ( ^plan ^VEC:vector<binding> ^VEC:vector<binding>
       ^rel bool -- )
@@ -809,14 +977,8 @@ defer EXISTS-SQL ( ^plan n -- )
 : JOINS ( ^plan ^VEC:vector<binding> ^rel
       -- ^VEC:vector<binding> )
    {: plan list:^ where:^ :}
-   plan NEW-BINDINGS {: scope:^ :}
+   plan list VEC:COUNT NEW-BINDINGS {: scope:^ :}
    plan scope list where false MEET-ALL scope ;
-
-: SLOT@ ( ^source n -- slot )
-   {: src:^ k:n :}
-   k 0= if src SOURCE-S @ exit then
-   k 1 = if src SOURCE-P @ exit then
-   src SOURCE-O @ ;
 
 \ The triple's subject, predicate or object.
 : PART ( ^syntax n n -- n )
@@ -825,23 +987,14 @@ defer EXISTS-SQL ( ^plan n -- )
    k 1 = if state triple NODE-B@ exit then
    state triple NODE-C@ ;
 
-\ The column's shape and no term, or KNOWN and the term's text.
-: SLOT-KIND ( slot -- n str )
-   MATCH slot
-      column OF {: c:str shape:n k o u:bool nn:bool :} shape s" " ENDOF
-      term OF {: t:str :} KNOWN t ENDOF
-   ;MATCH ;
+\ How many of the triple's parts are variables.
+: TRIPLE-VARS ( ^syntax n -- n )
+   {: state triple:n :}
+   0 3 0 do state state triple i PART VARIABLE? if 1+ then loop ;
 
-\ The slot under the alias: its column, or its term's reference.
-: SLOT-SQL ( ^plan slot str -- str )
-   {: plan sl alias:str :}
-   sl MATCH slot
-      column OF {: c:str shape:n k o u:bool nn:bool :}
-         plan NEW-SQL {: v:^ :}
-         v alias +SQL v s" ." +SQL v c +SQL v SQL$
-      ENDOF
-      term OF {: t:str :} plan t TERM-LITERAL ENDOF
-   ;MATCH ;
+\ A leaf of the slot under the alias.
+: SLOT-SQL ( ^plan slot str -- ^rel )
+   {: plan sl alias:str :} plan NEW-SQL {: v:^ :} v sl alias +SLOT-SQL v ;
 
 : TERM-SAME? ( ^plan n str -- bool )
    {: plan node:n t:str :} plan node TERM-JSON t STR:= ;
@@ -911,44 +1064,83 @@ defer EXISTS-SQL ( ^plan n -- )
 : GRAPH-FITS? ( ^plan ^source -- bool )
    {: plan src:^ :} src SOURCE-GRAPH @ plan PLAN-GRAPH @ STR:= ;
 
-\ Whether every occurrence of b's variable in the list can meet b.
-: MEETS? ( ^plan ^VEC:vector<binding> ^binding -- bool )
-   {: plan list:^ b:^ :}
-   list VEC:COUNT 0 ?do
-      list i VEC:AT {: o:^ :}
-      o BINDING-VAR @ b BINDING-VAR @ = if
-         plan o b COMPATIBLE? 0= if false unloop exit then
+\ The part of the triple holding its kind'th variable.
+: VAR-PART ( ^syntax n n -- n )
+   {: state triple:n kind:n :}
+   0 3 0 do
+      state state triple i PART VARIABLE? if
+         dup kind = if drop i unloop exit then 1+
+      then
+   loop drop -1 ;
+
+\ The shape and term choice c gives the item's kind'th column: a derived
+\ table's own, else its source's slot at the triple's part.
+: KIND@ ( ^plan ^item ^choice n -- n str )
+   {: plan it:^ c:^ kind:n :}
+   c CHOICE-SOURCE @ 0< if
+      it ITEM-COLUMNS @ kind VEC:AT {: b:^ :}
+      b BINDING-SHAPE @ b BINDING-TERM @ exit
+   then
+   plan c CHOICE-SOURCE @ SOURCE@
+   plan TREE it ITEM-NODE @ kind VAR-PART SLOT@ SLOT-KIND ;
+
+\ Whether every column of column k's variable can meet it under choice c.
+: MEETS? ( ^plan ^item ^choice n -- bool )
+   {: plan it:^ c:^ k:n :}
+   it ITEM-COLUMNS @ {: cols:^ :}
+   cols k VEC:AT BINDING-VAR @ {: var:n :}
+   plan it c k KIND@ {: y:n t:str :}
+   cols VEC:COUNT 0 ?do
+      cols i VEC:AT BINDING-VAR @ var = if
+         plan plan it c i KIND@ y t KINDS-COMPATIBLE? 0= if
+            false unloop exit
+         then
       then
    loop true ;
 
-\ Whether a variable repeated in the list meets itself.
-: CONSISTENT? ( ^plan ^VEC:vector<binding> -- bool )
-   {: plan list:^ :}
-   list VEC:COUNT 0 ?do
-      plan list list i VEC:AT MEETS? 0= if false unloop exit then
+\ Whether a variable repeated in the item's columns meets itself under
+\ choice c.
+: CONSISTENT? ( ^plan ^item ^choice -- bool )
+   {: plan it:^ c:^ :}
+   it ITEM-COLUMNS @ VEC:COUNT 0 ?do
+      plan it c i MEETS? 0= if false unloop exit then
    loop true ;
 
-\ Whether the substitution binds b's variable always to a term b cannot
-\ hold.
-: CLASHES? ( ^plan ^binding -- bool )
-   {: plan b:^ :}
-   plan PLAN-OUTER @ {: outer:^ :}
-   outer b BINDING-VAR @ FIND-VAR {: k:n :}
-   k 0< if false exit then
-   outer k VEC:AT {: o:^ :}
-   o BINDING-ALWAYS @ plan o b COMPATIBLE? 0= and ;
+\ Whether the substitution binds the variable always to a term shape y and
+\ term t cannot hold.
+: CLASHES? ( ^plan n n str -- bool )
+   {: plan var:n y:n t:str :}
+   plan PLAN-OUTER @ var LOOKUP {: o:^ :}
+   o NULL-PTR = if false exit then
+   o BINDING-ALWAYS @
+   plan o BINDING-SHAPE @ o BINDING-TERM @ y t KINDS-COMPATIBLE? 0= and ;
 
-: SUBSTITUTABLE? ( ^plan ^VEC:vector<binding> -- bool )
-   {: plan list:^ :}
-   list VEC:COUNT 0 ?do
-      plan list i VEC:AT CLASHES? if false unloop exit then
+: SUBSTITUTABLE? ( ^plan ^item ^choice -- bool )
+   {: plan it:^ c:^ :}
+   it ITEM-COLUMNS @ {: cols:^ :}
+   cols VEC:COUNT 0 ?do
+      plan cols i VEC:AT BINDING-VAR @ plan it c i KIND@ CLASHES? if
+         false unloop exit
+      then
    loop true ;
 
-: NEW-CHOICE ( ^plan ^item n -- ^choice )
-   {: plan it:^ k:n :}
+\ The item's choice of source k, alive.
+: NEW-CHOICE ( ^item n -- ^choice )
+   {: it:^ k:n :}
    it ITEM-CHOICES @ VEC:PUSH {: c:^ :}
-   k c CHOICE-SOURCE ! true c CHOICE-ALIVE !
-   plan NEW-BINDINGS c CHOICE-KINDS ! c ;
+   k c CHOICE-SOURCE ! true c CHOICE-ALIVE ! c ;
+
+\ The triple's variables by part, each bound always.
+: TRIPLE-COLUMNS ( ^plan n -- ^VEC:vector<binding> )
+   {: plan triple:n :}
+   plan TREE {: state :}
+   plan state triple TRIPLE-VARS NEW-BINDINGS {: cols:^ :}
+   3 0 do
+      state triple i PART {: node:n :}
+      state node VARIABLE? if
+         cols plan node VAR GENERIC plan PLAN-EMPTY @ s" " BIND
+      then
+   loop cols ;
 
 \ Adds source k as the triple's choice when it fits.
 : TRIPLE-CHOICE ( ^plan ^item n -- )
@@ -963,28 +1155,25 @@ defer EXISTS-SQL ( ^plan n -- )
          plan node src i SLOT@ FITS? 0= if unloop exit then
       then
    loop
-   plan it k NEW-CHOICE CHOICE-KINDS @ {: kinds:^ :}
-   3 0 do
-      state triple i PART {: node:n :}
-      state node VARIABLE? if
-         src i SLOT@ SLOT-KIND {: shape:n t:str :}
-         kinds plan node VAR shape s" " t BIND
-      then
-   loop
-   plan kinds CONSISTENT? plan kinds SUBSTITUTABLE? and
-   it ITEM-CHOICES @ dup VEC:COUNT 1- VEC:AT CHOICE-ALIVE ! ;
+   it ITEM-COLUMNS @ NULL-PTR = if
+      plan triple TRIPLE-COLUMNS it ITEM-COLUMNS !
+   then
+   it k NEW-CHOICE {: c:^ :}
+   plan it c CONSISTENT? plan it c SUBSTITUTABLE? and c CHOICE-ALIVE ! ;
 
 : NEW-ITEM ( ^plan ^VEC:vector<item> n -- ^item )
    {: plan items:^ node:n :}
    plan +READ
    items VEC:PUSH {: it:^ :}
    node it ITEM-NODE ! 0 it ITEM-MODE !
+   NULL-PTR it ITEM-COLUMNS !
    plan PLAN-GRAPH @ it ITEM-GRAPH !
-   plan AL 0 [type] relation VEC:NEW it ITEM-BRANCHES !
+   NULL-PTR it ITEM-BRANCHES ! NULL-PTR it ITEM-WHERE !
    plan AL 0 [type] choice VEC:NEW it ITEM-CHOICES ! it ;
 
 : TRY-EACH ( ^plan ^item ^VEC:vector<n> -- )
    {: plan it:^ list:^ :}
+   it ITEM-CHOICES @ list VEC:COUNT VEC:RESERVE
    list VEC:COUNT 0 ?do plan it list i VEC:AT @ TRIPLE-CHOICE loop ;
 
 \ Whether the merge of a and b takes a's k-th record before b's m-th.
@@ -997,7 +1186,9 @@ defer EXISTS-SQL ( ^plan n -- )
 \ Tries the records of a and b, two lists in record order, merged.
 : TRY-MERGED ( ^plan ^item ^VEC:vector<n> ^VEC:vector<n> -- )
    {: plan it:^ a:^ b:^ :}
-   0 a VEC:COUNT b VEC:COUNT + 0 ?do
+   a VEC:COUNT b VEC:COUNT + {: n:n :}
+   it ITEM-CHOICES @ n VEC:RESERVE
+   0 n 0 ?do
       {: k:n :}
       a k b i k - FIRST? if
          plan it a k VEC:AT @ TRIPLE-CHOICE k 1+
@@ -1025,9 +1216,9 @@ defer EXISTS-SQL ( ^plan n -- )
    plan TREE {: state :}
    state triple NODE-B@ {: p:n :}
    state p NODE-K N-IRI = if plan it p TRY-IRI exit then
-   plan PLAN-STORE @ STORE-SOURCES @ VEC:COUNT 0 ?do
-      plan it i TRIPLE-CHOICE
-   loop ;
+   plan PLAN-STORE @ STORE-SOURCES @ VEC:COUNT {: n:n :}
+   it ITEM-CHOICES @ n VEC:RESERVE
+   n 0 ?do plan it i TRIPLE-CHOICE loop ;
 
 \ A joined derived table with its columns, the item's one choice.
 : CHILD-ITEM ( ^plan ^VEC:vector<item> ^rel ^VEC:vector<binding> bool
@@ -1035,9 +1226,7 @@ defer EXISTS-SQL ( ^plan n -- )
    {: plan items:^ t:^ cols:^ empty:bool :}
    plan items 0 NEW-ITEM {: it:^ :}
    t it ITEM-TABLE ! cols it ITEM-COLUMNS !
-   plan it -1 NEW-CHOICE {: c:^ :}
-   empty 0= c CHOICE-ALIVE !
-   cols c CHOICE-KINDS ! ;
+   empty 0= it -1 NEW-CHOICE CHOICE-ALIVE ! ;
 
 : LIVE-COUNT ( ^item -- n )
    ITEM-CHOICES @ {: cs:^ :}
@@ -1045,18 +1234,31 @@ defer EXISTS-SQL ( ^plan n -- )
       cs i VEC:AT CHOICE-ALIVE @ if 1+ then
    loop ;
 
-: INDEXES ( ^plan -- ^VEC:vector<n> ) AL 0 [type] n VEC:NEW ;
+\ An index list is NULL-PTR until its first push, which makes it.
+: INDEXES ( -- ^VEC:vector<n> ) NULL-PTR ;
+
+: +INDEX ( ^plan ^VEC:vector<n> n -- ^VEC:vector<n> )
+   {: plan list:^ k:n :}
+   list NULL-PTR = if plan AL 0 [type] n VEC:NEW else list then
+   {: out:^ :} k out VEC:PUSH ! out ;
 
 : INDEXED? ( ^VEC:vector<n> n -- bool )
    {: list:^ k:n :}
-   list VEC:COUNT 0 ?do
+   list LEN 0 ?do
       list i VEC:AT @ k = if true unloop exit then
    loop false ;
 
-\ A binding as COMPATIBLE? tells bindings apart. answers holds, by a class
-\ up to it, whether the two are compatible: 0 unasked, 1 no, 2 yes.
+\ The list with n pushed unless it holds n.
+: +ONCE ( ^plan ^VEC:vector<n> n -- ^VEC:vector<n> )
+   {: plan list:^ k:n :}
+   list k INDEXED? if list exit then
+   plan list k +INDEX ;
+
+\ A shape and term as KINDS-COMPATIBLE? tells them apart; answers holds, by
+\ a class up to it, whether the two are compatible: 0 unasked, 1 no, 2 yes.
 STRUCTURE class DERIVE addr
-   FIELD binding ^binding
+   FIELD shape n
+   FIELD term str
    FIELD answers ^VEC:vector<n>
 ;STRUCTURE
 
@@ -1067,14 +1269,12 @@ STRUCTURE domain DERIVE addr
    FIELD queued bool
 ;STRUCTURE
 
-\ A place where an item binds a variable always, the kind'th binding of
-\ each of its choices: its class, by choice, and each class's number of
-\ live choices. first is the item's first site; an item's sites are
-\ consecutive.
+\ Where an item binds a variable always, its kind'th column: its class by
+\ choice, and each class's number of live choices.
 STRUCTURE site DERIVE addr
    FIELD item ^item
    FIELD kind n
-   FIELD first n
+   FIELD first n  \ the item's first site; an item's sites are consecutive
    FIELD domain n
    FIELD classes ^VEC:vector<n>
    FIELD live ^VEC:vector<n>
@@ -1106,23 +1306,21 @@ STRUCTURE pruning DERIVE addr
    plan w PRUNING-PLAN !
    al 0 [type] class VEC:NEW w PRUNING-CLASSES !
    al 0 [type] site VEC:NEW w PRUNING-SITES !
-   al 0 [type] domain VEC:NEW w PRUNING-DOMAINS !
-   plan INDEXES w PRUNING-QUEUE ! w ;
+   al 0 [type] domain VEC:NEW w PRUNING-DOMAINS ! w ;
 
-: OF-CLASS? ( ^binding ^class -- bool )
-   {: b:^ c:^ :}
-   c CLASS-BINDING @ {: o:^ :}
-   o BINDING-SHAPE @ b BINDING-SHAPE @ <> if false exit then
-   o BINDING-TERM @ b BINDING-TERM @ STR:= ;
+: OF-CLASS? ( n str ^class -- bool )
+   {: y:n t:str c:^ :}
+   c CLASS-SHAPE @ y <> if false exit then
+   c CLASS-TERM @ t STR:= ;
 
-\ The binding's class, new on its first use.
-: CLASS-OF ( ^pruning ^binding -- n )
-   {: w:^ b:^ :}
+\ The class of the shape and term, new on its first use.
+: CLASS-OF ( ^pruning n str -- n )
+   {: w:^ y:n t:str :}
    w PRUNING-CLASSES @ {: cs:^ :}
    cs VEC:COUNT {: k:n :}
-   k 0 ?do b cs i VEC:AT OF-CLASS? if i unloop exit then loop
+   k 0 ?do y t cs i VEC:AT OF-CLASS? if i unloop exit then loop
    cs VEC:PUSH {: c:^ :}
-   b c CLASS-BINDING !
+   y c CLASS-SHAPE ! t c CLASS-TERM !
    w PRUNING-PLAN @ AL cs VEC:COUNT [type] n VEC:NEW c CLASS-ANSWERS ! k ;
 
 \ The index of the variable's domain, new on its first use.
@@ -1134,40 +1332,42 @@ STRUCTURE pruning DERIVE addr
       ds i VEC:AT DOMAIN-VAR @ var = if i unloop exit then
    loop
    ds VEC:PUSH {: d:^ :}
-   var d DOMAIN-VAR !
-   w PRUNING-PLAN @ INDEXES d DOMAIN-SITES ! k ;
+   var d DOMAIN-VAR ! k ;
 
 : +SITE ( ^pruning ^item n n n -- )
    {: w:^ it:^ kind:n var:n first:n :}
    w PRUNING-SITES @ {: sites:^ :}
    w var DOMAIN-OF {: d:n :}
-   sites VEC:COUNT w d DOMAIN@ DOMAIN-SITES @ VEC:PUSH !
+   w d DOMAIN@ {: dom:^ :}
+   w PRUNING-PLAN @ dom DOMAIN-SITES @ sites VEC:COUNT +INDEX
+   dom DOMAIN-SITES !
    sites VEC:PUSH {: s:^ :}
    it s SITE-ITEM ! kind s SITE-KIND ! first s SITE-FIRST !
-   d s SITE-DOMAIN !
-   w PRUNING-PLAN @ INDEXES s SITE-CLASSES ! ;
+   d s SITE-DOMAIN ! ;
 
 : +SITES ( ^pruning ^item -- )
    {: w:^ it:^ :}
    it ITEM-CHOICES @ {: cs:^ :}
    cs VEC:COUNT 0= if exit then
    w PRUNING-SITES @ VEC:COUNT {: first:n :}
-   cs 0 VEC:AT CHOICE-KINDS @ {: kinds:^ :}
-   kinds VEC:COUNT 0 ?do
-      kinds i VEC:AT {: b:^ :}
+   it ITEM-COLUMNS @ {: cols:^ :}
+   cols VEC:COUNT 0 ?do
+      cols i VEC:AT {: b:^ :}
       b BINDING-ALWAYS @ if w it i b BINDING-VAR @ first +SITE then
    loop ;
 
 : SHARED? ( ^pruning ^site -- bool )
    {: w:^ s:^ :}
-   w s SITE-DOMAIN @ DOMAIN@ DOMAIN-SITES @ VEC:COUNT 1 > ;
+   w s SITE-DOMAIN @ DOMAIN@ DOMAIN-SITES @ LEN 1 > ;
 
 : CLASSIFY ( ^pruning ^site -- )
    {: w:^ s:^ :}
-   s SITE-ITEM @ ITEM-CHOICES @ {: cs:^ :}
+   w PRUNING-PLAN @ {: plan :}
+   s SITE-ITEM @ {: it:^ :}
+   it ITEM-CHOICES @ {: cs:^ :}
    cs VEC:COUNT 0 ?do
-      w cs i VEC:AT CHOICE-KINDS @ s SITE-KIND @ VEC:AT CLASS-OF
-      s SITE-CLASSES @ VEC:PUSH !
+      w plan it cs i VEC:AT s SITE-KIND @ KIND@ CLASS-OF {: c:n :}
+      plan s SITE-CLASSES @ c +INDEX s SITE-CLASSES !
    loop ;
 
 : COUNT-LIVE ( ^pruning ^site -- )
@@ -1191,16 +1391,18 @@ STRUCTURE pruning DERIVE addr
    {: w:^ k:n :}
    w k DOMAIN@ {: d:^ :}
    d DOMAIN-QUEUED @ if exit then
-   true d DOMAIN-QUEUED ! k w PRUNING-QUEUE @ VEC:PUSH ! ;
+   true d DOMAIN-QUEUED !
+   w PRUNING-PLAN @ w PRUNING-QUEUE @ k +INDEX w PRUNING-QUEUE ! ;
 
 \ Whether classes x and y are compatible, x not before y.
 : ASK ( ^pruning n n -- bool )
    {: w:^ x:n y:n :}
-   w x CLASS@ {: c:^ :}
+   w x CLASS@ {: c:^ :} w y CLASS@ {: o:^ :}
    c CLASS-ANSWERS @ y VEC:AT {: kept:^ :}
    kept @ 0= if
-      w PRUNING-PLAN @ c CLASS-BINDING @ w y CLASS@ CLASS-BINDING @
-         COMPATIBLE? if 2 else 1 then kept !
+      w PRUNING-PLAN @ c CLASS-SHAPE @ c CLASS-TERM @
+         o CLASS-SHAPE @ o CLASS-TERM @ KINDS-COMPATIBLE? if 2 else 1 then
+         kept !
    then
    kept @ 2 = ;
 
@@ -1217,7 +1419,7 @@ STRUCTURE pruning DERIVE addr
 : SUPPORTED? ( ^pruning ^domain n -- bool )
    {: w:^ d:^ k:n :}
    d DOMAIN-SITES @ {: list:^ :}
-   list VEC:COUNT 0 ?do
+   list LEN 0 ?do
       w w list i VEC:AT @ SITE@ k SITE-SUPPORTS? 0= if
          false unloop exit
       then
@@ -1255,7 +1457,7 @@ STRUCTURE pruning DERIVE addr
 : KILL-CLASS ( ^pruning ^domain n -- )
    {: w:^ d:^ k:n :}
    d DOMAIN-SITES @ {: list:^ :}
-   list VEC:COUNT 0 ?do
+   list LEN 0 ?do
       w w list i VEC:AT @ SITE@ k KILL-AT
    loop ;
 
@@ -1269,9 +1471,9 @@ STRUCTURE pruning DERIVE addr
 
 : DRAIN ( ^pruning -- )
    {: w:^ :}
-   w PRUNING-QUEUE @ {: queue:^ :}
-   begin w PRUNING-HEAD @ queue VEC:COUNT < while
-      w w queue w PRUNING-HEAD @ VEC:AT @ DOMAIN@ SWEEP
+   begin w PRUNING-HEAD @ w PRUNING-QUEUE @ LEN < while
+      w PRUNING-QUEUE @ w PRUNING-HEAD @ VEC:AT @ {: k:n :}
+      w w k DOMAIN@ SWEEP
       1 w PRUNING-HEAD +!
    repeat ;
 
@@ -1292,28 +1494,25 @@ STRUCTURE pruning DERIVE addr
 \ The description sources of the item's live choices, each once.
 : ORIGINS ( ^plan ^item -- ^VEC:vector<n> )
    {: plan it:^ :}
-   plan INDEXES {: out:^ :}
    it ITEM-CHOICES @ {: cs:^ :}
-   cs VEC:COUNT 0 ?do
+   INDEXES cs VEC:COUNT 0 ?do
       cs i VEC:AT {: c:^ :}
-      c CHOICE-ALIVE @ if
-         plan c ORIGIN {: o:n :}
-         out o INDEXED? 0= if o out VEC:PUSH ! then
-      then
-   loop out ;
+      c CHOICE-ALIVE @ if plan swap plan c ORIGIN +ONCE then
+   loop ;
 
 \ The records of the item's live choices read from description source
 \ origin.
 : LIVE-OF ( ^plan ^item n -- ^VEC:vector<n> )
    {: plan it:^ origin:n :}
-   plan INDEXES {: out:^ :}
    it ITEM-CHOICES @ {: cs:^ :}
-   cs VEC:COUNT 0 ?do
+   INDEXES cs VEC:COUNT 0 ?do
       cs i VEC:AT {: c:^ :}
       c CHOICE-ALIVE @ if
-         plan c ORIGIN origin = if c CHOICE-SOURCE @ out VEC:PUSH ! then
+         plan c ORIGIN origin = if
+            plan swap c CHOICE-SOURCE @ +INDEX
+         then
       then
-   loop out ;
+   loop ;
 
 \ Whether a joined item has no live choice.
 : DEAD? ( ^VEC:vector<item> -- bool )
@@ -1328,28 +1527,29 @@ STRUCTURE pruning DERIVE addr
 \ null: the slot's column may hold NULL. The occurrence is nullable unless
 \ the meeting is a strict `=` or it reads the substitution's column; one
 \ kept out of occs has its null test written to where at once.
-: OCCUR ( ^plan ^VEC:vector<binding> n n str str bool ^rel -- )
-   {: plan occs:^ var:n shape:n sql:str t:str null:bool where:^ :}
-   plan PLAN-OUTER @ {: outer:^ :}
-   outer var FIND-VAR {: k:n :}
-   k 0< if
-      occs var shape sql t BIND null occs LAST BINDING-NULLABLE ! exit
+: OCCUR ( ^plan ^VEC:vector<binding> n n ^rel str ^spread bool ^rel
+      -- )
+   {: plan occs:^ var:n shape:n sql:^ t:str sp:^ null:bool where:^ :}
+   plan PLAN-OUTER @ var LOOKUP {: o:^ :}
+   o NULL-PTR = if
+      occs var shape sql t BIND sp occs LAST BINDING-SPREAD !
+      null occs LAST BINDING-NULLABLE ! exit
    then
-   outer k VEC:AT {: o:^ :}
-   o BINDING-ALWAYS @ if plan NEW-BINDINGS else occs then {: list:^ :}
-   list var shape sql t BIND
-   plan list LAST o where +MEETS 0= null and
-   sql o BINDING-SQL @ STR:= 0= and {: open:bool :}
-   o BINDING-ALWAYS @ 0= if open list LAST BINDING-NULLABLE ! exit then
-   open if where sql +NULL-TEST then ;
+   o BINDING-ALWAYS @ if
+      plan AL [type] binding ALLOC:NEW dup var shape sql t SET-BINDING
+   else occs var shape sql t BIND occs LAST then {: b:^ :}
+   sp b BINDING-SPREAD !
+   plan b o where +MEETS 0= null and
+   sql o BINDING-SQL @ REL= 0= and {: open:bool :}
+   o BINDING-ALWAYS @ 0= if open b BINDING-NULLABLE ! exit then
+   open if where b +NULL-TEST then ;
 
 \ Appends to where that b meets the substitution's binding of its variable.
 : +OUTER ( ^plan ^binding ^rel -- )
    {: plan b:^ where:^ :}
-   plan PLAN-OUTER @ {: outer:^ :}
-   outer b BINDING-VAR @ FIND-VAR {: k:n :}
-   k 0< if exit then
-   plan b outer k VEC:AT where +MEETS drop ;
+   plan PLAN-OUTER @ b BINDING-VAR @ LOOKUP {: o:^ :}
+   o NULL-PTR = if exit then
+   plan b o where +MEETS drop ;
 
 \ The column slot's key, none for a term slot.
 : SLOT-KEY ( slot -- nullable<key> )
@@ -1363,7 +1563,7 @@ STRUCTURE pruning DERIVE addr
 : +KEY-MATCH ( ^plan n ^key str ^rel -- )
    {: plan node:n k:^ alias:str where:^ :}
    plan k KEY-SET@ {: set:^ :}
-   where s"  AND " +SEP where alias +SQL where s" ." +SQL
+   where alias +SQL where s" ." +SQL
    where k KEY-COL @ +SQL where s"  = ANY(E'" +SQL
    where set plan TREE node TEXT$ KEYS$ +ESCAPED
    where s" '::" +SQL where set KEY-SET-TYPE @ +SQL where s" )" +SQL ;
@@ -1384,20 +1584,18 @@ STRUCTURE pruning DERIVE addr
    then
    sl SLOT-KIND {: shape:n t:str :}
    plan shape SHAPE@ SHAPE-IN @ {: f:str :}
-   plan sl alias SLOT-SQL {: col:str :}
-   where s"  AND " +SEP where col +SQL
+   where sl alias +SLOT-SQL
    plan TREE node NEGATED? 0= if
       where s"  = " +SQL
-      where f plan plan node TERM-JSON TERM-ARG +CALL exit
+      plan where f plan node TERM-JSON +CALL-TERM exit
    then
    where s"  IS NOT NULL" +SQL
    plan TREE node NODE-A@ {: list:n :}
    list 0= if exit then
-   where s"  AND (" +SQL where col +SQL where s"  IN (" +SQL
+   where s"  AND (" +SQL where sl alias +SLOT-SQL where s"  IN (" +SQL
    list begin dup 0<> while
       {: each:n :}
-      where f plan plan plan TREE each NODE-A@ TERM-JSON TERM-ARG
-         +CALL
+      plan where f plan plan TREE each NODE-A@ TERM-JSON +CALL-TERM
       plan TREE each NODE-B@ dup 0<> if where s" ," +SQL then
    repeat drop where s" )) IS NOT TRUE" +SQL ;
 
@@ -1407,11 +1605,14 @@ STRUCTURE pruning DERIVE addr
    {: plan node:n sl alias:str occs:^ where:^ :}
    sl SLOT-KIND {: shape:n t:str :}
    plan TREE node VARIABLE? if
-      plan sl alias SLOT-SQL {: sql:str :}
+      plan sl alias SLOT-SQL {: sql:^ :}
       shape -1 >  sl SLOT-NOTNULL? 0=  and {: null:bool :}
-      plan occs plan node VAR shape sql t null where OCCUR exit
+      plan occs plan node VAR shape sql t NULL-PTR null where OCCUR
+      exit
    then
-   shape -1 > if plan node sl alias where +CONSTANT then ;
+   shape -1 > if
+      where s"  AND " +SEP plan node sl alias where +CONSTANT
+   then ;
 
 : SLOT-COL ( slot -- str )
    MATCH slot
@@ -1426,14 +1627,11 @@ STRUCTURE pruning DERIVE addr
    a SLOT-COL b SLOT-COL STR:=
    a SLOT-KIND drop b SLOT-KIND drop = and ;
 
-: RECORD-SLOT ( ^plan n n -- slot )
-   {: plan r:n k:n :} plan r SOURCE@ k SLOT@ ;
-
 \ Whether a record of the list has record r's slot k.
 : SLOT-LISTED? ( ^plan ^VEC:vector<n> n n -- bool )
    {: plan list:^ r:n k:n :}
    plan r k RECORD-SLOT {: sl :}
-   list VEC:COUNT 0 ?do
+   list LEN 0 ?do
       plan list i VEC:AT @ k RECORD-SLOT sl SAME-SLOT? if
          true unloop exit
       then
@@ -1442,64 +1640,57 @@ STRUCTURE pruning DERIVE addr
 \ Of the records, the first of each different slot k.
 : DISTINCT-AT ( ^plan ^VEC:vector<n> n -- ^VEC:vector<n> )
    {: plan recs:^ k:n :}
-   plan INDEXES {: out:^ :}
-   recs VEC:COUNT 0 ?do
+   INDEXES recs LEN 0 ?do
       recs i VEC:AT @ {: r:n :}
-      plan out r k SLOT-LISTED? 0= if r out VEC:PUSH ! then
-   loop out ;
-
-: SLOT-SHAPE ( ^plan ^VEC:vector<n> n n -- n )
-   {: plan recs:^ j:n k:n :}
-   plan recs j VEC:AT @ k RECORD-SLOT SLOT-KIND drop ;
+      {: out:^ :}
+      plan out r k SLOT-LISTED? if out else plan out r +INDEX then
+   loop ;
 
 \ The form of the records' columns at slot k: their one shape, the root
 \ of shapes of one root that differ, else GENERIC.
 : COLUMNS-FORM ( ^plan ^VEC:vector<n> n -- n )
    {: plan recs:^ k:n :}
    plan recs 0 k SLOT-SHAPE
-   recs VEC:COUNT 1 ?do
+   recs LEN 1 ?do
       {: form:n :} plan recs i k SLOT-SHAPE {: y:n :}
       plan form y ONE-ROOT? 0= if GENERIC unloop exit then
       plan form y UNITED
    loop ;
 
 \ The records' columns at slot k under the alias as one value of their
-\ form: COALESCE of the columns, or of their terms for GENERIC.
-: COALESCE-COLUMNS ( ^plan ^VEC:vector<n> n str -- n str )
+\ form, a leaf: COALESCE of the columns, or of their terms for GENERIC.
+: COALESCE-COLUMNS ( ^plan ^VEC:vector<n> n str -- n ^rel )
    {: plan recs:^ k:n alias:str :}
    plan recs k COLUMNS-FORM {: form:n :}
    plan NEW-SQL {: v:^ :}
    v s" COALESCE(" +SQL
-   recs VEC:COUNT 0 ?do
+   recs LEN 0 ?do
       i 0<> if v s" ," +SQL then
       plan recs i VEC:AT @ k RECORD-SLOT {: sl :}
-      plan sl alias SLOT-SQL {: col:str :}
       form 0< if
-         v plan plan recs i k SLOT-SHAPE SHAPE@ SHAPE-OUT @ col +CALL
-      else v col +SQL then
-   loop v s" )" +SQL form v SQL$ ;
+         v plan plan recs i k SLOT-SHAPE SHAPE@ SHAPE-OUT @ +SQL
+         v s" (" +SQL v sl alias +SLOT-SQL v s" )" +SQL
+      else v sl alias +SLOT-SQL then
+   loop v s" )" +SQL form v ;
 
-\ What one column slot needs for the node: not null for a variable, the
-\ constant held otherwise.
-: COLUMN-COND ( ^plan n slot str -- str )
-   {: plan node:n sl alias:str :}
-   plan NEW-SQL {: v:^ :}
+\ Appends to where what one column slot needs for the node: not null for
+\ a variable, the constant held otherwise.
+: +COLUMN-COND ( ^plan n slot str ^rel -- )
+   {: plan node:n sl alias:str where:^ :}
    plan TREE node VARIABLE? if
-      v plan sl alias SLOT-SQL +SQL v s"  IS NOT NULL" +SQL v SQL$ exit
+      where sl alias +SLOT-SQL where s"  IS NOT NULL" +SQL exit
    then
-   plan node sl alias v +CONSTANT
-   plan NEW-SQL {: w:^ :}
-   w s" (" +SQL w v SQL$ +SQL w s" )" +SQL w SQL$ ;
+   where s" (" +SQL plan node sl alias where +CONSTANT where s" )" +SQL ;
 
 \ Appends to where `(c1 OR ...)`, each the need of one of the records'
 \ columns at slot k.
 : +ANY-COLUMN ( ^plan n ^VEC:vector<n> n str ^rel -- )
    {: plan node:n recs:^ k:n alias:str where:^ :}
    where s"  AND " +SEP where s" (" +SQL
-   recs VEC:COUNT 0 ?do
+   recs LEN 0 ?do
       i 0<> if where s"  OR " +SQL then
       plan recs i VEC:AT @ k RECORD-SLOT {: sl :}
-      where plan node sl alias COLUMN-COND +SQL
+      plan node sl alias where +COLUMN-COND
    loop where s" )" +SQL ;
 
 \ Slot k over several columns: a variable binds their COALESCE, and one
@@ -1508,10 +1699,28 @@ STRUCTURE pruning DERIVE addr
       ^rel -- )
    {: plan node:n recs:^ k:n alias:str occs:^ where:^ :}
    plan TREE node VARIABLE? if
-      plan recs k alias COALESCE-COLUMNS {: form:n sql:str :}
-      plan occs plan node VAR form sql s" " false where OCCUR
+      plan recs k alias COALESCE-COLUMNS {: form:n sql:^ :}
+      NULL-PTR form 0< if
+         drop plan AL [type] spread ALLOC:NEW {: sp:^ :}
+         recs sp SPREAD-RECS ! k sp SPREAD-SLOT !
+         alias sp SPREAD-ALIAS ! sp
+      then {: sp:^ :}
+      plan occs plan node VAR form sql s" " sp false where OCCUR
    then
    plan node recs k alias where +ANY-COLUMN ;
+
+\ How many of the triple's variable parts from part first on OCCUR binds
+\ into occs: those the substitution does not always bind.
+: OCCURRENCES ( ^plan n n -- n )
+   {: plan triple:n first:n :}
+   plan TREE {: state :}
+   0 3 first do
+      state triple i PART {: node:n :}
+      state node VARIABLE? if
+         plan PLAN-OUTER @ plan node VAR LOOKUP {: o:^ :}
+         o NULL-PTR = if 1+ else o BINDING-ALWAYS @ 0= if 1+ then then
+      then
+   loop ;
 
 \ The slots from the first of the records, of one description source,
 \ for the triple under the alias: one where they read one column or term
@@ -1523,7 +1732,7 @@ STRUCTURE pruning DERIVE addr
    3 first do
       state triple i PART {: node:n :}
       plan recs i DISTINCT-AT {: cols:^ :}
-      cols VEC:COUNT 1 = if
+      cols LEN 1 = if
          plan node plan cols 0 VEC:AT @ i RECORD-SLOT alias occs where
             +SLOT
       else plan node cols i alias occs where +COLUMNS then
@@ -1543,7 +1752,7 @@ STRUCTURE pruning DERIVE addr
 \ Whether the records read one subject slot, a unique column.
 : UNIQUE-SUBJECT? ( ^plan ^VEC:vector<n> -- bool )
    {: plan recs:^ :}
-   plan recs 0 DISTINCT-AT VEC:COUNT 1 <> if false exit then
+   plan recs 0 DISTINCT-AT LEN 1 <> if false exit then
    plan recs 0 VEC:AT @ 0 RECORD-SLOT SLOT-UNIQUE? ;
 
 \ Whether two nodes are one variable, or constants that are one term.
@@ -1569,7 +1778,7 @@ STRUCTURE pruning DERIVE addr
    plan recs UNIQUE-SUBJECT? 0= if -1 exit then
    plan recs 0 VEC:AT @ SOURCE@ {: src:^ :}
    group RELATION-ROWS @ {: rows:^ :}
-   rows VEC:COUNT 0 ?do
+   rows LEN 0 ?do
       plan rows i VEC:AT node src ROW-OF? if i unloop exit then
    loop -1 ;
 
@@ -1829,49 +2038,58 @@ STRUCTURE pruning DERIVE addr
       b JOINED-TRIPLE? if plan pinned b DROP-CHOICES then
    loop ;
 
+\ The group's rows, made at the first kept.
+: ROWS ( ^plan ^relation -- ^VEC:vector<subject-row> )
+   {: plan group:^ :}
+   group RELATION-ROWS @ dup NULL-PTR = if
+      drop plan AL 0 [type] subject-row VEC:NEW
+      dup group RELATION-ROWS !
+   then ;
+
 \ Keeps the row the records read under the alias for the subject node
 \ when their subject slot is unique.
 : KEEP-ROW ( ^plan n ^VEC:vector<n> str ^relation -- )
    {: plan node:n recs:^ alias:str group:^ :}
    plan recs UNIQUE-SUBJECT? 0= if exit then
    plan recs 0 VEC:AT @ SOURCE@ {: src:^ :}
-   group RELATION-ROWS @ VEC:PUSH {: row:^ :}
+   plan group ROWS VEC:PUSH {: row:^ :}
    node row SUBJECT-ROW-NODE !
    src SOURCE-FROM @ row SUBJECT-ROW-FROM !
    src SOURCE-S @ row SUBJECT-ROW-SLOT !
    alias row SUBJECT-ROW-ALIAS ! ;
 
-\ A pattern whose live choices are records of one description source:
-\ it reads its subject's row where the group has it, else the source
-\ joins the group directly.
-: SINGLE-SQL ( ^plan n ^VEC:vector<n> ^VEC:vector<binding> ^relation -- )
-   {: plan triple:n recs:^ occs:^ group:^ :}
+\ A pattern whose live choices are records of one description source, and
+\ its occurrences: it reads its subject's row in the group, else joins it.
+: SINGLE-SQL ( ^plan n ^VEC:vector<n> ^relation -- ^VEC:vector<binding> )
+   {: plan triple:n recs:^ group:^ :}
    group RELATION-WHERE @ {: where:^ :}
    plan TREE triple 0 PART {: node:n :}
    plan node recs group FIND-ROW {: k:n :}
    k -1 > if
+      plan plan triple 1 OCCURRENCES NEW-BINDINGS {: occs:^ :}
       group RELATION-ROWS @ k VEC:AT SUBJECT-ROW-ALIAS @ {: kept:str :}
-      plan triple recs kept occs where 1 SLOTS-SQL exit
+      plan triple recs kept occs where 1 SLOTS-SQL occs exit
    then
+   plan plan triple 0 OCCURRENCES NEW-BINDINGS {: occs:^ :}
    plan NEXT-ALIAS {: alias:str :}
    group RELATION-FROM @ plan recs 0 VEC:AT @ SOURCE@ alias +FROM
    plan node recs alias group KEEP-ROW
-   plan triple recs alias occs where 0 SLOTS-SQL ;
+   plan triple recs alias occs where 0 SLOTS-SQL occs ;
 
 \ One branch of a union: the triple over the records, of one description
-\ source, as a relation of its own.
+\ source, as r, a relation of its own.
 : SOURCE-BRANCH ( ^plan n ^VEC:vector<n> ^relation -- )
    {: plan triple:n recs:^ r:^ :}
-   plan r INIT-RELATION
-   r RELATION-FROM @ plan recs 0 VEC:AT @ SOURCE@ s" u" +FROM
-   plan NEW-BINDINGS {: occs:^ :}
-   plan triple recs s" u" occs r RELATION-WHERE @ 0 SLOTS-SQL
-   plan occs r RELATION-WHERE @ JOINS r RELATION-BINDINGS ! ;
+   plan NEW-SQL {: from:^ :} plan NEW-SQL {: where:^ :}
+   from plan recs 0 VEC:AT @ SOURCE@ s" u" +FROM
+   plan plan triple 0 OCCURRENCES NEW-BINDINGS {: occs:^ :}
+   plan triple recs s" u" occs where 0 SLOTS-SQL
+   from where plan occs where JOINS r INIT-RELATION ;
 
 \ Record k alone.
 : RECORD ( ^plan n -- ^VEC:vector<n> )
    {: plan k:n :}
-   plan INDEXES {: out:^ :} k out VEC:PUSH ! out ;
+   plan INDEXES k +INDEX ;
 
 \ The shape of the variable's binding in the first relation binding it.
 : FIRST-SHAPE ( ^VEC:vector<relation> n -- n )
@@ -1908,8 +2126,9 @@ STRUCTURE pruning DERIVE addr
       bs k VEC:AT BINDING-ALWAYS @ 0= if false unloop exit then
    loop true ;
 
-\ The bytes a column of the binding copies.
-: COPIED ( ^binding -- n ) dup BINDING-COPIES @ swap BINDING-SQL @ STR:LEN + ;
+\ The bytes a column of the binding copies: its value and the copies
+\ behind it.
+: COPIED ( ^binding -- n ) BINDING-SQL @ dup SQL-LEN swap COPIES + ;
 
 \ The most a column of a branch's binding of the variable copies.
 : MOST-OF ( ^VEC:vector<relation> n -- n )
@@ -1920,18 +2139,19 @@ STRUCTURE pruning DERIVE addr
       k -1 > if bs k VEC:AT COPIED max then
    loop ;
 
-\ The union's columns: each variable a branch binds, in its form.
+\ The union's columns: each variable a branch binds, in its form, its
+\ leaf's copies the most a branch's binding of it copies.
 : COLUMNS ( ^plan ^VEC:vector<relation> -- ^VEC:vector<binding> )
    {: plan branches:^ :}
-   plan NEW-BINDINGS {: cols:^ :}
+   plan 0 NEW-BINDINGS {: cols:^ :}
    branches VEC:COUNT 0 ?do
       branches i VEC:AT RELATION-BINDINGS @ {: bs:^ :}
       bs VEC:COUNT 0 ?do
          bs i VEC:AT BINDING-VAR @ {: var:n :}
          cols var FIND-VAR 0< if
-            cols var plan branches var FORM s" " s" " BIND
+            cols var plan branches var FORM plan NEW-SQL s" " BIND
             branches var EVERYWHERE? cols LAST BINDING-ALWAYS !
-            branches var MOST-OF cols LAST BINDING-COPIES !
+            branches var MOST-OF cols LAST BINDING-SQL @ REL-COPIES !
          then
       loop
    loop cols ;
@@ -1943,15 +2163,65 @@ STRUCTURE pruning DERIVE addr
    bs VEC:COUNT 0 ?do
       bs i VEC:AT {: b:^ :}
       b BINDING-NULLABLE @ if
-         r RELATION-WHERE @ b BINDING-SQL @ +NULL-TEST
+         r RELATION-WHERE @ b +NULL-TEST
          false b BINDING-NULLABLE !
       then
    loop ;
 
+\ Leaves r the bindings of the listed variables it binds always, its
+\ null tests written first, since it drops bindings.
+: KEEP-READ ( ^plan ^VEC:vector<n> ^relation -- )
+   {: plan vars:^ r:^ :}
+   r +NULL-TESTS
+   r RELATION-BINDINGS @ {: bs:^ :}
+   plan 0 NEW-BINDINGS {: cols:^ :}
+   vars LEN 0 ?do
+      bs vars i VEC:AT @ FIND-VAR {: k:n :}
+      k -1 > if
+         bs k VEC:AT {: b:^ :}
+         b BINDING-ALWAYS @ if b cols COPY-BINDING then
+      then
+   loop cols r RELATION-BINDINGS ! ;
+
+\ s takes every field of o.
+: MOVE-BINDING ( ^binding ^binding -- )
+   {: s:^ o:^ :}
+   o BINDING-VAR @ s BINDING-VAR ! s o TAKE
+   o BINDING-ALWAYS @ s BINDING-ALWAYS !
+   o BINDING-NULLABLE @ s BINDING-NULLABLE ! ;
+
+\ r drops its binding of the variable, writing its null test first when
+\ one is pending; the later bindings move down.
+: FORGET ( ^relation n -- )
+   {: r:^ var:n :}
+   r RELATION-BINDINGS @ {: bs:^ :}
+   bs var FIND-VAR {: k:n :}
+   bs k VEC:AT {: b:^ :}
+   b BINDING-NULLABLE @ if r RELATION-WHERE @ b +NULL-TEST then
+   bs VEC:COUNT 1- k ?do bs i VEC:AT bs i 1+ VEC:AT MOVE-BINDING loop
+   bs bs VEC:COUNT 1- VEC:RESIZE ;
+
+\ The variables EXPAND made that both the scope and occs bind: occs is
+\ the second of the two items that mention each, so nothing reads it later.
+: SETTLED ( ^plan ^VEC:vector<binding> ^VEC:vector<binding>
+      -- ^VEC:vector<n> )
+   {: plan scope:^ occs:^ :}
+   plan PLAN-FRESH @ {: fresh:^ :}
+   INDEXES occs VEC:COUNT 0 ?do
+      occs i VEC:AT BINDING-VAR @ {: var:n :}
+      fresh var INDEXED? if
+         scope var FIND-VAR -1 > if plan swap var +INDEX then
+      then
+   loop ;
+
+: FORGET-ALL ( ^relation ^VEC:vector<n> -- )
+   {: r:^ vars:^ :}
+   vars LEN 0 ?do r vars i VEC:AT @ FORGET loop ;
+
 \ Appends ` FROM ` and ` WHERE ` with r's FROM and WHERE as they are
 \ now: a view of each, since either may grow.
-: +FROM-WHERE ( ^plan ^rel ^relation -- )
-   {: plan out:^ r:^ :}
+: +FROM-WHERE ( ^rel ^relation -- )
+   {: out:^ r:^ :}
    r +NULL-TESTS
    r RELATION-FROM @ {: from:^ :}
    r RELATION-WHERE @ {: where:^ :}
@@ -1962,13 +2232,13 @@ STRUCTURE pruning DERIVE addr
 \ Appends the binding's value in form shape: native as it is, else a term.
 : +VALUE ( ^plan ^rel ^binding n -- )
    {: plan v:^ b:^ shape:n :}
-   shape 0< if v plan b TERM-SQL +SQL else v b BINDING-SQL @ +SQL then ;
+   shape 0< if plan v b +TERM else v b +BINDING then ;
 
 \ Appends ` x AS vK`, the binding as a column of form shape.
 : +COLUMN ( ^plan ^rel ^binding n -- )
    {: plan v:^ b:^ shape:n :}
    v s"  " +SQL plan v b shape +VALUE
-   v s"  AS " +SQL v plan b BINDING-VAR @ COLUMN$ +SQL ;
+   v s"  AS " +SQL v b BINDING-VAR @ +NAME ;
 
 \ Appends NULL typed as form shape.
 : +NULL ( ^plan ^rel n -- )
@@ -1985,7 +2255,7 @@ STRUCTURE pruning DERIVE addr
       i 0<> if out s" ," +SQL then
       bs i VEC:AT {: b:^ :}
       plan out b b BINDING-SHAPE @ +COLUMN
-   loop plan out r +FROM-WHERE ;
+   loop out r +FROM-WHERE ;
 
 \ Binds var to what the union's column of form shape holds in branch b:
 \ b's value in that form, NULL where b binds none.
@@ -1995,20 +2265,17 @@ STRUCTURE pruning DERIVE addr
    bs var FIND-VAR {: k:n :}
    plan NEW-SQL {: v:^ :}
    k 0< if plan v shape +NULL else plan v bs k VEC:AT shape +VALUE then
-   list var shape v SQL$ s" " BIND
+   list var shape v s" " BIND
    k 0< if false list LAST BINDING-ALWAYS ! exit then
-   bs k VEC:AT list LAST {: from:^ to:^ :}
-   from BINDING-ALWAYS @ to BINDING-ALWAYS !
-   from BINDING-COPIES @ to BINDING-COPIES ! ;
+   bs k VEC:AT BINDING-ALWAYS @ list LAST BINDING-ALWAYS ! ;
 
 \ Branch b as the union of columns cols presents it. u shares b's WHERE,
 \ so b's null tests are written first.
 : PRESENTED ( ^plan ^relation ^VEC:vector<binding> -- ^relation )
    {: plan b:^ cols:^ :}
    b +NULL-TESTS
-   plan NEW-RELATION {: u:^ :}
-   b RELATION-FROM @ u RELATION-FROM !
-   b RELATION-WHERE @ u RELATION-WHERE !
+   plan b RELATION-FROM @ b RELATION-WHERE @ plan cols VEC:COUNT NEW-BINDINGS
+   RELATION-OF {: u:^ :}
    cols VEC:COUNT 0 ?do
       cols i VEC:AT {: c:^ :}
       plan u RELATION-BINDINGS @ b c BINDING-VAR @ c BINDING-SHAPE @
@@ -2038,27 +2305,59 @@ STRUCTURE pruning DERIVE addr
    out s" (" +TEXT plan out r +SELECT out s" )" +TEXT
    out r RELATION-BINDINGS @ ;
 
+\ Appends the derived table under a new alias to from; answers the alias.
+: +AS ( ^plan ^rel ^rel -- str )
+   {: plan t:^ from:^ :}
+   plan NEXT-ALIAS {: alias:str :}
+   from t +REL from s"  AS " +TEXT from alias +TEXT alias ;
+
+\ b binds column c of the derived table under alias, each leaf's copies
+\ what c copies.
+: SET-COLUMN ( ^plan ^binding str ^binding -- )
+   {: plan b:^ alias:str c:^ :}
+   c BINDING-VAR @ {: var:n :}
+   b var c BINDING-SHAPE @ plan alias var COLUMN-OF
+      c BINDING-TERM @ SET-BINDING
+   c BINDING-ALWAYS @ b BINDING-ALWAYS !
+   c COPIED b BINDING-SQL @ REL-COPIES ! ;
+
 \ Appends the derived table under a new alias to from and answers its
 \ columns as bindings there.
 : +TABLE ( ^plan ^rel ^VEC:vector<binding> ^rel
       -- ^VEC:vector<binding> )
    {: plan t:^ cols:^ from:^ :}
-   plan NEXT-ALIAS {: alias:str :}
-   from t +REL from s"  AS " +TEXT from alias +TEXT
-   plan NEW-BINDINGS {: occs:^ :}
+   plan t from +AS {: alias:str :}
+   plan cols VEC:COUNT NEW-BINDINGS {: occs:^ :}
    cols VEC:COUNT 0 ?do
-      cols i VEC:AT {: c:^ :}
-      c BINDING-VAR @ {: var:n :}
-      occs var c BINDING-SHAPE @ plan alias var COLUMN-OF
-         c BINDING-TERM @ BIND
-      c BINDING-ALWAYS @ occs LAST BINDING-ALWAYS !
-      c COPIED occs LAST BINDING-COPIES !
+      plan occs VEC:PUSH alias cols i VEC:AT SET-COLUMN
    loop occs ;
+
+\ Appends the derived table under a new alias to from and meets each of
+\ its columns, written into the plan's column binding, into the scope.
+: MEET-TABLE ( ^plan ^rel ^VEC:vector<binding> ^rel
+      ^VEC:vector<binding> ^rel bool -- )
+   {: plan t:^ cols:^ from:^ scope:^ where:^ optional:bool :}
+   plan t from +AS {: alias:str :}
+   plan PLAN-COLUMN @ {: b:^ :}
+   cols VEC:COUNT 0 ?do
+      plan b alias cols i VEC:AT SET-COLUMN
+      plan scope b where optional MEET
+   loop ;
+
+\ Joins the derived table into r, its columns meeting r's bindings; r
+\ then drops the variables SETTLED by it.
+: JOIN-TABLE ( ^plan ^rel ^VEC:vector<binding> ^relation -- )
+   {: plan t:^ cols:^ r:^ :}
+   r RELATION-BINDINGS @ {: scope:^ :}
+   plan scope cols SETTLED {: done:^ :}
+   plan t cols r RELATION-FROM @ scope r RELATION-WHERE @ false
+      MEET-TABLE
+   r done FORGET-ALL ;
 
 \ The derived table's rows whose columns meet the substitution.
 : SUBSTITUTED ( ^plan ^rel ^VEC:vector<binding> -- ^rel )
    {: plan t:^ cols:^ :}
-   plan PLAN-OUTER @ VEC:COUNT 0= if t exit then
+   plan PLAN-OUTER @ BINDS-ANY? 0= if t exit then
    plan NEW-SQL {: from:^ :} plan NEW-SQL {: where:^ :}
    plan t cols from +TABLE {: occs:^ :}
    occs VEC:COUNT 0 ?do plan occs i VEC:AT where +OUTER loop
@@ -2106,7 +2405,7 @@ STRUCTURE pruning DERIVE addr
 : +MEET-KEY ( ^plan ^binding ^binding str ^rel -- )
    {: plan key:^ b:^ row:str where:^ :}
    plan NEW-SQL {: k:^ :} k row +SQL k s" .k" +SQL
-   where s"  AND " +SEP where b BINDING-SQL @ +SQL where s"  = " +SQL
+   where s"  AND " +SEP where b +BINDING where s"  = " +SQL
    key BINDING-SHAPE @ GENERIC <> if where k SQL$ +SQL else
       where plan b BINDING-SHAPE @ SHAPE@ SHAPE-IN @ k SQL$ +CALL
    then false b BINDING-NULLABLE ! ;
@@ -2116,23 +2415,23 @@ STRUCTURE pruning DERIVE addr
 : +KEYS ( ^plan ^binding str ^VEC:vector<relation>
       -- ^VEC:vector<n> ^VEC:vector<n> )
    {: plan key:^ row:str branches:^ :}
-   plan INDEXES {: probed:^ :} plan INDEXES {: rest:^ :}
-   branches VEC:COUNT 0 ?do
+   INDEXES INDEXES branches VEC:COUNT 0 ?do
+      {: probed:^ rest:^ :}
       branches i VEC:AT {: r:^ :}
       plan key r PROBED {: k:n :}
-      k 0< if i rest VEC:PUSH ! else
+      k 0< if probed plan rest i +INDEX else
          plan key r RELATION-BINDINGS @ k VEC:AT row
             r RELATION-WHERE @ +MEET-KEY
-         i probed VEC:PUSH !
+         plan probed i +INDEX rest
       then
-   loop probed rest ;
+   loop ;
 
 \ Appends the listed branches as the union of columns cols presents
 \ them.
 : +UNION ( ^plan ^rel ^VEC:vector<relation> ^VEC:vector<n>
       ^VEC:vector<binding> -- )
    {: plan out:^ branches:^ list:^ cols:^ :}
-   list VEC:COUNT 0 ?do
+   list LEN 0 ?do
       i 0<> if out s"  UNION ALL " +TEXT then
       plan out branches list i VEC:AT @ VEC:AT cols +BRANCH
    loop ;
@@ -2143,7 +2442,7 @@ STRUCTURE pruning DERIVE addr
       ^VEC:vector<binding> -- ^rel )
    {: plan key:^ row:str branches:^ list:^ cols:^ :}
    plan NEW-SQL {: v:^ :}
-   v key BINDING-SQL @ +SQL v s"  AS " +SQL v row +SQL
+   v key +BINDING v s"  AS " +SQL v row +SQL
    v s"  CROSS JOIN LATERAL (" +SQL
    plan v branches list cols +UNION v s" )" +TEXT v ;
 
@@ -2159,7 +2458,7 @@ STRUCTURE pruning DERIVE addr
    plan out branches list cols +UNION out s" )" +TEXT out ;
 
 \ The branches driven by the key as a FROM rel whose last item takes the
-\ alias +TABLE appends, and its columns.
+\ alias +AS appends, and its columns.
 : DRIVEN-TABLE ( ^plan ^binding ^VEC:vector<relation>
       -- ^rel ^VEC:vector<binding> )
    {: plan key:^ branches:^ :}
@@ -2167,7 +2466,7 @@ STRUCTURE pruning DERIVE addr
    plan NEXT-ALIAS {: row:str :}
    plan key row branches +KEYS {: probed:^ rest:^ :}
    plan key row branches probed cols PROBE-SQL {: t:^ :}
-   rest VEC:COUNT 0= if t cols exit then
+   rest LEN 0= if t cols exit then
    plan t branches rest cols BESIDE cols ;
 
 \ Sets the item's branches, one per description source it reads.
@@ -2175,43 +2474,44 @@ STRUCTURE pruning DERIVE addr
    {: plan it:^ :}
    plan it ORIGINS {: origins:^ :}
    plan AL 0 [type] relation VEC:NEW {: branches:^ :}
-   origins VEC:COUNT 0 ?do
+   origins LEN 0 ?do
       plan it origins i VEC:AT @ LIVE-OF {: recs:^ :}
       branches VEC:PUSH {: b:^ :}
       plan it ITEM-NODE @ recs b SOURCE-BRANCH
    loop branches it ITEM-BRANCHES ! ;
 
-\ A pattern of several description sources: a UNION ALL of a branch per
-\ source, driven by the first key some branch binds natively.
-: UNION-SQL ( ^plan ^item ^VEC:vector<binding> ^relation
-      -- ^VEC:vector<binding> )
+\ Joins a pattern of several description sources into the group: a UNION
+\ ALL of a branch per source, driven by the first natively bound key.
+: UNION-SQL ( ^plan ^item ^VEC:vector<binding> ^relation -- )
    {: plan it:^ keys:^ group:^ :}
    it ITEM-BRANCHES @ {: branches:^ :}
    group RELATION-FROM @ {: from:^ :}
    from s"  CROSS JOIN " +SEP
    plan keys branches DRIVER {: d:n :}
-   d 0< if plan plan branches UNION-TABLE from +TABLE exit then
-   plan plan keys d VEC:AT branches DRIVEN-TABLE from +TABLE ;
+   d 0< if plan plan branches UNION-TABLE group JOIN-TABLE exit then
+   plan plan keys d VEC:AT branches DRIVEN-TABLE group JOIN-TABLE ;
 
-\ Appends the joined item, a derived table or a triple of one
-\ description source, to the group's FROM and answers its bindings.
-: ITEM-SQL ( ^plan ^item ^relation -- ^VEC:vector<binding> )
-   {: plan it:^ group:^ :}
-   it ITEM-NODE @ 0<> if
-      plan it plan it ORIGINS 0 VEC:AT @ LIVE-OF {: recs:^ :}
-      plan NEW-BINDINGS {: occs:^ :}
-      plan it ITEM-NODE @ recs occs group SINGLE-SQL occs exit
-   then
-   group RELATION-FROM @ {: from:^ :}
-   from s"  CROSS JOIN " +SEP
-   plan it ITEM-TABLE @ it ITEM-COLUMNS @ from +TABLE ;
+\ Copies into seen the substitution's binding of o's variable, unless
+\ seen or no layer binds it.
+: INHERIT ( ^VEC:vector<binding> ^layer ^binding -- )
+   {: seen:^ outer:^ o:^ :}
+   seen o BINDING-VAR @ FIND-VAR -1 > if exit then
+   outer o BINDING-VAR @ LOOKUP {: b:^ :}
+   b NULL-PTR = if exit then
+   b seen COPY-BINDING ;
 
-\ The scope through the substitution: a variable it binds is its value
-\ there where bound. MEET's conditions are dropped: each slot meets it.
-: SEEN ( ^plan ^VEC:vector<binding> -- ^VEC:vector<binding> )
+\ A layer of the scope's bindings over the substitution, each met with its
+\ binding there; MEET's conditions are dropped: each slot meets it.
+: SEEN ( ^plan ^VEC:vector<binding> -- ^layer )
    {: plan scope:^ :}
-   plan plan PLAN-OUTER @ COPY-SCOPE {: seen:^ :}
-   plan seen scope plan NEW-SQL false MEET-ALL seen ;
+   plan PLAN-OUTER @ {: outer:^ :}
+   outer BINDS-ANY? 0= if plan scope outer NEW-LAYER exit then
+   plan scope VEC:COUNT NEW-BINDINGS {: seen:^ :}
+   plan NEW-SQL {: where:^ :}
+   scope VEC:COUNT 0 ?do
+      scope i VEC:AT {: o:^ :}
+      seen outer o INHERIT plan seen o where false MEET
+   loop plan seen outer NEW-LAYER ;
 
 \ Whether the node is an infix expression of the operator.
 : INFIX? ( ^syntax n str -- bool )
@@ -2270,15 +2570,14 @@ STRUCTURE pruning DERIVE addr
    s" text" s" http://www.w3.org/2001/XMLSchema#string"
    s" http://www.w3.org/2001/XMLSchema#string" CLASS? ;
 
-\ The index of the expression's binding, a variable's in the plan's
-\ scope, when native; else -1.
-: NATIVE-VAR ( ^plan n -- n )
+\ The expression's binding, a variable's in the plan's scope, when
+\ native; else NULL-PTR.
+: NATIVE-VAR ( ^plan n -- ^binding )
    {: plan e:n :}
-   plan TREE e NODE-K N-VAR <> if -1 exit then
-   plan PLAN-SCOPE @ {: bs:^ :}
-   bs plan e VAR FIND-VAR {: k:n :}
-   k 0< if -1 exit then
-   bs k VEC:AT BINDING-SHAPE @ 0< if -1 else k then ;
+   plan TREE e NODE-K N-VAR <> if NULL-PTR exit then
+   plan PLAN-SCOPE @ plan e VAR LOOKUP {: b:^ :}
+   b NULL-PTR = if b exit then
+   b BINDING-SHAPE @ 0< if NULL-PTR else b then ;
 
 \ The classes of a comparison's operands that compare natively.
 1 constant NUMERIC
@@ -2300,9 +2599,9 @@ STRUCTURE pruning DERIVE addr
 \ literal's.
 : OPERAND-CLASS ( ^plan n -- n )
    {: plan e:n :}
-   plan e NATIVE-VAR {: k:n :}
-   k 0< if plan e LITERAL-CLASS exit then
-   plan PLAN-SCOPE @ k VEC:AT BINDING-SHAPE @ {: y:n :}
+   plan e NATIVE-VAR {: b:^ :}
+   b NULL-PTR = if plan e LITERAL-CLASS exit then
+   b BINDING-SHAPE @ {: y:n :}
    plan y NUMBERS? if NUMERIC exit then
    plan y STRINGS? if TEXTUAL else 0 then ;
 
@@ -2314,29 +2613,30 @@ STRUCTURE pruning DERIVE addr
    c 0< if x exit then
    c x = if c else 0 then ;
 
-\ The binding of the comparison's first natively bound operand, else -1.
-: PAIR-NATIVE ( ^plan n -- n )
+\ The binding of the comparison's first natively bound operand, else
+\ NULL-PTR.
+: PAIR-NATIVE ( ^plan n -- ^binding )
    {: plan e:n :} plan TREE {: state :}
-   plan state e NODE-A@ NATIVE-VAR dup -1 > if exit then drop
+   plan state e NODE-A@ NATIVE-VAR dup NULL-PTR <> if exit then drop
    plan state e NODE-B@ NATIVE-VAR ;
 
 \ The class the comparison's operands share, else 0; 0 also when
 \ neither is a natively bound variable.
 : PAIR-CLASS ( ^plan n -- n )
    {: plan e:n :} plan TREE {: state :}
-   plan e PAIR-NATIVE 0< if 0 exit then
+   plan e PAIR-NATIVE NULL-PTR = if 0 exit then
    plan plan -1 state e NODE-A@ JOIN-CLASS state e NODE-B@ JOIN-CLASS ;
 
 \ The binding of the first natively bound operand of `a IN (list)`,
-\ else -1.
-: IN-NATIVE ( ^plan n -- n )
+\ else NULL-PTR.
+: IN-NATIVE ( ^plan n -- ^binding )
    {: plan e:n :} plan TREE {: state :}
-   plan state e NODE-A@ NATIVE-VAR dup -1 > if exit then drop
+   plan state e NODE-A@ NATIVE-VAR dup NULL-PTR <> if exit then drop
    state e NODE-B@ begin dup 0<> while
       {: each:n :}
-      plan state each NODE-A@ NATIVE-VAR dup -1 > if exit then drop
-      state each NODE-B@
-   repeat drop -1 ;
+      plan state each NODE-A@ NATIVE-VAR dup NULL-PTR <> if exit then
+      drop state each NODE-B@
+   repeat drop NULL-PTR ;
 
 \ The class `a IN (list)`'s operands share, else 0; 0 also for an empty
 \ list, which SQL's IN cannot write, and when no operand is a natively
@@ -2344,41 +2644,36 @@ STRUCTURE pruning DERIVE addr
 : IN-CLASS ( ^plan n -- n )
    {: plan e:n :} plan TREE {: state :}
    state e NODE-B@ 0= if 0 exit then
-   plan e IN-NATIVE 0< if 0 exit then
+   plan e IN-NATIVE NULL-PTR = if 0 exit then
    plan -1 state e NODE-A@ JOIN-CLASS
    state e NODE-B@ begin dup 0<> while
       {: c:n each:n :}
       plan c state each NODE-A@ JOIN-CLASS state each NODE-B@
    repeat drop ;
 
-\ Operand e of a comparison in class c, k the binding of its first
-\ natively bound operand: a variable's column; a number the value
-\ sparql.numeric reads, as the generic call does, since `in` is NULL
-\ for a term the shape does not hold, such as 1.0; a string k's shape's
-\ `in` of it.
-: NATIVE-SQL ( ^plan n n n -- str )
-   {: plan c:n k:n e:n :}
-   plan PLAN-SCOPE @ {: bs:^ :}
-   plan e NATIVE-VAR {: j:n :}
-   j -1 > if bs j VEC:AT BINDING-SQL @ exit then
-   plan plan e TERM-JSON TERM-ARG {: t:str :}
-   plan NEW-SQL {: v:^ :}
-   c NUMERIC = if v s" sparql.numeric" t +CALL
+\ Appends operand e of class c: a variable's column, a number through
+\ sparql.numeric (`in` is NULL for a term k's shape lacks), else k's `in`.
+: +NATIVE ( ^plan ^rel n ^binding n -- )
+   {: plan v:^ c:n k:^ e:n :}
+   plan e NATIVE-VAR {: b:^ :}
+   b NULL-PTR <> if v b +BINDING exit then
+   plan e TERM-JSON {: t:str :}
+   c NUMERIC = if plan v s" sparql.numeric" t +CALL-TERM
    else
-      v plan bs k VEC:AT BINDING-SHAPE @ SHAPE@ SHAPE-IN @ t +CALL
-   then v SQL$ ;
+      plan v plan k BINDING-SHAPE @ SHAPE@ SHAPE-IN @ t +CALL-TERM
+   then ;
 
-\ The condition that native binding k of the plan's scope is constant c.
-: FIXED-SQL ( ^plan n n -- str )
-   {: plan k:n c:n :}
-   plan plan PLAN-SCOPE @ k VEC:AT plan c CONSTANT-VALUE SAME-SQL ;
+\ The condition that native binding k is constant c.
+: FIXED-SQL ( ^plan ^binding n -- ^rel )
+   {: plan k:^ c:n :}
+   plan k plan c CONSTANT-VALUE SAME-SQL ;
 
 \ Appends that variable e is constant c, when they are such and e native.
 : +FIXED ( ^plan n n ^rel -- )
    {: plan e:n c:n where:^ :}
    plan TREE c CONSTANT? 0= if exit then
-   plan e NATIVE-VAR {: k:n :}
-   k 0< if exit then
+   plan e NATIVE-VAR {: k:^ :}
+   k NULL-PTR = if exit then
    where plan k c FIXED-SQL +AND ;
 
 : +FIXED-EITHER ( ^plan n n ^rel -- )
@@ -2405,13 +2700,13 @@ STRUCTURE pruning DERIVE addr
    plan TREE {: state :}
    state e NODE-B@ {: list:n :}
    plan list ALL-UNTYPED? 0= if exit then
-   plan state e NODE-A@ NATIVE-VAR {: k:n :}
-   k 0< if exit then
+   plan state e NODE-A@ NATIVE-VAR {: k:^ :}
+   k NULL-PTR = if exit then
    where s"  AND " +SEP where s" (" +SQL
    list begin dup 0<> while
       {: each:n :}
       each list <> if where s"  OR " +SQL then
-      where plan k state each NODE-A@ FIXED-SQL +SQL
+      where plan k state each NODE-A@ FIXED-SQL +REL
       state each NODE-B@
    repeat drop where s" )" +SQL ;
 
@@ -2465,10 +2760,8 @@ STRUCTURE pruning DERIVE addr
 : +RELATION ( ^plan ^VEC:vector<relation> ^relation -- )
    {: plan branches:^ r:^ :}
    branches VEC:PUSH {: c:^ :}
-   plan c INIT-RELATION
-   r RELATION-FROM @ c RELATION-FROM !
-   r RELATION-WHERE @ c RELATION-WHERE !
-   r RELATION-BINDINGS @ c RELATION-BINDINGS !
+   r RELATION-FROM @ r RELATION-WHERE @ r RELATION-BINDINGS @
+   c INIT-RELATION
    false c RELATION-EMPTY ! ;
 
 \ Adds the group to the branches unless it is statically empty.
@@ -2482,7 +2775,7 @@ STRUCTURE pruning DERIVE addr
 : UNION-CHILD ( ^plan ^VEC:vector<item> ^VEC:vector<relation> -- )
    {: plan items:^ branches:^ :}
    branches VEC:COUNT 0= if
-      plan items plan NEW-SQL plan NEW-BINDINGS true CHILD-ITEM exit
+      plan items plan NEW-SQL plan 0 NEW-BINDINGS true CHILD-ITEM exit
    then plan items plan branches UNION-TABLE false CHILD-ITEM
    branches items dup VEC:COUNT 1- VEC:AT ITEM-BRANCHES ! ;
 
@@ -2520,7 +2813,7 @@ STRUCTURE pruning DERIVE addr
    r RELATION-EMPTY @ if exit then
    state node NODE-A@ {: g:n :}
    state g VARIABLE? if
-      plan NEW-BINDINGS {: own:^ :}
+      plan 0 NEW-BINDINGS {: own:^ :}
       own plan g VAR KNOWN plan t TERM-LITERAL t BIND
       plan own LAST r RELATION-WHERE @ +OUTER
       plan r RELATION-BINDINGS @ own r RELATION-WHERE @ false MEET-ALL
@@ -2542,19 +2835,57 @@ STRUCTURE pruning DERIVE addr
       plan items branches 0 VEC:AT GROUP-ITEM exit
    then plan items branches UNION-CHILD ;
 
-\ An OPTIONAL's or MINUS's derived table; a statically empty one is no item.
+\ An OPTIONAL's or MINUS's group as a derived table.
 : SIDE-ITEM ( ^plan ^VEC:vector<item> ^relation n -- ^item )
    {: plan items:^ r:^ mode:n :}
    plan items 0 NEW-ITEM {: it:^ :}
    mode it ITEM-MODE !
    plan r SUBSELECT it ITEM-COLUMNS ! it ITEM-TABLE ! it ;
 
+\ Whether an OPTIONAL of the items binds b's variable, which b reads
+\ through several columns: each later meeting repeats b's COALESCE.
+: MET-SPREAD? ( ^VEC:vector<item> ^binding -- bool )
+   {: items:^ b:^ :}
+   b BINDING-SPREAD @ NULL-PTR = if false exit then
+   items VEC:COUNT 0 ?do
+      items i VEC:AT {: it:^ :}
+      it ITEM-MODE @ N-OPTIONAL = if
+         it ITEM-COLUMNS @ b BINDING-VAR @ FIND-VAR -1 >
+         if true unloop exit then
+      then
+   loop false ;
+
+\ Whether r's FROM holds a join, each binding is NULL on a row a LEFT JOIN
+\ extends with NULLs and none is MET-SPREAD? in the group's items so far.
+: AS-IS? ( ^VEC:vector<item> ^relation -- bool )
+   {: items:^ r:^ :}
+   r RELATION-OPTIONAL @ 0= r RELATION-BIND @ or if false exit then
+   r RELATION-BRANCHES @ NULL-PTR <> if false exit then
+   r RELATION-BINDINGS @ {: bs:^ :}
+   bs VEC:COUNT 0 ?do
+      bs i VEC:AT {: b:^ :}
+      b BINDING-SHAPE @ KNOWN = if false unloop exit then
+      items b MET-SPREAD? if false unloop exit then
+   loop true ;
+
+\ An OPTIONAL's group as it is: its FROM, its bindings and its WHERE,
+\ its null tests written.
+: AS-IS-ITEM ( ^plan ^VEC:vector<item> ^relation -- ^item )
+   {: plan items:^ r:^ :}
+   r +NULL-TESTS
+   plan items 0 NEW-ITEM {: it:^ :}
+   N-OPTIONAL it ITEM-MODE !
+   r RELATION-FROM @ it ITEM-TABLE ! r RELATION-WHERE @ it ITEM-WHERE !
+   r RELATION-BINDINGS @ it ITEM-COLUMNS ! it ;
+
 \ OPTIONAL { P }: P before its FILTERs, which join the LEFT JOIN's ON.
 : OPTIONAL-ITEM ( ^plan ^VEC:vector<item> n -- )
    {: plan items:^ node:n :}
    plan plan TREE node NODE-A@ GROUP-SQL {: r:^ filters:^ :}
    r RELATION-EMPTY @ if exit then
-   plan items r N-OPTIONAL SIDE-ITEM ITEM-FILTERS filters swap ! ;
+   items r AS-IS? if plan items r AS-IS-ITEM
+   else plan items r N-OPTIONAL SIDE-ITEM then
+   ITEM-FILTERS filters swap ! ;
 
 : MINUS-ITEM ( ^plan ^VEC:vector<item> n -- )
    {: plan items:^ node:n :}
@@ -2582,10 +2913,10 @@ STRUCTURE pruning DERIVE addr
 : DATA-COLUMNS ( ^plan n -- ^VEC:vector<binding> )
    {: plan node:n :}
    plan TREE {: state :}
-   plan NEW-BINDINGS {: cols:^ :}
+   plan 0 NEW-BINDINGS {: cols:^ :}
    0 state node NODE-A@ begin dup 0<> while
       {: k:n list:n :}
-      cols plan state list NODE-A@ VAR GENERIC s" " s" " BIND
+      cols plan state list NODE-A@ VAR GENERIC plan PLAN-EMPTY @ s" " BIND
       state state node NODE-B@ k UNDEF-AT? 0= cols LAST BINDING-ALWAYS !
       k 1+ state list NODE-B@
    repeat 2drop cols ;
@@ -2599,7 +2930,7 @@ STRUCTURE pruning DERIVE addr
       {: list:n :} state list NODE-A@ {: term:n :}
       list row <> if v s" ," +SQL then
       state term NODE-K N-UNDEF = if v s" NULL::jsonb" +SQL
-      else v plan plan term TERM-JSON TERM-ARG +SQL then
+      else plan v plan term TERM-JSON +TERM-ARG then
       state list NODE-B@
    repeat drop v s" )" +SQL ;
 
@@ -2625,7 +2956,7 @@ STRUCTURE pruning DERIVE addr
    v s" ) AS d(" +SQL
    cols VEC:COUNT 0 ?do
       i 0<> if v s" ," +SQL then
-      v plan cols i VEC:AT BINDING-VAR @ COLUMN$ +SQL
+      v cols i VEC:AT BINDING-VAR @ +NAME
    loop v s" ))" +SQL v ;
 
 \ VALUES: its data block as a joined derived table; one with no rows is
@@ -2680,7 +3011,7 @@ STRUCTURE pruning DERIVE addr
    NEW-ITEM N-PATH swap ITEM-MODE ! ;
 
 \ s path o expanded into items: `^` swaps s and o, `/` joins two triples
-\ on a fresh variable, `|` is a UNION of the two.
+\ on a fresh variable, which the plan records, `|` is a UNION of the two.
 : EXPAND ( ^plan ^VEC:vector<item> n n n n -- )
    {: plan items:^ at:n s:n path:n o:n :}
    plan TREE {: state :}
@@ -2693,7 +3024,8 @@ STRUCTURE pruning DERIVE addr
    state path s" /" OPERATOR? if
       state ANONYMOUS {: f:n :}
       plan items at s x f RECURSE
-      plan items at f y o RECURSE exit
+      plan items at f y o RECURSE
+      plan plan PLAN-FRESH @ plan f VAR +INDEX plan PLAN-FRESH ! exit
    then
    state path s" |" OPERATOR? if
       plan items plan at s x o TRIPLE-NODE plan at s y o TRIPLE-NODE
@@ -2767,25 +3099,48 @@ STRUCTURE pruning DERIVE addr
       state list NODE-B@
    repeat drop ;
 
+\ Joins the item, a derived table or a triple of one description source,
+\ into r, the meetings in r's WHERE; r then drops the variables SETTLED by it.
 : JOIN-STEP ( ^plan ^item ^relation -- )
    {: plan it:^ r:^ :}
-   plan r RELATION-BINDINGS @ plan it r ITEM-SQL r RELATION-WHERE @
-      false MEET-ALL ;
+   r RELATION-BINDINGS @ {: scope:^ :}
+   it ITEM-NODE @ 0<> if
+      plan it plan it ORIGINS 0 VEC:AT @ LIVE-OF {: recs:^ :}
+      plan it ITEM-NODE @ recs r SINGLE-SQL {: occs:^ :}
+      plan scope occs SETTLED {: done:^ :}
+      plan scope occs r RELATION-WHERE @ false MEET-ALL
+      r done FORGET-ALL exit
+   then
+   r RELATION-FROM @ {: from:^ :}
+   from s"  CROSS JOIN " +SEP
+   plan it ITEM-TABLE @ it ITEM-COLUMNS @ r JOIN-TABLE ;
 
-\ LeftJoin: P's derived table LEFT JOINs the FROM, ON P meeting the scope
-\ and P's FILTERs on the joined bindings. An empty FROM is one empty row.
+\ Appends the OPTIONAL's table to from, its columns meeting the scope in
+\ on: a group as it is in parentheses, its WHERE in on, else a derived table.
+: +OPTIONAL-TABLE ( ^plan ^item ^rel ^VEC:vector<binding> ^rel -- )
+   {: plan it:^ from:^ scope:^ on:^ :}
+   it ITEM-WHERE @ {: where:^ :}
+   where NULL-PTR = if
+      plan it ITEM-TABLE @ it ITEM-COLUMNS @ from scope on true MEET-TABLE
+      exit
+   then
+   from s" (" +TEXT from it ITEM-TABLE @ VIEW +REL from s" )" +TEXT
+   plan scope it ITEM-COLUMNS @ on true MEET-ALL
+   where EMPTY? if exit then
+   on s"  AND " +SEP on s" (" +SQL on where VIEW +REL on s" )" +SQL ;
+
+\ LeftJoin: P LEFT JOINs the FROM, ON P meeting the scope and P's
+\ FILTERs on the joined bindings. An empty FROM is one empty row.
 : OPTIONAL-STEP ( ^plan ^item ^relation -- )
    {: plan it:^ r:^ :}
    r RELATION-BINDINGS @ {: scope:^ :}
    r RELATION-FROM @ {: from:^ :}
    from EMPTY? if
-      plan plan AL s" (SELECT)" TEXT-REL plan NEW-BINDINGS from +TABLE
-         drop
+      plan plan TEXTS s" (SELECT)" TEXT-REL from +AS drop
    then
-   from s"  LEFT JOIN " +TEXT
-   plan it ITEM-TABLE @ it ITEM-COLUMNS @ from +TABLE {: occs:^ :}
+   from s"  LEFT JOIN " +TEXT true r RELATION-OPTIONAL !
    plan NEW-SQL {: on:^ :}
-   plan scope occs on true MEET-ALL
+   plan it from scope on +OPTIONAL-TABLE
    it ITEM-FILTERS @ {: filters:^ :}
    filters VEC:COUNT 0 ?do
       plan scope filters i VEC:AT @ on +FILTER
@@ -2811,7 +3166,7 @@ STRUCTURE pruning DERIVE addr
 : +NOT-NULL ( ^rel ^binding -- )
    {: v:^ b:^ :}
    b BINDING-ALWAYS @ if exit then
-   v s"  AND " +SEP v b BINDING-SQL @ +SQL v s"  IS NOT NULL" +SQL ;
+   v s"  AND " +SEP v b +BINDING v s"  IS NOT NULL" +SQL ;
 
 \ Appends to where that some variable of occs the scope binds is bound on
 \ both sides.
@@ -2826,11 +3181,11 @@ STRUCTURE pruning DERIVE addr
          plan NEW-SQL {: both:^ :}
          both scope k VEC:AT +NOT-NULL both o +NOT-NULL
          any s"  OR " +SEP any s" (" +SQL
-         any both SQL$ +SQL any s" )" +SQL
+         any both +REL any s" )" +SQL
       then
    loop
    where s"  AND " +SEP where s" (" +SQL
-   where any SQL$ +SQL where s" )" +SQL ;
+   where any +REL where s" )" +SQL ;
 
 \ Minus: NOT EXISTS a row of P that meets the scope with a shared
 \ variable bound on both sides; nothing when no variable can be.
@@ -2850,15 +3205,16 @@ STRUCTURE pruning DERIVE addr
    cond EMPTY? 0= if where s"  WHERE " +SQL where cond +REL then
    where s" )" +SQL ;
 
-\ The expression's SQL over the relation's bindings through the substitution.
-: EXPRESSION-SQL ( ^plan ^relation n -- str )
+\ The expression's SQL over the relation's bindings through the
+\ substitution, a rel.
+: EXPRESSION-SQL ( ^plan ^relation n -- ^rel )
    {: plan r:^ e:n :}
    plan PLAN-SCOPE @ {: outer:^ :}
    plan PLAN-OUT @ {: out:^ :}
    plan NEW-SQL {: v:^ :}
    plan r RELATION-BINDINGS @ SEEN plan PLAN-SCOPE ! v plan PLAN-OUT !
    plan e SQL-EXPRESSION
-   outer plan PLAN-SCOPE ! out plan PLAN-OUT ! v SQL$ ;
+   outer plan PLAN-SCOPE ! out plan PLAN-OUT ! v ;
 
 \ The index of the call among the plan's aggregates, or -1.
 : FIND-AGGREGATE ( ^plan n -- n )
@@ -2875,39 +3231,12 @@ STRUCTURE pruning DERIVE addr
    k 0< if false exit then
    plan PLAN-AGGREGATES @ k VEC:AT AGGREGATE-ALWAYS @ ;
 
-\ The longest of the bindings' SQL that starts the text, when over len
-\ bytes: its length and the bytes it copies.
-: LONGEST ( n n ^VEC:vector<binding> str -- n n )
-   {: bs:^ x:str :}
-   bs VEC:COUNT 0 ?do
-      bs i VEC:AT {: b:^ :}
-      b BINDING-SQL @ {: sql:str :}
-      over sql STR:LEN < if
-         x sql STR:STARTS-WITH? if
-            2drop sql STR:LEN b BINDING-COPIES @
-         then
-      then
-   loop ;
-
-\ The bytes the expression copies through the bindings it reads.
-: COPIES-OF ( ^plan ^relation str -- n )
-   {: plan r:^ x:str :}
-   0 0 begin dup x STR:LEN < while
-      {: sum:n at:n :}
-      x str> at - swap at + swap >str {: rest:str :}
-      0 0 r RELATION-BINDINGS @ rest LONGEST
-         plan PLAN-OUTER @ rest LONGEST {: len:n copies:n :}
-      sum copies + at len 1 max +
-   repeat drop ;
-
-\ Binds the variable to the expression itself.
-: +COPIED ( ^plan ^relation n str n -- )
-   {: plan r:^ var:n x:str copies:n :}
+\ Binds the variable to the expression itself, `(x)`, x a piece.
+: +COPIED ( ^plan ^relation n ^rel -- )
+   {: plan r:^ var:n x:^ :}
    plan NEW-SQL {: v:^ :}
-   v s" (" +SQL v x +SQL v s" )" +SQL
-   r RELATION-BINDINGS @ {: bs:^ :}
-   bs var GENERIC v SQL$ s" " BIND
-   copies bs LAST BINDING-COPIES ! ;
+   v s" (" +SQL v x +REL v s" )" +SQL
+   r RELATION-BINDINGS @ var GENERIC v s" " BIND ;
 
 \ The children of node n that may hold a call: two walked on their own
 \ and the one the walk goes on to, 0 for none. A list or a chain goes
@@ -2938,21 +3267,19 @@ STRUCTURE pruning DERIVE addr
       next
    repeat drop false ;
 
-\ Makes r a derived table of its bindings and the expression as the
-\ variable. PostgreSQL evaluates a materialized CTE once; a LATERAL item or
-\ a derived table with OFFSET 0 it may evaluate once for several solutions
-\ or again for each row one joins.
-: +EVALUATED ( ^plan ^relation n str -- )
-   {: plan r:^ var:n x:str :}
+\ PostgreSQL runs a materialized CTE once, but may rerun a LATERAL or OFFSET 0
+\ table per joined row, so r reads a CTE, whose column leaves copy nothing.
+: +EVALUATED ( ^plan ^relation n ^rel -- )
+   {: plan r:^ var:n x:^ :}
    r RELATION-BINDINGS @ var GENERIC x s" " BIND
    plan r SUBSELECT {: t:^ cols:^ :}
    plan NEW-SQL {: out:^ :}
    out s" (WITH c AS MATERIALIZED " +TEXT out t +REL
    out s"  SELECT * FROM c)" +TEXT
-   plan r INIT-RELATION
-   plan out cols r RELATION-FROM @ +TABLE {: bs:^ :}
-   bs VEC:COUNT 0 ?do 0 bs i VEC:AT BINDING-COPIES ! loop
-   bs r RELATION-BINDINGS ! ;
+   plan NEW-SQL {: from:^ :}
+   plan out cols from +TABLE {: bs:^ :}
+   bs VEC:COUNT 0 ?do 0 bs i VEC:AT BINDING-SQL @ REL-COPIES ! loop
+   from plan NEW-SQL bs r INIT-RELATION ;
 
 \ Binds ?x of `(e AS ?x)` or BIND(e AS ?x) in r.
 : +ALIAS ( ^plan ^relation n -- )
@@ -2960,14 +3287,9 @@ STRUCTURE pruning DERIVE addr
    plan TREE {: state :}
    plan state e NODE-B@ VAR {: var:n :}
    state e NODE-A@ {: value:n :}
-   plan r value EXPRESSION-SQL {: x:str :}
-   state value VOLATILE? x STR:LEN MOST-COPIED > or if
-      plan r var x +EVALUATED
-   else
-      plan r x COPIES-OF {: copies:n :}
-      x STR:LEN copies + MOST-COPIED >
-      if plan r var x +EVALUATED else plan r var x copies +COPIED then
-   then
+   plan r value EXPRESSION-SQL {: x:^ :}
+   state value VOLATILE? x SQL-LEN x COPIES + MOST-COPIED > or
+   if plan r var x +EVALUATED else plan r var x +COPIED then
    r RELATION-BINDINGS @ LAST {: b:^ :}
    plan value SURE? b BINDING-ALWAYS !
    plan b r RELATION-WHERE @ +OUTER ;
@@ -2977,13 +3299,13 @@ STRUCTURE pruning DERIVE addr
    it ITEM-MODE @ {: mode:n :}
    mode N-OPTIONAL = if plan it r OPTIONAL-STEP exit then
    mode N-MINUS = if plan it r MINUS-STEP exit then
-   mode N-BIND = if plan r it ITEM-NODE @ +ALIAS exit then
+   mode N-BIND = if
+      plan r it ITEM-NODE @ +ALIAS true r RELATION-BIND ! exit
+   then
    plan it r JOIN-STEP ;
 
-\ A walk's triple, the end it starts from and the end it reaches; start
-\ and end are the forms of its steps' two ends, kind its seeds' form;
-\ pairs is the steps' table, with once a CTE. ctes is its own CTEs,
-\ named name and a letter.
+\ A walk's triple, the end it starts from (seed) and the end it reaches
+\ (far); its CTEs are named name and a letter.
 STRUCTURE walk DERIVE addr
    FIELD node n
    FIELD seed n
@@ -2993,11 +3315,12 @@ STRUCTURE walk DERIVE addr
    FIELD op str
    FIELD operand n
    FIELD name str
-   FIELD pairs ^rel
-   FIELD once bool
-   FIELD start n
-   FIELD end n
-   FIELD kind n
+   FIELD pairs ^rel  \ the steps' table
+   FIELD once bool  \ pairs is a CTE
+   FIELD start n  \ the form of the steps' first end
+   FIELD end n  \ the form of the steps' second end
+   FIELD rooted bool  \ the steps hold an, the start's columns of the end's root
+   FIELD kind n  \ the seeds' form
    FIELD ctes ^ctes
 ;STRUCTURE
 
@@ -3014,22 +3337,21 @@ STRUCTURE walk DERIVE addr
    seed w WALK-SEED ! far w WALK-FAR !
    inverse w WALK-INVERSE ! rest w WALK-REST ! ;
 
-\ The index of the substitution's binding of the end when it binds it
-\ always, else -1.
-: OUTER-ALWAYS ( ^plan n -- n )
+\ The substitution's binding of the end when it binds it always, else
+\ NULL-PTR.
+: OUTER-ALWAYS ( ^plan n -- ^binding )
    {: plan node:n :}
-   plan TREE node VARIABLE? 0= if -1 exit then
-   plan PLAN-OUTER @ {: outer:^ :}
-   outer plan node VAR FIND-VAR {: k:n :}
-   k 0< if -1 exit then
-   outer k VEC:AT BINDING-ALWAYS @ if k else -1 then ;
+   plan TREE node VARIABLE? 0= if NULL-PTR exit then
+   plan PLAN-OUTER @ plan node VAR LOOKUP {: b:^ :}
+   b NULL-PTR = if b exit then
+   b BINDING-ALWAYS @ if b else NULL-PTR then ;
 
 \ Whether the end's value is given: a constant, or a variable the
 \ substitution binds always.
 : GIVEN? ( ^plan n -- bool )
    {: plan node:n :}
    plan TREE node VARIABLE? 0= if true exit then
-   plan node OUTER-ALWAYS -1 > ;
+   plan node OUTER-ALWAYS NULL-PTR <> ;
 
 \ The walk of the triple: from a given end, else from an end r binds
 \ always, the subject first; else from every node.
@@ -3053,9 +3375,7 @@ STRUCTURE walk DERIVE addr
 : PLUS? ( ^walk -- bool ) WALK-OP @ s" +" STR:= ;
 
 : WALK-CTE-NAME ( ^plan ^walk str -- str )
-   {: plan w:^ s:str :}
-   plan NEW-SQL {: v:^ :}
-   v w WALK-NAME @ +SQL v s +SQL v SQL$ ;
+   {: plan w:^ s:str :} plan TREE w WALK-NAME @ s JOIN$ ;
 
 \ The variable's native shape in the list, else GENERIC.
 : SHAPE-OF ( ^VEC:vector<binding> n -- n )
@@ -3064,23 +3384,23 @@ STRUCTURE walk DERIVE addr
    k 0< if GENERIC exit then
    bs k VEC:AT BINDING-SHAPE @ dup 0< if drop GENERIC then ;
 
-\ A value of the shape at sql, outside any scope.
+\ A value of the shape at sql, a leaf of its bytes, outside any scope.
 : VALUE ( ^plan n str -- ^binding )
    {: plan shape:n s:str :}
-   plan NEW-BINDINGS {: tmp:^ :}
-   tmp -1 shape s s" " BIND tmp LAST ;
+   plan NEW-SQL {: v:^ :} v s +SQL
+   plan AL [type] binding ALLOC:NEW {: b:^ :}
+   b -1 shape v s" " SET-BINDING b ;
 
 \ A given end's value: the constant, or the substitution's binding.
 : GIVEN ( ^plan n -- ^binding )
    {: plan node:n :}
-   plan node OUTER-ALWAYS {: k:n :}
-   k 0< if plan node CONSTANT-VALUE exit then
-   plan PLAN-OUTER @ k VEC:AT ;
+   plan node OUTER-ALWAYS {: b:^ :}
+   b NULL-PTR = if plan node CONSTANT-VALUE else b then ;
 
 \ Appends ` AND ` and the condition unless it is empty.
-: +CONDITION ( ^rel str -- )
-   {: v:^ a:str :}
-   a STR:LEN 0= if exit then v a +AND ;
+: +CONDITION ( ^rel ^rel -- )
+   {: v:^ a:^ :}
+   a EMPTY? if exit then v a +AND ;
 
 \ Appends the variable's value in the list in the form, ` AS ` and name.
 : +PAIR ( ^plan ^rel ^VEC:vector<binding> n n str -- )
@@ -3113,10 +3433,10 @@ STRUCTURE walk DERIVE addr
    w WALK-ONCE @ 0= if t w WALK-PAIRS ! exit then
    plan w s" p" WALK-CTE-NAME {: n:str :}
    plan AL plan PLAN-CTES @ n true t +CTE
-   plan AL n TEXT-REL w WALK-PAIRS ! ;
+   plan TEXTS n TEXT-REL w WALK-PAIRS ! ;
 
-\ The walk's steps: the operand from fresh a to fresh b, b to a walking
-\ from the object, as `(SELECT a, b ...)`, and the forms of a and b.
+\ The walk's steps `(SELECT a, b[, an] ...)`, the operand from fresh a to b,
+\ b to a when inverse, and their forms; an is a's columns of native b's root.
 : STEPS ( ^plan ^walk -- )
    {: plan w:^ :}
    plan TREE {: state :}
@@ -3128,7 +3448,7 @@ STRUCTURE walk DERIVE addr
    rp RELATION-EMPTY @ if
       GENERIC w WALK-START ! GENERIC w WALK-END !
       plan w
-         plan AL s" (SELECT NULL::jsonb AS a,NULL::jsonb AS b WHERE false)"
+         plan TEXTS s" (SELECT NULL::jsonb AS a,NULL::jsonb AS b WHERE false)"
          TEXT-REL PAIRS! exit
    then
    rp RELATION-BINDINGS @ {: bs:^ :}
@@ -3137,7 +3457,19 @@ STRUCTURE walk DERIVE addr
    plan NEW-SQL {: v:^ :}
    v s" (SELECT " +SQL plan v bs av w WALK-START @ s" a," +PAIR
    plan v bs bv w WALK-END @ s" b" +PAIR
-   plan v rp +FROM-WHERE v s" )" +TEXT plan w v PAIRS! ;
+   false w WALK-ROOTED !
+   w WALK-END @ {: end:n :} bs av FIND-VAR {: k:n :}
+   end -1 > w WALK-START @ GENERIC = and k -1 > and if
+      bs k VEC:AT BINDING-SPREAD @ {: sp:^ :}
+      sp NULL-PTR <> if
+         plan end sp ROOT-COLUMNS {: cs:^ :}
+         cs EMPTY? 0= if
+            v s" ," +SQL v cs +REL v s"  AS an" +SQL
+            true w WALK-ROOTED !
+         then
+      then
+   then
+   v rp +FROM-WHERE v s" )" +TEXT plan w v PAIRS! ;
 
 \ r's solutions become CTE nameR, which r then reads.
 : REST ( ^plan ^walk ^relation -- )
@@ -3145,9 +3477,9 @@ STRUCTURE walk DERIVE addr
    plan r SUBSELECT {: t:^ cols:^ :}
    plan w s" r" WALK-CTE-NAME {: n:str :}
    plan AL w WALK-CTES @ n false t +CTE
-   plan r INIT-RELATION
-   plan plan AL n TEXT-REL cols r RELATION-FROM @ +TABLE
-      r RELATION-BINDINGS ! ;
+   plan NEW-SQL {: from:^ :}
+   from plan NEW-SQL plan plan TEXTS n TEXT-REL cols from +TABLE
+   r INIT-RELATION ;
 
 \ Appends to the rel the given end's value as k, native where it has a
 \ shape.
@@ -3176,10 +3508,11 @@ STRUCTURE walk DERIVE addr
    plan w WALK-NODE @ x q n TRIPLE-NODE plan n VAR ;
 
 \ Every subject and object in the active graph: a UNION ALL's branches
-\ binding a fresh variable to each, and that variable.
+\ binding only a fresh variable to each, and that variable.
 : NODE-BRANCHES ( ^plan ^walk -- ^VEC:vector<relation> n )
    {: plan w:^ :}
    plan w NODE-TRIPLES {: down:n up:n var:n :}
+   plan INDEXES var +INDEX {: kept:^ :}
    plan AL 0 [type] relation VEC:NEW {: branches:^ :}
    plan PLAN-STORE @ STORE-SOURCES @ VEC:COUNT 0 ?do
       plan i SOURCE@ {: src:^ :}
@@ -3187,7 +3520,9 @@ STRUCTURE walk DERIVE addr
          plan down plan i RECORD branches VEC:PUSH SOURCE-BRANCH
          plan up plan i RECORD branches VEC:PUSH SOURCE-BRANCH
       then
-   loop branches var ;
+   loop
+   branches VEC:COUNT 0 ?do plan kept branches i VEC:AT KEEP-READ loop
+   branches var ;
 
 \ Appends to the statement's WITH the CTE of the active graph's nodes,
 \ k their column; answers its name and k's form, empty when no source
@@ -3198,8 +3533,8 @@ STRUCTURE walk DERIVE addr
    branches VEC:COUNT 0= if s" " GENERIC exit then
    plan branches UNION-TABLE {: t:^ cols:^ :}
    plan NEXT-ALIAS {: name:str :}
-   plan AL s" (SELECT " TEXT-REL {: body:^ :}
-   body plan s" n" var COLUMN-OF +TEXT body s"  AS k FROM " +TEXT
+   plan TEXTS s" (SELECT " TEXT-REL {: body:^ :}
+   body s" n" var +NAME-OF body s"  AS k FROM " +TEXT
    body t +REL body s"  AS n)" +TEXT
    plan AL plan PLAN-CTES @ name false body +CTE
    name cols var SHAPE-OF ;
@@ -3227,14 +3562,14 @@ STRUCTURE walk DERIVE addr
 \ serves it. Nothing when they cannot meet.
 : +EXISTS ( ^plan n n n ^binding ^rel -- )
    {: plan triple:n rec:n var:n k:^ out:^ :}
-   plan NEW-RELATION {: r:^ :}
+   plan AL [type] relation ALLOC:NEW {: r:^ :}
    plan triple plan rec RECORD r SOURCE-BRANCH
    r RELATION-BINDINGS @ {: bs:^ :}
    bs bs var FIND-VAR VEC:AT {: b:^ :}
    plan b k COMPATIBLE? 0= if exit then
    r RELATION-WHERE @ plan b k SAME-SQL +CONDITION
    out s"  OR " +SEP out s" EXISTS (SELECT 1" +TEXT
-   plan out r +FROM-WHERE out s" )" +TEXT ;
+   out r +FROM-WHERE out s" )" +TEXT ;
 
 \ The condition that `x.k` of the walk's kind is a node of the active
 \ graph: two EXISTS per source in the graph, `false` when none is added.
@@ -3270,19 +3605,48 @@ STRUCTURE walk DERIVE addr
    plan PLAN-GRAPH @ t NODE-TEST-GRAPH !
    w WALK-KIND @ t NODE-TEST-KIND ! rel t NODE-TEST-TEST ! rel ;
 
-\ Appends to out the values r binds the seed to; for `*` and `?` only
-\ the active graph's nodes (a seed answers itself by the zero-length
-\ path), tested on `x.k`.
-: REST-SEEDS ( ^plan ^walk ^relation ^rel -- )
-   {: plan w:^ r:^ out:^ :}
+\ Whether the node is variable var.
+: VAR-IS? ( ^plan n n -- bool )
+   {: plan node:n var:n :}
+   plan TREE node VARIABLE? 0= if false exit then
+   plan node VAR var = ;
+
+\ Whether the item binds var to a node of its graph: a joined triple's
+\ subject or object, or a walk's end when none is given: one answers itself.
+: NODE-END? ( ^plan ^item n -- bool )
+   {: plan it:^ var:n :}
+   plan TREE {: state :}
+   it ITEM-NODE @ {: triple:n :}
+   it ITEM-MODE @ N-PATH = if
+      plan state triple NODE-A@ GIVEN? plan state triple NODE-C@ GIVEN? or
+      if false exit then
+   else it JOINED-TRIPLE? 0= if false exit then then
+   plan state triple NODE-A@ var VAR-IS?
+   plan state triple NODE-C@ var VAR-IS? or ;
+
+\ Whether an item of the walk's graph binds var to a node there: one before
+\ index at, or a joined triple before to, since a run joins triples first.
+: NODE? ( ^plan ^VEC:vector<item> n n n -- bool )
+   {: plan items:^ var:n at:n to:n :}
+   items at VEC:AT ITEM-GRAPH @ {: graph:str :}
+   to 0 ?do
+      items i VEC:AT {: it:^ :}
+      i at < it JOINED-TRIPLE? or it ITEM-GRAPH @ graph STR:= and if
+         plan it var NODE-END? if true unloop exit then
+      then
+   loop false ;
+
+\ Appends to out the values r binds the seed to; for `*` and `?`, unless
+\ NODE? holds, only the graph's nodes: a seed answers itself at length zero.
+: REST-SEEDS ( ^plan ^VEC:vector<item> n n ^walk ^relation ^rel -- )
+   {: plan items:^ at:n to:n w:^ r:^ out:^ :}
    plan w WALK-SEED @ VAR {: var:n :}
    r RELATION-BINDINGS @ var SHAPE-OF w WALK-KIND !
    plan w s" r" WALK-CTE-NAME {: n:str :}
-   plan n var COLUMN-OF {: col:str :}
-   w PLUS? if
-      out col +TEXT out s"  AS k FROM " +TEXT out n +TEXT exit
+   w PLUS? plan items var at to NODE? or if
+      out n var +NAME-OF out s"  AS k FROM " +TEXT out n +TEXT exit
    then
-   out s" k FROM (SELECT " +TEXT out col +TEXT
+   out s" k FROM (SELECT " +TEXT out n var +NAME-OF
    out s"  AS k FROM " +TEXT out n +TEXT out s" ) AS x" +TEXT
    out s"  WHERE (" +TEXT out plan w NODE-SQL +REL out s" )" +TEXT ;
 
@@ -3295,13 +3659,13 @@ STRUCTURE walk DERIVE addr
    t STR:LEN 0= if v s" NULL::jsonb AS k WHERE false" +SQL exit then
    v s" k FROM " +SQL v t +SQL ;
 
-\ Adds to the walk's CTEs nameS, the distinct seeds k the walk starts
-\ from.
-: SEEDS ( ^plan ^walk ^relation -- )
-   {: plan w:^ r:^ :}
-   plan AL s" (SELECT DISTINCT " TEXT-REL {: body:^ :}
+\ Adds to the walk's CTEs nameS, the distinct seeds k the walk at index
+\ at in items, in a run ending before index to, starts from.
+: SEEDS ( ^plan ^VEC:vector<item> n n ^walk ^relation -- )
+   {: plan items:^ at:n to:n w:^ r:^ :}
+   plan TEXTS s" (SELECT DISTINCT " TEXT-REL {: body:^ :}
    plan w WALK-SEED @ GIVEN? if plan w body GIVEN-SEEDS
-   else w WALK-REST @ if plan w r body REST-SEEDS
+   else w WALK-REST @ if plan items at to w r body REST-SEEDS
    else w PLUS? if w body PAIR-SEEDS
    else plan w body NODE-SEEDS then then then
    body s" )" +TEXT
@@ -3313,14 +3677,14 @@ STRUCTURE walk DERIVE addr
 \ (SELECT * FROM` the query ` AS p WHERE` it ` OFFSET 0) AS p`. The fence
 \ keeps PostgreSQL from flattening the lookup into a hash join that scans
 \ every pair on each step: a 1,000-node `p+` took 1.1 s that way.
-: +STEP ( ^rel ^walk str -- )
-   {: out:^ w:^ c:str :}
+: +STEP ( ^rel ^walk ^rel -- )
+   {: out:^ w:^ c:^ :}
    w WALK-ONCE @ {: once:bool :}
    once if out s"  JOIN " +TEXT
    else out s"  CROSS JOIN LATERAL (SELECT * FROM " +TEXT then
    out w WALK-PAIRS @ +REL out s"  AS p" +TEXT
    once if out s"  ON " +TEXT else out s"  WHERE " +TEXT then
-   c STR:LEN 0= if out s" true" +TEXT else out c +TEXT then
+   c EMPTY? if out s" true" +TEXT else out c +REL then
    once 0= if out s"  OFFSET 0) AS p" +TEXT then ;
 
 \ Appends ` AS n`, the step end p.b in the steps' start form.
@@ -3333,17 +3697,13 @@ STRUCTURE walk DERIVE addr
    else v plan start SHAPE@ SHAPE-IN @ s" p.b" +CALL then
    v s"  AS n" +SQL ;
 
-\ Adds to the walk's CTEs nameW(k, e[, n]): each seed k and the ends e
-\ of its steps, for `?` one step, else UNION (distinct) each further
-\ step, so a cycle ends. When one of the steps' start and end forms is a
-\ term, n is e in the start form, converted once per end so that a step
-\ compares columns: converting for each pair scanned puts the host's term
-\ parser in the inner loop.
+\ Adds to the walk's CTEs nameW(k, e[, n]): each seed k and the ends e of
+\ its steps, for `?` one step, else UNION (distinct) each further step.
 : WALK-CTE ( ^plan ^walk -- )
    {: plan w:^ :}
    w WALK-OP @ s" ?" STR:= 0= {: more:bool :}
    w WALK-START @ {: start:n :} w WALK-END @ {: end:n :}
-   more start 0< end 0< xor and {: key:bool :}
+   more start 0< end 0< xor and w WALK-ROOTED @ 0= and {: key:bool :}
    plan w s" s" WALK-CTE-NAME {: s:str :}
    plan w s" w" WALK-CTE-NAME {: n:str :}
    plan NEW-SQL {: v:^ :}
@@ -3355,9 +3715,14 @@ STRUCTURE walk DERIVE addr
    more if
       v s"  UNION SELECT w.k,p.b" +SQL key if plan v w +KEY then
       v s"  FROM " +SQL v n +SQL v s"  AS w" +SQL
-      key if plan start s" w.n" VALUE else plan end s" w.e" VALUE then
-         {: at:^ :}
-      v w plan plan start s" p.a" VALUE at SAME-SQL +STEP
+      w WALK-ROOTED @ if
+         plan plan end s" p.an" VALUE plan end s" w.e" VALUE SAME-SQL
+      else
+         key if plan start s" w.n" VALUE else plan end s" w.e" VALUE then
+            {: at:^ :}
+         plan plan start s" p.a" VALUE at SAME-SQL
+      then {: c:^ :}
+      v w c +STEP
    then v s" )" +TEXT
    plan AL w WALK-CTES @ n false v +CTE ;
 
@@ -3373,23 +3738,23 @@ STRUCTURE walk DERIVE addr
    seen var FIND-VAR {: k:n :}
    k -1 > if cond plan seen k VEC:AT b SAME-SQL +CONDITION exit then
    b seen COPY-BINDING var seen LAST BINDING-VAR !
-   cols var form s" " s" " BIND
+   cols var form plan PLAN-EMPTY @ s" " BIND
    list s" ," +SEP plan list b form +VALUE
-   list s"  AS " +SQL list plan var COLUMN$ +SQL ;
+   list s"  AS " +SQL list var +NAME ;
 
 \ Appends `SELECT ... FROM t WHERE ...`, a part of the walk's answer
 \ whose start is k and end e, the end in the form; answers its columns.
 : +PART ( ^plan ^walk str ^binding ^binding n ^rel
       -- ^VEC:vector<binding> )
    {: plan w:^ t:str k:^ e:^ form:n v:^ :}
-   plan NEW-BINDINGS {: seen:^ :} plan NEW-BINDINGS {: cols:^ :}
+   plan 0 NEW-BINDINGS {: seen:^ :} plan 0 NEW-BINDINGS {: cols:^ :}
    plan NEW-SQL {: list:^ :} plan NEW-SQL {: cond:^ :}
    plan w WALK-SEED @ GIVEN? 0= if
       plan w WALK-SEED @ k w WALK-KIND @ seen cols list cond +END
    then
    plan w WALK-FAR @ e form seen cols list cond +END
-   v s" SELECT " +SQL v list SQL$ +SQL v s"  FROM " +SQL v t +SQL
-   cond EMPTY? 0= if v s"  WHERE " +SQL v cond SQL$ +SQL then cols ;
+   v s" SELECT " +SQL v list +REL v s"  FROM " +SQL v t +SQL
+   cond EMPTY? 0= if v s"  WHERE " +SQL v cond +REL then cols ;
 
 \ Gives the rel the walk's CTE list as its WITH RECURSIVE; the final write
 \ writes the list as it then stands.
@@ -3399,7 +3764,7 @@ STRUCTURE walk DERIVE addr
 
 : PARENS ( ^plan ^rel -- ^rel )
    {: plan r:^ :}
-   plan AL s" (" TEXT-REL {: out:^ :}
+   plan TEXTS s" (" TEXT-REL {: out:^ :}
    out r +REL out s" )" +TEXT out ;
 
 \ The walk's answer as a derived table and its columns: its rows, and
@@ -3428,24 +3793,23 @@ STRUCTURE walk DERIVE addr
    w c RECURSIVE! plan c r +SELECT
    plan c PARENS {: out:^ :}
    r RELATION-BINDINGS @ {: cols:^ :}
-   plan r INIT-RELATION
-   plan out cols r RELATION-FROM @ +TABLE r RELATION-BINDINGS ! ;
+   plan NEW-SQL {: from:^ :}
+   from plan NEW-SQL plan out cols from +TABLE r INIT-RELATION ;
 
-\ The walk's answer, its ends meeting the substitution, joined to r,
-\ which a seed r binds first becomes.
-: WALK-STEP ( ^plan ^item ^relation -- )
-   {: plan it:^ r:^ :}
-   plan it ITEM-NODE @ r NEW-WALK {: w:^ :}
+\ Joins to r the walk at index at in items, of a run ending before index to,
+\ its ends meeting the substitution; r then drops the variables SETTLED by it.
+: WALK-STEP ( ^plan ^VEC:vector<item> n n ^relation -- )
+   {: plan items:^ at:n to:n r:^ :}
+   plan items at VEC:AT ITEM-NODE @ r NEW-WALK {: w:^ :}
    plan w STEPS
    w WALK-REST @ if plan w r REST then
-   plan w r SEEDS
+   plan items at to w r SEEDS
    plan w WALK-CTE
    plan w ANSWER {: t:^ cols:^ :}
    plan t cols SUBSTITUTED {: a:^ :}
    r RELATION-FROM @ {: from:^ :}
    from s"  CROSS JOIN " +SEP
-   plan r RELATION-BINDINGS @ plan a cols from +TABLE
-      r RELATION-WHERE @ false MEET-ALL
+   plan a cols r JOIN-TABLE
    w WALK-REST @ if plan w r WRAP then ;
 
 \ Folds the walks among items from..to, each under its item's graph.
@@ -3456,7 +3820,7 @@ STRUCTURE walk DERIVE addr
       items i VEC:AT {: it:^ :}
       it ITEM-MODE @ N-PATH = if
          it ITEM-GRAPH @ plan PLAN-GRAPH !
-         plan it r WALK-STEP
+         plan items i to r WALK-STEP
          outer plan PLAN-GRAPH !
       then
    loop ;
@@ -3466,7 +3830,7 @@ STRUCTURE walk DERIVE addr
 : UNION? ( ^plan ^item -- bool )
    {: plan it:^ :}
    it ITEM-MODE @ 0<> it ITEM-NODE @ 0= or if false exit then
-   plan it ORIGINS VEC:COUNT 1 > ;
+   plan it ORIGINS LEN 1 > ;
 
 : DRIVER? ( ^item -- bool )
    {: it:^ :}
@@ -3482,9 +3846,9 @@ STRUCTURE walk DERIVE addr
 \ The head of the variables the item binds always, -1 when there are none.
 : COMPONENT ( ^VEC:vector<n> ^item -- n )
    {: links:^ it:^ :}
-   it ITEM-CHOICES @ 0 VEC:AT CHOICE-KINDS @ {: kinds:^ :}
-   kinds VEC:COUNT 0 ?do
-      kinds i VEC:AT {: b:^ :}
+   it ITEM-COLUMNS @ {: cols:^ :}
+   cols VEC:COUNT 0 ?do
+      cols i VEC:AT {: b:^ :}
       b BINDING-ALWAYS @ if
          links b BINDING-VAR @ HEAD unloop exit
       then
@@ -3494,9 +3858,9 @@ STRUCTURE walk DERIVE addr
 : LINK ( ^VEC:vector<n> ^item -- )
    {: links:^ it:^ :}
    links it COMPONENT {: head:n :}
-   it ITEM-CHOICES @ 0 VEC:AT CHOICE-KINDS @ {: kinds:^ :}
-   kinds VEC:COUNT 0 ?do
-      kinds i VEC:AT {: b:^ :}
+   it ITEM-COLUMNS @ {: cols:^ :}
+   cols VEC:COUNT 0 ?do
+      cols i VEC:AT {: b:^ :}
       b BINDING-ALWAYS @ if
          head links links b BINDING-VAR @ HEAD VEC:AT !
       then
@@ -3506,8 +3870,8 @@ STRUCTURE walk DERIVE addr
 \ always have one head.
 : COMPONENTS ( ^plan ^VEC:vector<item> n n -- ^VEC:vector<n> )
    {: plan items:^ from:n to:n :}
-   plan INDEXES {: links:^ :}
-   plan PLAN-VARIABLES @ VEC:COUNT 0 ?do i links VEC:PUSH ! loop
+   INDEXES plan PLAN-VARIABLES @ VEC:COUNT 0 ?do plan swap i +INDEX loop
+   {: links:^ :}
    to from ?do
       items i VEC:AT {: it:^ :}
       it DRIVER? if links it LINK then
@@ -3524,21 +3888,6 @@ STRUCTURE walk DERIVE addr
       then
    loop d ;
 
-\ Leaves r the bindings of the listed variables it binds always, its
-\ null tests written first, since it drops bindings.
-: KEEP-READ ( ^plan ^VEC:vector<n> ^relation -- )
-   {: plan vars:^ r:^ :}
-   r +NULL-TESTS
-   r RELATION-BINDINGS @ {: bs:^ :}
-   plan NEW-BINDINGS {: cols:^ :}
-   vars VEC:COUNT 0 ?do
-      bs vars i VEC:AT @ FIND-VAR {: k:n :}
-      k -1 > if
-         bs k VEC:AT {: b:^ :}
-         b BINDING-ALWAYS @ if b cols COPY-BINDING then
-      then
-   loop cols r RELATION-BINDINGS ! ;
-
 \ Appends to the plan's ctes r's bindings as a CTE, which r then reads.
 : HOIST ( ^plan ^relation -- )
    {: plan r:^ :}
@@ -3547,7 +3896,7 @@ STRUCTURE walk DERIVE addr
    plan NEW-SQL {: out:^ :}
    out s" (" +TEXT plan out r +SELECT out s" )" +TEXT
    plan AL plan PLAN-CTES @ name true out +CTE
-   plan r INIT-RELATION
+   plan NEW-SQL plan NEW-SQL plan 0 NEW-BINDINGS r INIT-RELATION
    r RELATION-FROM @ name +TEXT
    cols VEC:COUNT 0 ?do
       cols i VEC:AT BINDING-VAR @ {: var:n :}
@@ -3561,14 +3910,14 @@ STRUCTURE walk DERIVE addr
    {: plan r:^ var:n keys:^ :}
    r RELATION-BINDINGS @ {: bs:^ :}
    bs var SHAPE-OF {: form:n :}
-   plan NEXT-ALIAS {: name:str :}
+   plan NEXT-ALIAS {: name:str :} plan NEW-SQL {: key:^ :} key name +SQL
    plan NEW-SQL {: v:^ :}
    v s" (SELECT DISTINCT " +SQL
    plan v bs bs var FIND-VAR VEC:AT form +VALUE
    v s"  AS k" +SQL
-   plan v r +FROM-WHERE v s" )" +TEXT
+   v r +FROM-WHERE v s" )" +TEXT
    plan AL plan PLAN-CTES @ name true v +CTE
-   keys var form name s" " BIND ;
+   keys var form key s" " BIND ;
 
 \ Adds the keys of the listed variables that the component's drivers r
 \ bind always.
@@ -3584,43 +3933,39 @@ STRUCTURE walk DERIVE addr
 \ EXISTS, whose substitution a CTE at the statement cannot read.
 : KEYED? ( ^plan ^item -- bool )
    {: plan it:^ :}
-   plan PLAN-OUTER @ VEC:COUNT 0<> if false exit then
+   plan PLAN-OUTER @ BINDS-ANY? if false exit then
    plan TREE {: state :}
    it ITEM-NODE @ {: triple:n :}
    plan state triple NODE-A@ GIVEN?
    plan state triple NODE-C@ GIVEN? or 0= ;
 
-\ Adds to the list the item's variables not yet there.
-: +READ-VARS ( ^plan ^item ^VEC:vector<n> -- )
+\ The list with the item's variables not yet there added.
+: +READ-VARS ( ^plan ^item ^VEC:vector<n> -- ^VEC:vector<n> )
    {: plan it:^ vars:^ :}
    plan TREE {: state :}
-   3 0 do
+   vars 3 0 do
       state it ITEM-NODE @ i PART {: node:n :}
-      plan node GIVEN? 0= if
-         plan node VAR {: var:n :}
-         vars var INDEXED? 0= if var vars VEC:PUSH ! then
-      then
+      plan node GIVEN? 0= if plan swap plan node VAR +ONCE then
    loop ;
 
 \ The variables that the unions among items from..to that take keys read.
 : READ-VARS ( ^plan ^VEC:vector<item> n n -- ^VEC:vector<n> )
    {: plan items:^ from:n to:n :}
-   plan INDEXES {: vars:^ :}
-   to from ?do
+   INDEXES to from ?do
       items i VEC:AT {: it:^ :}
       it ITEM-UNION @ if
-         plan it KEYED? if plan it vars +READ-VARS then
+         plan it KEYED? if plan it rot +READ-VARS then
       then
-   loop vars ;
+   loop ;
 
 \ The keys r's bindings would give, each in its form, naming no CTE.
 : FORMS ( ^plan ^relation -- ^VEC:vector<binding> )
    {: plan r:^ :}
    r RELATION-BINDINGS @ {: bs:^ :}
-   plan NEW-BINDINGS {: keys:^ :}
+   plan 0 NEW-BINDINGS {: keys:^ :}
    bs VEC:COUNT 0 ?do
       bs i VEC:AT BINDING-VAR @ {: var:n :}
-      keys var bs var SHAPE-OF s" " s" " BIND
+      keys var bs var SHAPE-OF plan PLAN-EMPTY @ s" " BIND
    loop keys ;
 
 \ The index in keys of the item's DRIVER when it is a keyed union, else
@@ -3635,54 +3980,52 @@ STRUCTURE walk DERIVE addr
 : IN-ORDER ( ^plan ^VEC:vector<binding> ^VEC:vector<n>
       -- ^VEC:vector<n> )
    {: plan keys:^ hits:^ :}
-   plan INDEXES {: vars:^ :}
-   keys VEC:COUNT 0 ?do
+   INDEXES keys VEC:COUNT 0 ?do
       keys i VEC:AT BINDING-VAR @ {: var:n :}
-      hits var INDEXED? if var vars VEC:PUSH ! then
-   loop vars ;
+      hits var INDEXED? if plan swap var +INDEX then
+   loop ;
 
 \ Adds to driven the index of each union among items from..to not there
-\ that one of keys DRIVES; answers those keys' variables.
+\ that one of keys DRIVES; answers driven and those keys' variables.
 : DRIVING ( ^plan ^VEC:vector<item> n n ^VEC:vector<binding>
-      ^VEC:vector<n> -- ^VEC:vector<n> )
+      ^VEC:vector<n> -- ^VEC:vector<n> ^VEC:vector<n> )
    {: plan items:^ from:n to:n keys:^ driven:^ :}
-   plan INDEXES {: hits:^ :}
-   to from ?do
-      driven i INDEXED? 0= if
-         plan keys items i VEC:AT DRIVES {: d:n :}
-         d -1 > if
-            i driven VEC:PUSH !
-            keys d VEC:AT BINDING-VAR @ hits VEC:PUSH !
-         then
-      then
-   loop plan keys hits IN-ORDER ;
+   driven INDEXES to from ?do
+      {: now:^ hits:^ :}
+      -1 now i INDEXED? 0= if drop plan keys items i VEC:AT DRIVES then
+      {: d:n :}
+      d -1 > if
+         plan now i +INDEX
+         plan hits keys d VEC:AT BINDING-VAR @ +INDEX
+      else now hits then
+   loop {: out:^ found:^ :} out plan keys found IN-ORDER ;
 
 \ The keys of the unions among items from..to: of each component in
 \ turn, those that drive a union no earlier component's keys drive.
 : RUN-KEYS ( ^plan ^VEC:vector<item> n n -- ^VEC:vector<binding> )
    {: plan items:^ from:n to:n :}
-   plan NEW-BINDINGS {: keys:^ :}
+   plan 0 NEW-BINDINGS {: keys:^ :}
    plan items from to READ-VARS {: vars:^ :}
-   vars VEC:COUNT 0= if keys exit then
+   vars LEN 0= if keys exit then
    plan items from to COMPONENTS {: links:^ :}
-   plan INDEXES {: done:^ :} plan INDEXES {: driven:^ :}
-   vars VEC:COUNT 0 ?do
+   INDEXES INDEXES vars LEN 0 ?do
+      {: done:^ driven:^ :}
       links vars i VEC:AT @ HEAD {: head:n :}
-      done head INDEXED? 0= if
-         head done VEC:PUSH !
+      done head INDEXED? if done driven else
+         plan done head +INDEX
          plan items from to links head DRIVERS {: d:^ :}
          plan vars d KEEP-READ
          plan items from to plan d FORMS driven DRIVING
-         {: used:^ :} plan used d keys +KEYS-OF
+         {: now:^ used:^ :} plan used d keys +KEYS-OF now
       then
-   loop keys ;
+   loop 2drop keys ;
 
-\ Joins the union item into r, driven by the run's keys if it takes any.
+\ Joins the union item into r, driven by the run's keys if it takes any;
+\ r then drops the variables SETTLED by it.
 : UNION-STEP ( ^plan ^item ^VEC:vector<binding> ^relation -- )
    {: plan it:^ run:^ r:^ :}
-   plan it KEYED? if run else plan NEW-BINDINGS then {: keys:^ :}
-   plan r RELATION-BINDINGS @ plan it keys r UNION-SQL
-   r RELATION-WHERE @ false MEET-ALL ;
+   plan it KEYED? if run else plan 0 NEW-BINDINGS then {: keys:^ :}
+   plan it keys r UNION-SQL ;
 
 \ Folds the unions among items from..to, then the walks.
 : LATE ( ^plan ^VEC:vector<item> n n ^relation -- )
@@ -3708,11 +4051,16 @@ STRUCTURE walk DERIVE addr
       then
    loop ;
 
-\ The variables marked that each solution has before r's next item.
+\ Marks in the plan's bound, until the next call, each variable r or a layer
+\ binds always; an inner layer's binding is always where an outer one is.
 : BOUND-NOW ( ^plan ^relation -- ^VEC:vector<bool> )
    {: plan r:^ :}
-   plan AL plan PLAN-VARIABLES @ VEC:COUNT [type] bool VEC:NEW {: bound:^ :}
-   plan PLAN-OUTER @ bound +ALWAYS
+   plan PLAN-BOUND @ {: bound:^ :}
+   bound 0 VEC:RESIZE
+   bound plan PLAN-VARIABLES @ VEC:COUNT VEC:RESIZE
+   plan PLAN-OUTER @ begin dup NULL-PTR <> while
+      dup LAYER-BINDINGS @ bound +ALWAYS LAYER-UNDER @
+   repeat drop
    r RELATION-BINDINGS @ bound +ALWAYS bound ;
 
 : GIVEN-END? ( ^plan ^item -- bool )
@@ -3726,22 +4074,18 @@ STRUCTURE walk DERIVE addr
 \ For each item: 1 when it has a given end, 0 when not, -1 for a walk.
 : ENDS ( ^plan ^VEC:vector<item> -- ^VEC:vector<n> )
    {: plan items:^ :}
-   plan INDEXES {: ends:^ :}
-   items VEC:COUNT 0 ?do
+   INDEXES items VEC:COUNT 0 ?do
       items i VEC:AT {: it:^ :}
       it ITEM-MODE @ N-PATH = if -1
       else plan it GIVEN-END? if 1 else 0 then then
-      ends VEC:PUSH !
-   loop ends ;
-
-: ITEM-KINDS ( ^item -- ^VEC:vector<binding> )
-   ITEM-CHOICES @ 0 VEC:AT CHOICE-KINDS @ ;
+      {: end:n :} plan swap end +INDEX
+   loop ;
 
 : SHARES? ( ^item ^VEC:vector<bool> -- bool )
    {: it:^ bound:^ :}
-   it ITEM-KINDS {: kinds:^ :}
-   kinds VEC:COUNT 0 ?do
-      bound kinds i VEC:AT BINDING-VAR @ VEC:AT @ if
+   it ITEM-COLUMNS @ {: cols:^ :}
+   cols VEC:COUNT 0 ?do
+      bound cols i VEC:AT BINDING-VAR @ VEC:AT @ if
          true unloop exit
       then
    loop false ;
@@ -3769,7 +4113,8 @@ STRUCTURE walk DERIVE addr
    from ITEM-CHOICES @ to ITEM-CHOICES !
    from ITEM-GRAPH @ to ITEM-GRAPH !
    from ITEM-UNION @ to ITEM-UNION !
-   from ITEM-BRANCHES @ to ITEM-BRANCHES ! ;
+   from ITEM-BRANCHES @ to ITEM-BRANCHES !
+   from ITEM-WHERE @ to ITEM-WHERE ! ;
 
 \ Copies of items from..to.
 : COPY-RUN ( ^plan ^VEC:vector<item> n n -- ^VEC:vector<item> )
@@ -3790,7 +4135,7 @@ STRUCTURE walk DERIVE addr
          run ends bound NEXT-ITEM {: k:n :}
          run k VEC:AT {: it:^ :}
          it place COPY-ITEM
-         it ITEM-KINDS bound +ALWAYS
+         it ITEM-COLUMNS @ bound +ALWAYS
          -1 ends k VEC:AT !
       then
    loop ;
@@ -3857,7 +4202,7 @@ STRUCTURE walk DERIVE addr
    then
    negated if out s" NOT " +SQL then
    out s" EXISTS (SELECT 1" +SQL
-   plan out r +FROM-WHERE out s" )" +SQL ;
+   out r +FROM-WHERE out s" )" +SQL ;
 
 \ The query's LIMIT and OFFSET.
 : SLICE-SQL ( ^plan n ^rel -- )
@@ -3868,43 +4213,48 @@ STRUCTURE walk DERIVE addr
       state m NODE-K {: kind:n :}
       kind N-LIMIT = kind N-OFFSET = or if
          kind N-LIMIT = if v s"  LIMIT " +SQL else v s"  OFFSET " +SQL then
-         v plan state m NODE NODE-VALUE @ NUMBER-ARG +SQL
+         plan v state m NODE NODE-VALUE @ +NUMBER-ARG
          v s" ::bigint" +SQL
       then state list NODE-B@
    repeat drop ;
 
-\ `ROW(...)` of the relation's anchors.
-: ROW-SQL ( ^plan ^relation -- str )
-   {: plan r:^ :}
+\ Appends `ROW(...)` of the anchors of the relation's named variables: a
+\ blank node or a path's middle variable is no part of a solution.
+: +ROW ( ^plan ^rel ^relation -- )
+   {: plan v:^ r:^ :}
    r RELATION-BINDINGS @ {: bs:^ :}
-   plan NEW-SQL {: v:^ :}
+   plan PLAN-VARIABLES @ {: vars:^ :}
    v s" ROW(" +SQL
-   bs VEC:COUNT 0 ?do
-      i 0<> if v s" ," +SQL then v bs i VEC:AT BINDING-SQL @ +SQL
-   loop v s" )" +SQL v SQL$ ;
+   false bs VEC:COUNT 0 ?do
+      bs i VEC:AT {: b:^ :}
+      vars b BINDING-VAR @ VEC:AT NAME-TEXT @ s" _:" STR:STARTS-WITH? 0= if
+         if v s" ," +SQL then v b +BINDING true
+      then
+   loop drop v s" )" +SQL ;
 
-\ COUNT's operand: `*`, for DISTINCT * the row of every variable, a bound
-\ variable's anchor, native when native, else the expression's term.
-: COUNTED ( ^plan ^relation n -- str )
-   {: plan r:^ call:n :}
+\ Appends COUNT's operand: `*`, the named variables' row for DISTINCT *, a
+\ bound variable's anchor, native when native, else the expression's term.
+: +COUNTED ( ^plan ^rel ^relation n -- )
+   {: plan v:^ r:^ call:n :}
    plan TREE {: state :}
    state call NODE NODE-FLAGS @ {: flags:n :}
    flags F-STAR and 0<> if
-      flags F-DISTINCT and 0= if s" *" exit then
-      plan r ROW-SQL exit
+      flags F-DISTINCT and 0= if v s" *" +SQL exit then
+      plan v r +ROW exit
    then
    state state call NODE-A@ NODE-A@ {: e:n :}
    r RELATION-BINDINGS @ {: bs:^ :}
    state e NODE-K N-VAR = if
       bs plan e VAR FIND-VAR {: k:n :}
-      k -1 > if bs k VEC:AT BINDING-SQL @ exit then
-   then plan r e EXPRESSION-SQL ;
+      k -1 > if v bs k VEC:AT +BINDING exit then
+   then v plan r e EXPRESSION-SQL +REL ;
 
-\ GROUP_CONCAT's SEPARATOR literal node, or zero for its default.
-: SEPARATOR-SQL ( ^plan n -- str )
-   {: plan sep:n :}
-   sep 0= if s" NULL::text" exit then
-   plan plan TREE sep TEXT$ TEXT-ARG ;
+\ Appends GROUP_CONCAT's SEPARATOR, the literal node, or zero for its
+\ default.
+: +SEPARATOR ( ^plan ^rel n -- )
+   {: plan v:^ sep:n :}
+   sep 0= if v s" NULL::text" +SQL exit then
+   plan v plan TREE sep TEXT$ +TEXT-ARG ;
 
 \ The binding in r of the call's operand, a variable r binds.
 : OPERAND-BINDING ( ^plan ^relation n -- ^binding )
@@ -3912,6 +4262,11 @@ STRUCTURE walk DERIVE addr
    plan TREE {: state :}
    r RELATION-BINDINGS @ {: bs:^ :}
    bs bs plan state state call NODE-A@ NODE-A@ VAR FIND-VAR VEC:AT ;
+
+\ Appends the value of the call's operand in r.
+: +OPERAND ( ^plan ^rel ^relation n -- )
+   {: plan v:^ r:^ call:n :}
+   v plan r call OPERAND-BINDING +BINDING ;
 
 \ The shape the call reads natively over r, else -1: SUM, AVG, MIN or
 \ MAX without DISTINCT of a variable r binds always to a column of a
@@ -3930,53 +4285,51 @@ STRUCTURE walk DERIVE addr
 
 \ SUM over column c: its datatype decimal where a value has a fractional
 \ digit, else integer, and 0 for none.
-: SUM$ ( ^plan str -- str )
-   {: plan c:str :}
+: SUM-SQL ( ^plan ^rel -- ^rel )
+   {: plan c:^ :}
    plan NEW-SQL {: v:^ :}
-   v s" sparql.number(coalesce(" +SQL v s" sum" c +CALL
-   v s" ,0),CASE WHEN max(" +SQL v s" min_scale" c +CALL
-   v s" )>0 THEN 'decimal' ELSE 'integer' END)" +SQL v SQL$ ;
+   v s" sparql.number(coalesce(" +SQL v s" sum" c +APPLY
+   v s" ,0),CASE WHEN max(" +SQL v s" min_scale" c +APPLY
+   v s" )>0 THEN 'decimal' ELSE 'integer' END)" +SQL v ;
 
 \ AVG over column c as sparql.aggregate answers it: the sum's canonical
 \ value over the count, unbound where the sum's text is past the 16,383
 \ bytes sparql.numeric reads, an integer 0 for no value.
-: AVG$ ( ^plan str -- str )
-   {: plan c:str :}
-   plan NEW-SQL {: n:^ :} n s" count" c +CALL
-   n SQL$ {: cnt:str :}
-   plan NEW-SQL {: t:^ :} t s" sum" c +CALL
-   t SQL$ {: total:str :}
+: AVG-SQL ( ^plan ^rel -- ^rel )
+   {: plan c:^ :}
+   plan NEW-SQL {: cnt:^ :} cnt s" count" c +APPLY
+   plan NEW-SQL {: total:^ :} total s" sum" c +APPLY
    plan NEW-SQL {: v:^ :}
-   v s" sparql.number(CASE WHEN " +SQL v cnt +SQL
+   v s" sparql.number(CASE WHEN " +SQL v cnt +SPLICE
    v s" =0 THEN 0 WHEN octet_length(" +SQL
-   v s" sparql.format_decimal" total +CALL
-   v s" )<=16383 THEN " +SQL v s" trim_scale" total +CALL
-   v s" /" +SQL v cnt +SQL v s"  END,CASE WHEN " +SQL v cnt +SQL
-   v s" =0 THEN 'integer' ELSE 'decimal' END)" +SQL v SQL$ ;
+   v s" sparql.format_decimal" total +APPLY
+   v s" )<=16383 THEN " +SQL v s" trim_scale" total +APPLY
+   v s" /" +SQL v cnt +SPLICE v s"  END,CASE WHEN " +SQL v cnt +SPLICE
+   v s" =0 THEN 'integer' ELSE 'decimal' END)" +SQL v ;
 
 \ The call's min or max of column c of shape k, text by code point.
-: EXTREME$ ( ^plan n n str -- str )
-   {: plan call:n k:n c:str :}
+: EXTREME-SQL ( ^plan n n ^rel -- ^rel )
+   {: plan call:n k:n c:^ :}
    plan NEW-SQL {: v:^ :}
    plan TREE call s" MIN" CALL-IS? {: least:bool :}
    least if v s" min(" +SQL else v s" max(" +SQL then
-   v c +SQL
+   v c +SPLICE
    plan k STRINGS? if v s\"  COLLATE \"C\"" +SQL then
-   v s" )" +SQL v SQL$ ;
+   v s" )" +SQL v ;
 
 \ The call over column c of shape k, as NATIVE-SHAPE found it.
-: NATIVE$ ( ^plan n n str -- str )
-   {: plan call:n k:n c:str :}
+: NATIVE-SQL ( ^plan n n ^rel -- ^rel )
+   {: plan call:n k:n c:^ :}
    plan TREE {: state :}
-   state call s" SUM" CALL-IS? if plan c SUM$ exit then
-   state call s" AVG" CALL-IS? if plan c AVG$ exit then
-   plan call k c EXTREME$ {: e:str :}
+   state call s" SUM" CALL-IS? if plan c SUM-SQL exit then
+   state call s" AVG" CALL-IS? if plan c AVG-SQL exit then
+   plan call k c EXTREME-SQL {: e:^ :}
    plan NEW-SQL {: v:^ :}
-   v plan k SHAPE@ SHAPE-OUT @ e +CALL v SQL$ ;
+   v plan k SHAPE@ SHAPE-OUT @ e +APPLY v ;
 
 \ The keys of list n's ORDER BY conditions over r, `,`-joined, each
 \ `sparql.order(term)` and DESC where written.
-: CONDITION-KEYS ( ^plan ^relation n -- str )
+: CONDITION-KEYS ( ^plan ^relation n -- ^rel )
    {: plan r:^ list:n :}
    plan TREE {: state :}
    plan NEW-SQL {: v:^ :}
@@ -3984,47 +4337,47 @@ STRUCTURE walk DERIVE addr
       {: each:n :} state each NODE-A@ {: m:n :}
       state m NODE-K N-ORDER = if
          v s" ," +SEP v s" sparql.order(" +SQL
-         v plan r state m NODE-A@ EXPRESSION-SQL +SQL v s" )" +SQL
+         v plan r state m NODE-A@ EXPRESSION-SQL +REL v s" )" +SQL
          state m NODE NODE-FLAGS @ F-DESC and 0<> if
             v s"  DESC" +SQL
          then
       then state each NODE-B@
-   repeat drop v SQL$ ;
+   repeat drop v ;
 
 \ array_agg of the call's operand terms over r, in its ORDER BY's order
 \ where it has one.
-: TERMS-SQL ( ^plan ^relation n -- str )
+: TERMS-SQL ( ^plan ^relation n -- ^rel )
    {: plan r:^ call:n :}
    plan TREE {: state :}
    plan NEW-SQL {: v:^ :}
    v s" array_agg(" +SQL
-   v plan r state state call NODE-A@ NODE-A@ EXPRESSION-SQL +SQL
+   v plan r state state call NODE-A@ NODE-A@ EXPRESSION-SQL +REL
    state call NODE-C@ {: conditions:n :}
    conditions 0<> if
-      v s"  ORDER BY " +SQL v plan r conditions CONDITION-KEYS +SQL
-   then v s" )" +SQL v SQL$ ;
+      v s"  ORDER BY " +SQL v plan r conditions CONDITION-KEYS +REL
+   then v s" )" +SQL v ;
 
 \ The aggregate call over the relation: COUNT is count, a NATIVE-SHAPE
 \ one native; any other goes through sparql.aggregate over array_agg of
 \ its operand's terms.
-: AGGREGATE$ ( ^plan ^relation n -- str )
+: CALL-SQL ( ^plan ^relation n -- ^rel )
    {: plan r:^ call:n :}
    plan TREE {: state :}
    plan r call NATIVE-SHAPE {: k:n :}
+   plan NEW-SQL {: v:^ :}
    k -1 > if
-      plan call k plan r call OPERAND-BINDING BINDING-SQL @ NATIVE$ exit
+      plan v r call +OPERAND plan call k v NATIVE-SQL exit
    then
    state call NODE NODE-FLAGS @ F-DISTINCT and 0<> {: unique:bool :}
-   plan NEW-SQL {: v:^ :}
    state call s" COUNT" CALL-IS? if
       v s" sparql.number(count(" +SQL
       unique if v s" DISTINCT " +SQL then
-      v plan r call COUNTED +SQL v s" ),'integer')" +SQL v SQL$ exit
+      plan v r call +COUNTED v s" ),'integer')" +SQL v exit
    then
-   v s" sparql.aggregate(" +SQL v plan state call TEXT$ TEXT-ARG +SQL
-   v s" ," +SQL v plan r call TERMS-SQL +SQL
+   v s" sparql.aggregate(" +SQL plan v state call TEXT$ +TEXT-ARG
+   v s" ," +SQL v plan r call TERMS-SQL +REL
    unique if v s" ,true," +SQL else v s" ,false," +SQL then
-   v plan state call NODE-B@ SEPARATOR-SQL +SQL v s" )" +SQL v SQL$ ;
+   plan v state call NODE-B@ +SEPARATOR v s" )" +SQL v ;
 
 \ Whether every group of r's solutions binds the aggregate call.
 : BOUND-CALL? ( ^plan n ^relation n -- bool )
@@ -4045,7 +4398,7 @@ STRUCTURE walk DERIVE addr
    plan AL 0 [type] aggregate VEC:NEW {: as:^ :}
    state query QUERY-AGGREGATES begin dup 0<> while
       {: list:n :} state list NODE-A@ {: call:n :}
-      plan r call AGGREGATE$ {: sql:str :}
+      plan r call CALL-SQL {: sql:^ :}
       as VEC:PUSH {: a:^ :}
       call a AGGREGATE-NODE ! sql a AGGREGATE-SQL !
       plan query r call BOUND-CALL? a AGGREGATE-ALWAYS !
@@ -4081,11 +4434,12 @@ STRUCTURE walk DERIVE addr
    g RELATION-BINDINGS @ {: gs:^ :}
    state e NODE-K N-ALIAS = if
       plan state e NODE-B@ VAR {: var:n :}
-      gs var GENERIC plan r state e NODE-A@ EXPRESSION-SQL s" " BIND
+      gs var GENERIC plan r state e NODE-A@ EXPRESSION-SQL
+      s" " BIND
       false gs LAST BINDING-ALWAYS ! exit
    then
    state e NODE-K N-VAR <> if
-      keys s" ," +SEP keys plan r e EXPRESSION-SQL +SQL exit
+      keys s" ," +SEP keys plan r e EXPRESSION-SQL +REL exit
    then
    r RELATION-BINDINGS @ {: bs:^ :}
    bs plan e VAR FIND-VAR {: k:n :}
@@ -4107,13 +4461,13 @@ STRUCTURE walk DERIVE addr
    g RELATION-BINDINGS @ {: gs:^ :}
    gs VEC:COUNT 0 ?do
       gs i VEC:AT {: b:^ :}
-      plan alias b BINDING-VAR @ COLUMN-OF b BINDING-SQL !
+      plan alias b BINDING-VAR @ COLUMN-OF b SET-SQL
    loop
    plan PLAN-AGGREGATES @ {: as:^ :}
    as VEC:COUNT 0 ?do
       plan NEW-SQL {: c:^ :}
       c alias +SQL c s" .a" +SQL c i +INT
-      c SQL$ as i VEC:AT AGGREGATE-SQL !
+      c as i VEC:AT AGGREGATE-SQL !
    loop ;
 
 \ Appends `SELECT` g's columns and the aggregates `FROM` r, grouped by
@@ -4130,10 +4484,10 @@ STRUCTURE walk DERIVE addr
    loop
    as VEC:COUNT 0 ?do
       gs VEC:COUNT 0<> i 0<> or if out s" ," +SQL then
-      out s"  " +SQL out as i VEC:AT AGGREGATE-SQL @ +SQL
+      out s"  " +SQL out as i VEC:AT AGGREGATE-SQL @ +SPLICE
       out s"  AS a" +SQL out i +INT
    loop
-   plan out r +FROM-WHERE
+   out r +FROM-WHERE
    keys EMPTY? 0= if out s"  GROUP BY " +TEXT out keys +REL then
    having EMPTY? 0= if out s"  HAVING " +TEXT out having +REL then ;
 
@@ -4157,7 +4511,7 @@ STRUCTURE walk DERIVE addr
    {: keys:^ g:^ :}
    g RELATION-BINDINGS @ {: gs:^ :}
    gs VEC:COUNT 0 ?do
-      keys s" ," +SEP keys gs i VEC:AT BINDING-SQL @ +SQL
+      keys s" ," +SEP keys gs i VEC:AT +BINDING
    loop ;
 
 \ GROUP BY's keys over r: g's bindings, the other keys' terms to keys.
@@ -4181,16 +4535,16 @@ STRUCTURE walk DERIVE addr
 
 \ The aggregate call over u; when partial, COUNT's bare count and the
 \ native min or max of a call native in shape k.
-: PART$ ( ^plan ^relation n bool n -- str )
+: PART-SQL ( ^plan ^relation n bool n -- ^rel )
    {: plan u:^ call:n partial:bool k:n :}
+   plan NEW-SQL {: v:^ :}
    partial k -1 > and if
-      plan call k plan u call OPERAND-BINDING BINDING-SQL @ EXTREME$ exit
+      plan v u call +OPERAND plan call k v EXTREME-SQL exit
    then
    partial plan TREE call s" COUNT" CALL-IS? and 0= if
-      plan u call AGGREGATE$ exit
+      plan u call CALL-SQL exit
    then
-   plan NEW-SQL {: v:^ :}
-   v s" count(" +SQL v plan u call COUNTED +SQL v s" )" +SQL v SQL$ ;
+   v s" count(" +SQL plan v u call +COUNTED v s" )" +SQL v ;
 
 \ Points the plan's aggregates at their SQL over u.
 : PARTS ( ^plan ^relation bool -- )
@@ -4198,7 +4552,7 @@ STRUCTURE walk DERIVE addr
    plan PLAN-AGGREGATES @ {: as:^ :}
    as VEC:COUNT 0 ?do
       as i VEC:AT {: a:^ :}
-      plan u a AGGREGATE-NODE @ partial a AGGREGATE-NATIVE @ PART$
+      plan u a AGGREGATE-NODE @ partial a AGGREGATE-NATIVE @ PART-SQL
       a AGGREGATE-SQL !
    loop ;
 
@@ -4220,7 +4574,7 @@ STRUCTURE walk DERIVE addr
    {: plan query:n from:^ r:^ partial:bool :}
    r RELATION-BRANCHES @ {: bs:^ :}
    from s" (" +TEXT
-   bs VEC:COUNT 0 ?do
+   bs LEN 0 ?do
       i 0<> if from s"  UNION ALL " +TEXT then
       plan query from bs i VEC:AT r partial +BRANCH-GROUPS
    loop ;
@@ -4228,18 +4582,18 @@ STRUCTURE walk DERIVE addr
 \ The aggregate call over the partials in column c: the sum of COUNT's
 \ counts, the min or max of the native partials of a call native in
 \ shape k, else the aggregate of the partial terms.
-: COMBINED$ ( ^plan n str n -- str )
-   {: plan call:n c:str k:n :}
+: COMBINED-SQL ( ^plan n ^rel n -- ^rel )
+   {: plan call:n c:^ k:n :}
    plan TREE {: state :}
-   k -1 > if plan call k c NATIVE$ exit then
+   k -1 > if plan call k c NATIVE-SQL exit then
    plan NEW-SQL {: v:^ :}
    state call s" COUNT" CALL-IS? if
-      v s" sparql.number(coalesce(sum(" +SQL v c +SQL
-      v s" ),0),'integer')" +SQL v SQL$ exit
+      v s" sparql.number(coalesce(sum(" +SQL v c +SPLICE
+      v s" ),0),'integer')" +SQL v exit
    then
-   v s" sparql.aggregate(" +SQL v plan state call TEXT$ TEXT-ARG +SQL
-   v s" ,array_agg(" +SQL v c +SQL v s" ),false," +SQL
-   v plan state call NODE-B@ SEPARATOR-SQL +SQL v s" )" +SQL v SQL$ ;
+   v s" sparql.aggregate(" +SQL plan v state call TEXT$ +TEXT-ARG
+   v s" ,array_agg(" +SQL v c +SPLICE v s" ),false," +SQL
+   plan v state call NODE-B@ +SEPARATOR v s" )" +SQL v ;
 
 \ Points each aggregate at its combination over the partials it names.
 : COMBINE ( ^plan -- )
@@ -4248,7 +4602,7 @@ STRUCTURE walk DERIVE addr
    as VEC:COUNT 0 ?do
       as i VEC:AT {: a:^ :}
       plan a AGGREGATE-NODE @ a AGGREGATE-SQL @ a AGGREGATE-NATIVE @
-      COMBINED$ a AGGREGATE-SQL !
+      COMBINED-SQL a AGGREGATE-SQL !
    loop ;
 
 \ The groups of r's branches, each grouped on its own, HAVING over them.
@@ -4296,7 +4650,7 @@ STRUCTURE walk DERIVE addr
 \ GROUP BY key or aggregate calls EXISTS, which each would compile again.
 : BRANCHED? ( ^plan n ^relation -- bool )
    {: plan query:n r:^ :}
-   r RELATION-BRANCHES @ VEC:COUNT 2 < if false exit then
+   r RELATION-BRANCHES @ LEN 2 < if false exit then
    plan TREE {: state :}
    state state query QUERY-AGGREGATES EXISTS-IN? if false exit then
    state query GROUP-BY-NODE {: grouping:n :}
@@ -4306,19 +4660,18 @@ STRUCTURE walk DERIVE addr
 \ Whether each branch binds var always to a term no other binds it to.
 : APART? ( ^plan ^VEC:vector<relation> n -- bool )
    {: plan branches:^ var:n :}
-   plan INDEXES {: places:^ :}
-   branches VEC:COUNT 0 ?do
+   INDEXES branches LEN 0 ?do
       branches i VEC:AT RELATION-BINDINGS @ {: bs:^ :}
       bs var FIND-VAR {: k:n :}
-      k 0< if false unloop exit then
+      k 0< if drop false unloop exit then
       bs k VEC:AT {: b:^ :}
       b BINDING-SHAPE @ KNOWN <> b BINDING-ALWAYS @ 0= or if
-         false unloop exit
+         drop false unloop exit
       then
-      plan b BINDING-TERM @ TERM-PLACE places VEC:PUSH !
-   loop
+      plan swap plan b BINDING-TERM @ TERM-PLACE +INDEX
+   loop {: places:^ :}
    plan AL plan PLAN-KNOWN @ VEC:COUNT [type] bool VEC:NEW {: seen:^ :}
-   places VEC:COUNT 0 ?do
+   places LEN 0 ?do
       seen places i VEC:AT @ VEC:AT {: mark:^ :}
       mark @ if false unloop exit then
       true mark !
@@ -4375,7 +4728,9 @@ STRUCTURE walk DERIVE addr
    plan AL 0 [type] item VEC:NEW {: items:^ :}
    plan items node VALUES-ITEM
    items 0 VEC:AT {: it:^ :}
-   it LIVE-COUNT 0= if s RELATION-WHERE @ s" false" +AND exit then
+   it LIVE-COUNT 0= if
+      s RELATION-WHERE @ plan TEXTS s" false" TEXT-REL +AND exit
+   then
    plan it s JOIN-STEP ;
 
 \ The solutions SELECT and ASK read: the groups when GROUP BY or an
@@ -4402,7 +4757,7 @@ STRUCTURE walk DERIVE addr
    repeat drop ;
 
 \ ORDER BY's keys over the scope; empty without ORDER BY.
-: ORDER-KEYS ( ^plan n ^relation -- str )
+: ORDER-KEYS ( ^plan n ^relation -- ^rel )
    {: plan query:n r:^ :}
    plan r plan TREE query NODE-D@ CONDITION-KEYS ;
 
@@ -4419,7 +4774,7 @@ STRUCTURE walk DERIVE addr
 \ The document before its first binding.
 : HEAD-JSON ( ^plan ^VEC:vector<n> -- str )
    {: plan names:^ :}
-   plan WRITER
+   plan plan WRITER
    JSON:WRITE-OBJECT-START s" head" JSON:WRITE-KEY
    JSON:WRITE-OBJECT-START s" vars" JSON:WRITE-KEY JSON:WRITE-ARRAY-START
    names VEC:COUNT 0 ?do
@@ -4428,7 +4783,7 @@ STRUCTURE walk DERIVE addr
    loop
    JSON:WRITE-ARRAY-END JSON:WRITE-OBJECT-END JSON:WRITE-COMMA
    s" results" JSON:WRITE-KEY JSON:WRITE-OBJECT-START
-   s" bindings" JSON:WRITE-KEY JSON:WRITE-ARRAY-START JSON:WRITTEN$ ;
+   s" bindings" JSON:WRITE-KEY JSON:WRITE-ARRAY-START WRITER$ ;
 
 \ Whether a projected variable is maybe bound.
 : MAYBE? ( ^plan ^VEC:vector<binding> ^VEC:vector<n> -- bool )
@@ -4463,16 +4818,15 @@ STRUCTURE walk DERIVE addr
       bs plan node VAR FIND-VAR {: k:n :}
       k -1 > if
          dup v swap +NEXT-PAIR 1+
-         v plan plan TREE node TEXT$ TEXT-ARG +SQL v s" ," +SQL
-         v plan bs k VEC:AT TERM-SQL +SQL
+         plan v plan TREE node TEXT$ +TEXT-ARG v s" ," +SQL
+         plan v bs k VEC:AT +TERM
       then
    loop drop v s" ))::text" +SQL ;
 
-\ DISTINCT's solutions: the projected columns, native where native, made
-\ distinct by GROUP BY. With ORDER BY's keys each keeps its first place,
-\ column i, whose text is answered; empty without them.
-: DISTINCT-SQL ( ^plan ^relation ^VEC:vector<n> str -- ^relation str )
-   {: plan r:^ names:^ keys:str :}
+\ The projected columns, native where native, made distinct by GROUP BY; with
+\ ORDER BY's keys each keeps its first place, column i, answered, else empty.
+: DISTINCT-SQL ( ^plan ^relation ^VEC:vector<n> ^rel -- ^relation ^rel )
+   {: plan r:^ names:^ keys:^ :}
    r RELATION-BINDINGS @ {: bs:^ :}
    plan NEW-RELATION {: d:^ :}
    d RELATION-BINDINGS @ {: ds:^ :}
@@ -4484,27 +4838,27 @@ STRUCTURE walk DERIVE addr
          bs k VEC:AT {: b:^ :}
          b BINDING-VAR @ {: var:n :}
          inner s" ," +SEP plan inner b b BINDING-SHAPE @ +COLUMN
-         cols s" ," +SEP cols plan s" p" var COLUMN-OF +SQL
+         cols s" ," +SEP cols s" p" var +NAME-OF
          b ds COPY-BINDING
-         plan alias var COLUMN-OF ds LAST BINDING-SQL !
+         plan alias var COLUMN-OF ds LAST SET-SQL
       then
    loop
    d RELATION-FROM @ {: from:^ :}
    from s" (SELECT " +TEXT from cols +REL
-   keys STR:LEN 0<> if
+   keys EMPTY? 0= if
       cols EMPTY? 0= if from s" ," +TEXT then
       from s" min(p.i) AS i" +TEXT
       inner s" ," +SEP inner s"  row_number() OVER (ORDER BY " +SQL
-      inner keys +SQL inner s" ) AS i" +SQL
+      inner keys +REL inner s" ) AS i" +SQL
    then
    from s"  FROM (SELECT" +TEXT from inner +REL
-   plan from r +FROM-WHERE from s" ) AS p" +TEXT
+   from r +FROM-WHERE from s" ) AS p" +TEXT
    cols EMPTY? 0= if
       from s"  GROUP BY " +TEXT from cols +REL
    else from s"  HAVING count(*)>0" +TEXT then
    from s" ) AS " +TEXT from alias +TEXT
-   d keys STR:LEN 0= if s" " exit then
-   plan NEW-SQL {: c:^ :} c alias +SQL c s" .i" +SQL c SQL$ ;
+   plan NEW-SQL {: c:^ :}
+   keys EMPTY? 0= if c alias +SQL c s" .i" +SQL then d c ;
 
 \ Appends ` x AS vK` for each projected variable r binds, K the variable
 \ of its name in frame into, and answers them as columns.
@@ -4512,7 +4866,7 @@ STRUCTURE walk DERIVE addr
       -- ^VEC:vector<binding> )
    {: plan r:^ names:^ into:n v:^ :}
    r RELATION-BINDINGS @ {: bs:^ :}
-   plan NEW-BINDINGS {: cols:^ :}
+   plan 0 NEW-BINDINGS {: cols:^ :}
    names VEC:COUNT 0 ?do
       names i VEC:AT @ {: node:n :}
       bs plan node VAR FIND-VAR {: k:n :}
@@ -4533,34 +4887,34 @@ STRUCTURE walk DERIVE addr
    plan query NAMES {: names:^ :}
    plan query r GROUPS {: s:^ :}
    plan query s EXTEND
-   plan query s ORDER-KEYS {: keys:str :}
+   plan query s ORDER-KEYS {: keys:^ :}
    plan NEW-SQL {: w:^ :}
    plan TREE query NODE NODE-FLAGS @ F-DISTINCT and 0<> if
       plan s names keys DISTINCT-SQL dup
    else
-      keys STR:LEN 0<> if
+      keys EMPTY? 0= if
          w s" row_number() OVER (ORDER BY " +SQL
-         w keys +SQL w s" )" +SQL
-      then s w SQL$ keys
-   then {: d:^ rank:str order:str :}
+         w keys +REL w s" )" +SQL
+      then s w keys
+   then {: d:^ rank:^ order:^ :}
    plan NEW-SQL {: v:^ :}
    v s" (SELECT" +SQL
    plan d names into v +PROJECTED {: cols:^ :}
-   rank STR:LEN 0<> if
+   rank EMPTY? 0= if
       cols VEC:COUNT 0<> if v s" ," +SQL then
-      v s"  " +SQL v rank +SQL v s"  AS i" +SQL
+      v s"  " +SQL v rank +REL v s"  AS i" +SQL
    then
-   plan v d +FROM-WHERE
-   order STR:LEN 0<> if v s"  ORDER BY " +SQL v order +SQL then
+   v d +FROM-WHERE
+   order EMPTY? 0= if v s"  ORDER BY " +SQL v order +REL then
    plan query v SLICE-SQL
    v s" )" +SQL
-   v cols rank STR:LEN 0<> ;
+   v cols rank EMPTY? 0= ;
 
-\ A statement whose document, its head and `]}}`, passes the byte limit
-\ whatever it holds.
-: OVERSIZE ( ^rel str n -- )
-   {: v:^ head:str bytes:n :}
-   v s" SELECT sparql.within(octet_length(" +SQL v head +SQL
+\ A statement whose document, its head (parameter k) and `]}}`, passes the
+\ byte limit whatever it holds.
+: OVERSIZE ( ^rel n n -- )
+   {: v:^ k:n bytes:n :}
+   v s" SELECT sparql.within(octet_length(" +SQL v k +PARAMETER
    v s" )+3," +SQL v bytes +INT v s" )::text" +SQL ;
 
 \ The document is the head, the bindings joined by commas and `]}}`; each
@@ -4570,16 +4924,16 @@ STRUCTURE walk DERIVE addr
    {: plan query:n r:^ :}
    plan query NAMES {: names:^ :}
    plan names HEAD-JSON {: head:str :}
-   plan head TEXT-ARG {: ha:str :}
+   plan head false PARAMETER {: ha:n :}
    head STR:LEN 3 + {: fixed:n :}
    plan PLAN-STORE @ STORE-LIMIT @ {: bytes:n :}
    plan NEW-SQL {: v:^ :}
    fixed bytes > if v ha bytes OVERSIZE v exit then
    plan query r plan PLAN-FRAME @ SELECTED
       {: t:^ cols:^ ranked:bool :}
-   plan NEW-RELATION {: p:^ :}
-   plan t cols p RELATION-FROM @ +TABLE p RELATION-BINDINGS !
-   v s" SELECT " +SQL v ha +SQL
+   plan NEW-SQL {: from:^ :}
+   plan from plan NEW-SQL plan t cols from +TABLE RELATION-OF {: p:^ :}
+   v s" SELECT " +SQL v ha +PARAMETER
    v s" ||coalesce(string_agg(r.b,',' ORDER BY r.n),'')||']}}'" +SQL
    v s"  FROM (SELECT q.b,sparql.within(" +SQL v fixed 1- +INT
    v s" +sum(octet_length(q.b)+1) OVER (" +SQL
@@ -4588,16 +4942,16 @@ STRUCTURE walk DERIVE addr
    v bytes +INT v s" ) AS n FROM (SELECT " +SQL
    plan p names v +OBJECT v s"  AS b" +SQL
    ranked if v s" ,i" +SQL then
-   plan v p +FROM-WHERE v s" ) AS q) AS r" +TEXT v ;
+   v p +FROM-WHERE v s" ) AS q) AS r" +TEXT v ;
 
 : ASK-SQL ( ^plan n ^relation -- ^rel )
    {: plan query:n r:^ :}
    plan query r GROUPS {: s:^ :}
    plan NEW-SQL {: v:^ :}
    v s" SELECT a.d FROM (SELECT " +SQL
-   v plan s\" {\"head\":{},\"boolean\":" TEXT-ARG +SQL
+   plan v s\" {\"head\":{},\"boolean\":" +TEXT-ARG
    v s" ||CASE WHEN EXISTS(SELECT" +SQL
-   plan v s +FROM-WHERE
+   v s +FROM-WHERE
    plan query v SLICE-SQL
    v s" ) THEN 'true}' ELSE 'false}' END AS d) AS a" +SQL
    v s"  WHERE sparql.within(octet_length(a.d)," +SQL
@@ -4640,10 +4994,10 @@ STRUCTURE walk DERIVE addr
    plan PLAN-ARGUMENTS @ {: args:^ :}
    plan NEW-SQL {: v:^ :}
    v s" (VALUES " +SQL
-   args VEC:COUNT 0 ?do
+   args SEG-COUNT 0 ?do
       i 0<> if v s" ," +SQL then
       v s" ($" +SQL v i 1+ +INT
-      args i VEC:AT ARGUMENT-TERM @ if v s" ::jsonb" +SQL then
+      args i SEG-AT ARGUMENT-TERM @ if v s" ::jsonb" +SQL then
       v s" ::text)" +SQL
    loop v s" )" +SQL
    plan AL s" t0" false v NEW-CTE ;
@@ -4669,22 +5023,30 @@ STRUCTURE walk DERIVE addr
    state SYNTAX-ARENA @ ARENA:ALLOCATOR {: al:^ :}
    al [type] plan ALLOC:NEW {: plan:^ :}
    state plan PLAN-SYNTAX ! store plan PLAN-STORE !
-   al NEW-CTES plan PLAN-CTES !
-   al 0 [type] argument VEC:NEW plan PLAN-ARGUMENTS !
+   al NEW-CTES plan PLAN-CTES ! al NEW-TEXTS plan PLAN-TEXTS !
+   plan NEW-SQL plan PLAN-EMPTY !
+   al [type] binding ALLOC:NEW plan PLAN-COLUMN !
+   state SYNTAX-ARENA @ NEW-WRITER plan PLAN-WRITER !
+   al [type] argument SEG-NEW plan PLAN-ARGUMENTS !
    al 0 [type] name VEC:NEW plan PLAN-VARIABLES !
-   al 0 [type] binding VEC:NEW plan PLAN-OUTER !
+   NULL-PTR plan PLAN-OUTER !
    al 0 [type] aggregate VEC:NEW plan PLAN-AGGREGATES !
    al 0 [type] known-term VEC:NEW plan PLAN-KNOWN !
-   al 0 [type] node-term VEC:NEW plan PLAN-NODES !
+   al [type] node-term SEG-NEW plan PLAN-ROWS !
+   plan PLAN-ROWS @ state SYNTAX-TERMS @ SEG-ENSURE
    al 0 [type] node-set VEC:NEW plan PLAN-SETS !
    al 0 [type] node-test VEC:NEW plan PLAN-TESTS !
+   al 0 [type] bool VEC:NEW plan PLAN-BOUND !
+   INDEXES plan PLAN-FRESH !
    plan STATEMENT {: r:^ :}
    al NULL-PTR NEW-SINK {: count:^ :}
    count r WRITE-REL
    sql  sql VEC:COUNT count SINK-COUNT @ +  VEC:RESERVE
    al sql NEW-SINK r WRITE-REL
    plan PLAN-ARGUMENTS @ {: args:^ :}
-   args VEC:COUNT 0 ?do args i VEC:AT ARGUMENT-TEXT @ params execute loop ;
+   args SEG-COUNT 0 ?do
+      args i SEG-AT ARGUMENT-TEXT @ params execute
+   loop ;
 
 : INSTALL-EMIT ( -- )
    ['] GROUP is GROUP-SQL ['] EXISTS+ is EXISTS-SQL

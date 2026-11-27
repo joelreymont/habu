@@ -8,6 +8,7 @@
 require src/lib/test/assert.f
 require src/lib/sparql/parse.f
 require src/lib/sparql/syntax.f
+require src/lib/sparql/segs.f
 require src/lib/vector.f
 require src/lib/reason.f
 
@@ -133,7 +134,7 @@ NAMES
 \ The last IRI of the query: its WHERE holds one relative reference.
 : RESOLVED ( ^syntax -- str )
    {: state :}
-   0 state SYNTAX-NODES @ VEC:COUNT 1 ?do
+   0 state SYNTAX-NODES @ SEG-COUNT 1 ?do
       state i NODE-K N-IRI = if drop i then
    loop
    state swap TEXT$ ;
@@ -637,8 +638,8 @@ REJECTIONS
 \ Rounded up.
 : NODES-PER-TOKEN ( ^syntax -- n )
    {: state :}
-   state SYNTAX-TOKENS @ VEC:COUNT {: tokens:n :}
-   state SYNTAX-NODES @ VEC:COUNT tokens 1- + tokens / ;
+   state SYNTAX-TOKENS @ SEG-COUNT {: tokens:n :}
+   state SYNTAX-NODES @ SEG-COUNT tokens 1- + tokens / ;
 
 25000000 constant RESOLVED-MOST-BYTES
 

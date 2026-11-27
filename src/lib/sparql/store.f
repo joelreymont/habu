@@ -249,6 +249,18 @@ STRUCTURE term-members DERIVE addr
    v JSON:STRING? if exit then
    v s" a string" s" write the value as a JSON string" JSON:REJECT ;
 
+\ The number of the array's elements; another value is rejected at its place.
+: ARRAY-LENGTH ( JSON:value -- n ) 0 swap [: drop 1+ ;] JSON:EACH ;
+
+\ The number of the object's members; another value is rejected at its place.
+: OBJECT-SIZE ( JSON:value -- n )
+   0 swap [: drop drop 1+ ;] JSON:EACH-MEMBER ;
+
+\ A map at mp that takes n entries without growing.
+: MAP-FOR ( ^^n n ^ARENA:arena -- )
+   {: mp:^ k:n arena :}
+   arena k 1 max 2 * >COUNT MAP:IN mp ! ;
+
 : SAVE$ ( str ^ARENA:arena -- str ) {: text:str arena :}
    text str> {: from:^ u:n :}
    arena u ARENA:ALLOC {: out:^ len:n :}
@@ -301,6 +313,7 @@ STRUCTURE term-members DERIVE addr
    h s" uri" JSON:STRING= if HOLDS-URIS exit then
    h JSON:ARRAY? 0= if h HOLDS-REJECT then
    arena ARENA:ALLOCATOR 0 [type] datatype VEC:NEW {: list:^ :}
+   list h ARRAY-LENGTH VEC:RESERVE
    h [: list arena ADD-DATATYPE ;] JSON:EACH
    list HOLDS-LITERALS ;
 
@@ -360,8 +373,10 @@ STRUCTURE term-members DERIVE addr
    v s" values" JSON:GET {: values :}
    values s" an object of IRIs and their keys"
    s" map each IRI to the SQL array literal of its keys" REQUIRE-OBJECT
-   arena ARENA:ALLOCATOR 0 [type] member VEC:NEW row KEY-SET-MEMBERS !
-   row KEY-SET-PLACES arena MAP:ROOM
+   values OBJECT-SIZE {: count:n :}
+   arena ARENA:ALLOCATOR 0 [type] member VEC:NEW {: members:^ :}
+   members count VEC:RESERVE  members row KEY-SET-MEMBERS !
+   row KEY-SET-PLACES count arena MAP-FOR
    values [: row arena ADD-MEMBER ;] JSON:EACH-MEMBER ;
 
 : READ-KEYS ( JSON:value ^store ^ARENA:arena -- )
@@ -371,6 +386,7 @@ STRUCTURE term-members DERIVE addr
      some OF {: keys :}
         keys s" an object of key sets"
         s" name each key set in `keys`" REQUIRE-OBJECT
+        store STORE-KEYS @ keys OBJECT-SIZE VEC:RESERVE
         keys [: store arena ADD-KEY-SET ;] JSON:EACH-MEMBER
      ENDOF
    ;MATCH ;
@@ -645,6 +661,7 @@ STRUCTURE term-members DERIVE addr
       s" list the columns as objects with `col` and `shape`" JSON:REJECT
    then
    arena ARENA:ALLOCATOR 0 [type] slot-members VEC:NEW {: entries:^ :}
+   entries list ARRAY-LENGTH VEC:RESERVE
    list [: entries ADD-ENTRY ;] JSON:EACH
    entries VEC:COUNT 2 < if
       list s" at least two columns"
@@ -737,13 +754,16 @@ STRUCTURE term-members DERIVE addr
 : +ALTERNATIVE ( slot ^VEC:vector<alternative> -- )
    VEC:PUSH ALTERNATIVE-SLOT ! ;
 
-: NEW-ALTERNATIVES ( ^ARENA:arena -- ^VEC:vector<alternative> )
-   ARENA:ALLOCATOR 0 [type] alternative VEC:NEW ;
+\ An empty list with room for n alternatives.
+: NEW-ALTERNATIVES ( n ^ARENA:arena -- ^VEC:vector<alternative> )
+   {: k:n arena :}
+   arena ARENA:ALLOCATOR 0 [type] alternative VEC:NEW {: list:^ :}
+   list k VEC:RESERVE list ;
 
 : COLUMN-SLOTS ( ^VEC:vector<slot-members> ^store ^ARENA:arena
       -- ^VEC:vector<alternative> )
    {: entries:^ store:^ arena :}
-   arena NEW-ALTERNATIVES {: list:^ :}
+   entries VEC:COUNT arena NEW-ALTERNATIVES {: list:^ :}
    entries VEC:COUNT 0 ?do
       entries i VEC:AT store arena SLOT-OF list +ALTERNATIVE
    loop list ;
@@ -757,7 +777,7 @@ STRUCTURE term-members DERIVE addr
       k arena CHECK-COLS store arena COLUMN-SLOTS exit
    then
    k CHECK-SLOT
-   arena NEW-ALTERNATIVES {: list:^ :}
+   1 arena NEW-ALTERNATIVES {: list:^ :}
    k store arena SLOT-OF list +ALTERNATIVE list ;
 
 \ The slots the source v's member name reads to; m is what v keeps.
@@ -801,10 +821,9 @@ STRUCTURE term-members DERIVE addr
    name v s" p" k SOURCE-MEMBERS-P KEPT-AS? if exit then
    name v s" o" k SOURCE-MEMBERS-O KEPT-AS? drop ;
 
-: READ-SOURCE ( ^source-members n JSON:value ^store ^ARENA:arena -- n )
-   {: k:^ origin:n v store:^ arena :}
+: READ-SOURCE ( ^source-members ^source n JSON:value ^store ^ARENA:arena -- n )
+   {: k:^ base:^ origin:n v store:^ arena :}
    v [: k SOURCE-MEMBER ;] KEEP-MEMBERS
-   arena ARENA:ALLOCATOR [type] source ALLOC:NEW {: base:^ :}
    k SOURCE-MEMBERS-FROM @ v s" from" KEPT arena STRING$
    base SOURCE-FROM !
    k SOURCE-MEMBERS-GRAPH @ v s" graph" KEPT arena READ-GRAPH
@@ -822,7 +841,8 @@ STRUCTURE term-members DERIVE addr
 : ADD-SOURCE ( n JSON:value ^store ^ARENA:arena -- n )
    {: origin:n v store:^ arena :}
    [type] source-members
-   [: dup NO-SOURCE-MEMBERS origin v store arena READ-SOURCE ;]
+   [: dup NO-SOURCE-MEMBERS
+      [type] source [: origin v store arena READ-SOURCE ;] MEM:WITH-RECORD ;]
    MEM:WITH-RECORD ;
 
 \ The list of the records whose `p` is the term, made at its first one.
@@ -871,6 +891,30 @@ STRUCTURE term-members DERIVE addr
       store i arena INDEX-PREDICATE  store i arena INDEX-GRAPH
    loop ;
 
+\ The alternatives slot m reads to: its `cols` array's length, else 1,
+\ a slot READ-SLOT rejects included.
+: COLS-LENGTH ( JSON:value -- n ) {: m :}
+   m JSON:OBJECT? 0= if 1 exit then
+   m s" cols" JSON:FIND MATCH option
+     none OF 1 ENDOF
+     some OF dup JSON:ARRAY? if ARRAY-LENGTH else drop 1 then ENDOF
+   ;MATCH ;
+
+: SLOT-WIDTH ( JSON:value str -- n ) {: v name:str :}
+   v name JSON:FIND MATCH option
+     none OF 1 ENDOF
+     some OF COLS-LENGTH ENDOF
+   ;MATCH ;
+
+\ n plus the records the source makes, the product of its slots' widths;
+\ a source that is not an object counts one.
+: +RECORDS ( n JSON:value -- n ) {: k:n v :}
+   v JSON:OBJECT? 0= if k 1+ exit then
+   v s" s" SLOT-WIDTH  v s" p" SLOT-WIDTH *  v s" o" SLOT-WIDTH *  k + ;
+
+\ The records a `sources` array makes; another value is rejected at its place.
+: RECORD-COUNT ( JSON:value -- n ) 0 swap [: +RECORDS ;] JSON:EACH ;
+
 \ Reads the description text, which must outlive the store.
 : READ-STORE ( str ^ARENA:arena -- ^store ) {: text:str arena :}
    text JSON:PARSE {: v :}
@@ -882,11 +926,15 @@ STRUCTURE term-members DERIVE addr
    al 0 [type] source VEC:NEW store STORE-SOURCES !
    al 0 [type] origin VEC:NEW store STORE-ORIGINS !
    v s" shapes" JSON:GET {: shapes :}
+   store STORE-SHAPES @ shapes OBJECT-SIZE VEC:RESERVE
    shapes [: store arena ADD-SHAPE ;] JSON:EACH-MEMBER
    shapes [: store LINK-PART ;] JSON:EACH-MEMBER
    shapes [: store RESOLVE-PART ;] JSON:EACH-MEMBER
    v store arena READ-KEYS
-   0 v s" sources" JSON:GET [: store arena ADD-SOURCE ;] JSON:EACH drop
+   v s" sources" JSON:GET {: sources :}
+   store STORE-ORIGINS @ sources ARRAY-LENGTH VEC:RESERVE
+   store STORE-SOURCES @ sources RECORD-COUNT VEC:RESERVE
+   0 sources [: store arena ADD-SOURCE ;] JSON:EACH drop
    store arena INDEX-RECORDS
    store ;
 

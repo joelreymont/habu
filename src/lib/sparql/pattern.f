@@ -30,7 +30,8 @@ defer SUBQUERY ( ^syntax -- n )
 : PATH-IRI ( ^syntax -- n )
    {: state :}
    state TOKEN$ s" a" STR:= if
-      state NEXT-TOKEN state s" type" RDF-IRI
+      state NEXT-TOKEN
+      state s" http://www.w3.org/1999/02/22-rdf-syntax-ns#type" IRI-NODE
    else state READ-IRI then ;
 
 : NEGATED-MEMBER ( ^syntax -- n )
@@ -107,19 +108,26 @@ defer SUBQUERY ( ^syntax -- n )
 
 : COLLECTION ( ^syntax -- n )
    {: state :}
-   state s" )" ACCEPT$ if state s" nil" RDF-IRI exit then
+   state s" )" ACCEPT$ if
+      state s" http://www.w3.org/1999/02/22-rdf-syntax-ns#nil" IRI-NODE exit
+   then
    state ANONYMOUS {: head:n :}
    head begin
       {: current:n :}
-      state current state s" first" RDF-IRI
+      state current
+         state s" http://www.w3.org/1999/02/22-rdf-syntax-ns#first" IRI-NODE
          state GRAPH-NODE TRIPLE+
       state s" )" ACCEPT$ if
-         state current state s" rest" RDF-IRI
-            state s" nil" RDF-IRI TRIPLE+
+         state current
+            state s" http://www.w3.org/1999/02/22-rdf-syntax-ns#rest" IRI-NODE
+            state s" http://www.w3.org/1999/02/22-rdf-syntax-ns#nil" IRI-NODE
+            TRIPLE+
          head exit
       then
       state ANONYMOUS {: next:n :}
-      state current state s" rest" RDF-IRI next TRIPLE+
+      state current
+         state s" http://www.w3.org/1999/02/22-rdf-syntax-ns#rest" IRI-NODE
+         next TRIPLE+
       next
    again ;
 

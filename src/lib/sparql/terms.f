@@ -4,6 +4,7 @@
 require src/lib/sparql/lex.f
 require src/lib/sparql/iri.f
 require src/lib/sparql/syntax.f
+require src/lib/sparql/segs.f
 require src/lib/vector.f
 require src/lib/map-core.f
 require src/lib/map.f
@@ -12,10 +13,10 @@ package SPARQL
 private
 
 : END? ( ^syntax -- bool )
-   dup SYNTAX-CURSOR @ swap SYNTAX-TOKENS @ VEC:COUNT >= ;
+   dup SYNTAX-CURSOR @ swap SYNTAX-TOKENS @ SEG-COUNT >= ;
 
 : TOKEN@ ( ^syntax -- ^token )
-   dup SYNTAX-TOKENS @ swap SYNTAX-CURSOR @ VEC:AT ;
+   dup SYNTAX-TOKENS @ swap SYNTAX-CURSOR @ SEG-AT ;
 
 : TOKEN$ ( ^syntax -- str )
    dup END? if drop s" " exit then
@@ -92,7 +93,7 @@ private
    repeat drop out VEC:BYTES ;
 
 : IRI-NODE ( ^syntax str -- n )
-   N-IRI swap TEXT-NODE ;
+   N-IRI swap TERM-NODE ;
 
 \ The IRI node the prefix is declared as, 0 for none.
 : PREFIX-NODE ( ^syntax str -- n )
@@ -136,19 +137,9 @@ private
       state text size >str EXPAND-NAME
    then state swap IRI-NODE state NEXT-TOKEN ;
 
-: XSD-IRI ( ^syntax str -- n )
-   {: state text:str :}
-   state s" http://www.w3.org/2001/XMLSchema#" text JOIN$
-      state swap IRI-NODE ;
-
-: RDF-IRI ( ^syntax str -- n )
-   {: state text:str :}
-   state s" http://www.w3.org/1999/02/22-rdf-syntax-ns#"
-      text JOIN$ state swap IRI-NODE ;
-
 : LITERAL-NODE ( ^syntax str n -- n )
    {: state text:str datatype:n :}
-   state N-LITERAL text TEXT-NODE {: term:n :}
+   state N-LITERAL text TERM-NODE {: term:n :}
    datatype state term NODE NODE-A ! term ;
 
 : READ-LANGUAGE ( ^syntax n -- )
@@ -160,7 +151,7 @@ private
    state NEXT-TOKEN
    state N-LITERAL tag TEXT-NODE {: language:n :}
    language state term NODE NODE-B !
-   state s" langString" RDF-IRI
+   state s" http://www.w3.org/1999/02/22-rdf-syntax-ns#langString" IRI-NODE
       state term NODE NODE-A ! ;
 
 : STRING-TOKEN ( ^syntax -- n )
@@ -172,7 +163,8 @@ private
    state text edge + size edge 2 * - >str true DECODE$
       {: value:str :}
    state NEXT-TOKEN
-   state s" string" XSD-IRI {: datatype:n :}
+   state s" http://www.w3.org/2001/XMLSchema#string" IRI-NODE
+      {: datatype:n :}
    state value datatype LITERAL-NODE ;
 
 : READ-STRING ( ^syntax -- n )
@@ -187,9 +179,13 @@ private
 \ The datatype of a number token of kind n.
 : NUMERIC-TYPE ( ^syntax n -- n )
    {: state kind:n :}
-   kind T-INTEGER = if state s" integer" XSD-IRI exit then
-   kind T-DECIMAL = if state s" decimal" XSD-IRI exit then
-   state s" double" XSD-IRI ;
+   kind T-INTEGER = if
+      state s" http://www.w3.org/2001/XMLSchema#integer" IRI-NODE exit
+   then
+   kind T-DECIMAL = if
+      state s" http://www.w3.org/2001/XMLSchema#decimal" IRI-NODE exit
+   then
+   state s" http://www.w3.org/2001/XMLSchema#double" IRI-NODE ;
 
 : NUMBER-TERM ( ^syntax -- n )
    {: state :}
@@ -201,8 +197,8 @@ private
    {: state :}
    state s" +" IS$ state s" -" IS$ or 0= if false exit then
    state SYNTAX-CURSOR @ 1+ {: next:n :}
-   next state SYNTAX-TOKENS @ VEC:COUNT >= if false exit then
-   state SYNTAX-TOKENS @ next VEC:AT {: token :}
+   next state SYNTAX-TOKENS @ SEG-COUNT >= if false exit then
+   state SYNTAX-TOKENS @ next SEG-AT {: token :}
    token TOKEN-KIND @ T-INTEGER T-DOUBLE BETWEEN? 0= if
       false exit
    then
@@ -224,7 +220,8 @@ private
    {: state :}
    state s" true" IS$ if s" true" else s" false" then
       {: text:str :}
-   state text state s" boolean" XSD-IRI LITERAL-NODE
+   state text state s" http://www.w3.org/2001/XMLSchema#boolean" IRI-NODE
+      LITERAL-NODE
    state NEXT-TOKEN ;
 
 : VAR-NUMBER ( ^syntax str -- n )
