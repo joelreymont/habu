@@ -2164,15 +2164,15 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s\" GET /api/ping HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n" ;
 
 
-\ With AIO-LOCK held the worker's first POLL on conn stalls before it reads.
-\ ROUTED? turns false once the head's deadline has started, so IDLE-MS past
-\ that the head, sent before, is still unread.
+\ ROUTED? turns false once the head's deadline has started. IDLE-MS past that,
+\ the worker has read nothing, and with AIO-LOCK held its next read waits on a
+\ POLL, so the head sent now is queued when it first reads past the deadline.
 : STALL-PAST-DEADLINE ( TCP4:connection -- )
    {: conn:TCP4:connection :}
-   conn PING-CLOSE$ RAW-SEND
    [: HTTP-TEST:ROUTED? 0= ;] TEST-WAIT:POLL
    mono-ns IDLE-MS NS-PER-MS * +
-   [: dup mono-ns < ;] TEST-WAIT:POLL drop ;
+   [: dup mono-ns < ;] TEST-WAIT:POLL drop
+   conn PING-CLOSE$ RAW-SEND ;
 
 
 \ The lock is taken before the connection opens, so the worker reads nothing of
@@ -2183,8 +2183,9 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    HTTP-TEST:AIO-HOLD
    RAW-OPEN {: late:TCP4:connection :}
    [: late STALL-PAST-DEADLINE ;] [: HTTP-TEST:AIO-FREE ;] finally
-   s" a head that arrived before its deadline is served after it" T-LABEL
+   s" a head queued when its deadline has passed is served from the late budget" T-LABEL
    late S\" {\qservice\q:\qhttp-test\q}" RAW-COLLECT TTRUE
+   HTTP-TEST:LATE-UNTAKEN? TFALSE
    late TCP4:CLOSE DROP-TCP-STATUS ;
 
 
