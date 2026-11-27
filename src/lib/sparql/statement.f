@@ -177,11 +177,11 @@ STRUCTURE ctes DERIVE addr
 \ Answers a new last byte of the rel's open text, zero.
 : +BYTE ( ^rel -- ^u8 ) 1 OPEN-BYTES ;
 
-\ Appends the text to the rel's. The piece holds the string, which must
-\ outlive the write: a literal, arena bytes, or the bytes of a vector
-\ nothing appends to afterwards, since an append may move its block.
+\ Appends the text, copied when no longer than a piece, else linked as a
+\ piece that must outlive the write and that no later append may move.
 : +TEXT ( ^rel str -- )
    {: r:^ t:str :}
+   t STR:LEN [type] piece width>n <= if r t +SQL exit then
    r NULL-PTR END-OPEN r t NULL-PTR LINK-PIECE ;
 
 \ Appends the child rel, its WITH and text, to the rel's pieces.
