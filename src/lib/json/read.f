@@ -1425,18 +1425,15 @@ private
    name OPTIONAL? if name STR:DATA name STR:LEN 1- >str exit then
    name ;
 
-\ Whether the current key matches the name at start, and the next start.
-: NAME-MATCH? ( n ^cursor str -- n bool )
-   {: start:n state:^ list:str :}
-   list start NAME-AT {: name:str next:n :}
-   next state name BARE MATCH-INNER ;
+\ The index of the first listed name same accepts, or -1.
+: LISTED-INDEX ( str n [ str -- bool ] -- n ) {: list:str count:n same :}
+   0 count 0 ?do
+      list swap NAME-AT swap BARE same execute if drop i unloop exit then
+   loop drop -1 ;
 
 \ The index of the name the current key decodes to, or -1.
 : KEY-INDEX ( ^cursor str n -- n ) {: state:^ list:str count:n :}
-   0 0 begin dup count < while
-      swap state list NAME-MATCH? if drop exit then
-      swap 1+
-   repeat 2drop -1 ;
+   list count [: state swap MATCH-INNER ;] LISTED-INDEX ;
 
 : ONE-OF$ ( -- str ) s" one of " ;
 : LIST-SEP$ ( -- str ) s" , " ;
@@ -1453,16 +1450,23 @@ private
 : UNKNOWN-FIX$ ( -- str )
    s" rename the member to one of those, or remove it" ;
 
-\ Rejects the current key, which no listed name matches.
-: UNKNOWN-REJECT ( ^cursor str n -- ) {: state:^ list:str count:n :}
+\ Rejects the member name at off, which no listed name matches.
+: UNKNOWN-AT ( ^cursor n str n -- )
+   {: state:^ off:n list:str count:n :}
    count 0= if
-      state s" the object's `}`" s" remove the member"
-      E-MEMBER REJECT-TOKEN
+      state off s" the object's `}`" s" remove the member"
+      E-MEMBER REJECT-AT
    then
-   state state TOKEN-START REJECT-HEAD
+   state off REJECT-HEAD
    ONE-OF$ REASON:APPEND
    0 count 0 ?do list swap i PUT-NAME loop drop
-   state state TOKEN-START UNKNOWN-FIX$ E-MEMBER REJECT-TAIL ;
+   state off UNKNOWN-FIX$ E-MEMBER REJECT-TAIL ;
+
+\ Rejects, at the object's `}` at off, the listed name no member has.
+: MISSING-AT ( ^cursor n str -- ) {: state:^ off:n name:str :}
+   state off REJECT-HEAD
+   MEMBER-OF$ REASON:APPEND  name REASON:APPEND  s" `" REASON:APPEND
+   state off s" add the member to the object" E-MEMBER REJECT-TAIL ;
 
 \ Rejects the name at start unless its member was seen or the name is
 \ optional, and answers the next name's start.
@@ -1470,10 +1474,7 @@ private
    {: start:n state:^ list:str seen:bool :}
    list start NAME-AT {: name:str next:n :}
    seen  name OPTIONAL?  or if next exit then
-   state state TOKEN-START REJECT-HEAD
-   MEMBER-OF$ REASON:APPEND  name REASON:APPEND  s" `" REASON:APPEND
-   state state TOKEN-START s" add the member to the object"
-   E-MEMBER REJECT-TAIL ;
+   state state TOKEN-START name MISSING-AT ;
 
 \ At the object's `}`: rejects the first required name not seen.
 : REQUIRE-ALL ( ^cursor str n ^u8 -- )
@@ -1492,7 +1493,7 @@ private
    {: state:^ list:str count:n wild:bool seen:^ :}
    state list count KEY-INDEX {: idx:n :}
    idx 0< wild and if state SKIP-MEMBER -1 exit then
-   idx 0< if state list count UNKNOWN-REJECT then
+   idx 0< if state state TOKEN-START list count UNKNOWN-AT then
    seen idx + c@ 0<> if
       state s" each member once" s" remove the repeated member, keeping one"
       E-MEMBER REJECT-TOKEN

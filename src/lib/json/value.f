@@ -510,6 +510,44 @@ public
 
 private
 
+\ Runs body on a listed member; skips another under `*`, else rejects it.
+: LISTED-RUN ( R value value str n bool [ R value n -- R ] -- R )
+   {: name m list:str count:n wild:bool body :}
+   list count [: name swap QUOTED= ;] LISTED-INDEX {: idx:n :}
+   idx 0< 0= if m idx body execute exit then
+   wild if exit then
+   name [: name OFFSET-OF list count UNKNOWN-AT ;] WITH-CURSOR ;
+
+: HAS? ( value str -- bool )
+   FIND MATCH option
+     none OF false ENDOF
+     some OF drop true ENDOF
+   ;MATCH ;
+
+\ The offset of the object's `}`.
+: CLOSE-OFFSET ( value -- n )
+   VALUE-UNMAKE {: doc:^ at:n len:n :} at len + 1- ;
+
+\ Rejects the name at start when it is required and no member has it;
+\ answers the next name's start.
+: LISTED-PRESENT ( n value str -- n ) {: start:n v list:str :}
+   list start NAME-AT {: name:str next:n :}
+   name OPTIONAL? if next exit then
+   v name HAS? if next exit then
+   v [: v CLOSE-OFFSET name MISSING-AT ;] WITH-CURSOR ;
+
+public
+
+: EACH-LISTED ( R value str [ R value n -- R ] -- R )
+   {: v list:str body :}
+   list LISTED {: names:str wild:bool :}
+   names READ-NAME-COUNT {: count:n :}
+   v s" write an object here"
+   [: names count wild body LISTED-RUN true ;] MEMBERS
+   0 count 0 ?do v names LISTED-PRESENT loop drop ;
+
+private
+
 : NEXT-STRING ( ^cursor -- ) {: state:^ :}
    state NEXT-INNER T-STR <> if
       state s" a string" s" write a string" WRONG-KIND

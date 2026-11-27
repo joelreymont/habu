@@ -284,6 +284,47 @@ create DEEP-BUF DEPTH 2 * allot
    s" 1:1: expected an object, found an array; walk only an object with JSON:EACH-MEMBER-WHILE"
    SAID ;
 
+\ Appends the value's text and its listed index, each with a `;`.
+: SEE-LISTED ( ^VEC:vector<u8> JSON:value n -- ^VEC:vector<u8> )
+   {: seen v k:n :}
+   seen v SEE-TEXT  s" 0123456789" STR:DATA k + 1 >str SEE ;
+
+\ EACH-LISTED over the text by the list, each member seen.
+: LISTED-SEEN ( str str -- ^VEC:vector<u8> ) {: text:str list:str :}
+   SEEN-NEW text JSON:PARSE list [: SEE-LISTED ;] JSON:EACH-LISTED ;
+
+\ EACH-LISTED over the text's member `sap` by the list throws E-MEMBER with
+\ the text ws.
+: LISTED-SAYS ( str str str -- ) {: text:str list:str ws:str :}
+   [: text JSON:PARSE s" sap" JSON:GET
+      list [: drop DROP-VALUE ;] JSON:EACH-LISTED ;]
+   JSON:E-MEMBER TTHROWSQ
+   JSON:E-MEMBER ws SAID ;
+
+: TEST-EACH-LISTED ( -- )
+   s" EACH-LISTED hands each listed member's value and index in text order" T-LABEL
+   s\" {\"user\":\"u\",\"system\":\"s\",\"host\":\"h\"}" s" host user system"
+   LISTED-SEEN s\" \"u\";1;\"s\";2;\"h\";0;" SEEN=
+   s" EACH-LISTED admits an object without an optional member" T-LABEL
+   s\" {\"host\":\"h\"}" s" host port?" LISTED-SEEN s\" \"h\";0;" SEEN=
+   s" EACH-LISTED matches an escaped name by its decoded text" T-LABEL
+   s\" {\"\\u0068ost\":1}" s" host" LISTED-SEEN s" 1;0;" SEEN=
+   s" EACH-LISTED rejects an unknown member at its name" T-LABEL
+   s\" {\"sap\":{\"host\":\"a\",\"colour\":1}}" s" host user system"
+   s\" 1:20: expected one of `host`, `user`, `system`, found `\"colour\"`; rename the member to one of those, or remove it"
+   LISTED-SAYS
+   s" EACH-LISTED under `*` skips an unknown member" T-LABEL
+   s\" {\"host\":\"a\",\n \"colour\":1}" s" host *" LISTED-SEEN
+   s\" \"a\";0;" SEEN=
+   s" EACH-LISTED rejects a missing member at the object's `}`" T-LABEL
+   s\" {\"sap\":{\"host\":\"a\"\n}}" s" host user"
+   s" 2:1: expected the member `user`, found `}`; add the member to the object"
+   LISTED-SAYS
+   s" EACH-LISTED rejects an array" T-LABEL
+   s\" {\"sap\":[1]}" s" host"
+   s" 1:8: expected an object, found an array; write an object here"
+   LISTED-SAYS ;
+
 \ Appends the tag, the value's text and a `;`.
 : TAGGED ( ^VEC:vector<u8> str JSON:value -- ^VEC:vector<u8> )
    {: seen s:str v :}
@@ -517,6 +558,7 @@ public
    TEST-EACH-MEMBER
    TEST-EACH-WHILE
    TEST-EACH-MEMBER-WHILE
+   TEST-EACH-LISTED
    TEST-WALK
    TEST-WALK-FAR
    TEST-STRING=

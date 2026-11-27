@@ -23,6 +23,8 @@
 \ which skips the others, repeated or not: from the object's `{` or a member
 \ value's last token it answers the key's index in the list, with the reader
 \ on the value's first token, or -1 at the `}`.
+\ EACH-LISTED walks a parsed object by such a list, with READ-LISTED's
+\ rejections, handing the body each listed member's value and its index.
 \ READ-REWIND puts a reader on a value's last token back on its first, given
 \ the span READ-ANY-SPAN$ answered for that value.
 \ READ-REPEAT answers some index, from 0 in document order, of the first
