@@ -368,6 +368,7 @@ STRUCTURE plan DERIVE addr
    \ no pointer to it.
    FIELD column ^binding
    FIELD fresh ^VEC:vector<n>  \ the variables EXPAND joins `x/y` on
+   FIELD cursors ^cursors
 ;STRUCTURE
 
 defer SQL-EXPRESSION ( ^plan n -- )
@@ -860,7 +861,9 @@ defer EXISTS-SQL ( ^plan n -- )
 : SAME-SQL ( ^plan ^binding ^binding -- ^rel )
    {: plan a:^ o:^ :}
    plan a o COMPATIBLE? 0= if plan TEXTS s" false" TEXT-REL exit then
-   a BINDING-SQL @ o BINDING-SQL @ REL= if plan NEW-SQL exit then
+   plan PLAN-CURSORS @ a BINDING-SQL @ o BINDING-SQL @ REL= if
+      plan NEW-SQL exit
+   then
    a BINDING-SHAPE @ KNOWN = o BINDING-SHAPE @ KNOWN = and if
       plan NEW-SQL exit
    then
@@ -969,7 +972,8 @@ defer EXISTS-SQL ( ^plan n -- )
    then
    scope k VEC:AT {: s:^ :}
    plan s o where +MEETS {: strict:bool :}
-   s BINDING-SQL @ o BINDING-SQL @ REL= {: same:bool :}
+   plan PLAN-CURSORS @ s BINDING-SQL @ o BINDING-SQL @ REL=
+   {: same:bool :}
    o BINDING-NULLABLE @ same 0= and {: open:bool :}
    plan s o optional MERGE
    optional if exit then
@@ -1551,7 +1555,8 @@ STRUCTURE pruning DERIVE addr
    else occs var shape sql t BIND occs LAST then {: b:^ :}
    sp b BINDING-SPREAD !
    plan b o where +MEETS 0= null and
-   sql o BINDING-SQL @ REL= 0= and {: open:bool :}
+   plan PLAN-CURSORS @ sql o BINDING-SQL @ REL= 0= and
+   {: open:bool :}
    o BINDING-ALWAYS @ 0= if open b BINDING-NULLABLE ! exit then
    open if where b +NULL-TEST then ;
 
@@ -5146,6 +5151,7 @@ STRUCTURE walk DERIVE addr
    al 0 [type] node-test VEC:NEW plan PLAN-TESTS !
    al 0 [type] bool VEC:NEW plan PLAN-BOUND !
    INDEXES plan PLAN-FRESH !
+   al NEW-CURSORS plan PLAN-CURSORS !
    plan STATEMENT {: r:^ :}
    al NULL-PTR NEW-SINK {: count:^ :}
    count r WRITE-REL

@@ -2,7 +2,13 @@
 \ counts the bytes it is given and appends them to its vector, unless that
 \ is NULL-PTR, so one writing sizes the text and the next writes it.
 \ The writer takes no plan and cannot reject.
-\ STORAGE CLASS. CALLER-OWNED: the sink and its vector are the caller's.
+\ REL= reads two rels' texts at once, with a cursor each: a stack of
+\ frames, one per rel the cursor is inside, the innermost last, each the
+\ part of its rel reached and the bytes of it passed. It compares the
+\ shorter of the two strings the cursors stand in, then moves both past
+\ it, so it reads each byte once.
+\ STORAGE CLASS. CALLER-OWNED: the sink, its vector and REL='s cursors
+\ are the caller's.
 
 require src/lib/allocator.f
 require src/lib/vector.f
@@ -109,89 +115,128 @@ STRUCTURE sink DERIVE addr
 : STR-TAKE ( str n -- str )
    {: s:str k:n :} s STR:DATA k SPAN:MAKE SPAN:$ ;
 
-\ The bytes WRITE-REL writes of the child, none for NULL-PTR.
-: CHILD-LEN ( ^rel -- n )
-   {: c:^ :} c NULL-PTR = if 0 else c SQL-LEN then ;
+\ Where in its rel a cursor stands: its CTE's separator, name, AS or
+\ body, the space after the WITH, its piece's text or child, the open
+\ text.
+ENUM part sep name as body space text child open ;ENUM
 
-\ SEG answers where byte n of a rel's text is as a string, a child rel and
-\ an offset: the string's bytes from n, NULL-PTR and 0 when the byte is in
-\ a string; the empty string, the child and n within it when in a child;
-\ the empty string, NULL-PTR and n past the end when in neither.
+\ A rel a cursor is inside: the part it stands at, of the CTE or piece
+\ named, and the bytes of that part passed.
+STRUCTURE frame DERIVE addr
+   FIELD rel ^rel
+   FIELD cte ^cte
+   FIELD piece ^piece
+   FIELD part part
+   FIELD off n
+;STRUCTURE
 
-\ Byte n of a string then a child, NULL-PTR for none, which ends after it.
-: ITEM-BYTE ( str ^rel n -- str ^rel n )
-   {: s:str c:^ k:n :}
-   k s STR:LEN < if s k STR-SKIP NULL-PTR 0 exit then
-   s" " c k s STR:LEN - ;
+\ REL='s two cursors, emptied at each call.
+STRUCTURE cursors DERIVE addr
+   FIELD a ^VEC:vector<frame>
+   FIELD b ^VEC:vector<frame>
+;STRUCTURE
 
-: CTE-LEN ( ^rel ^cte -- n )
-   {: r:^ c:^ :}
-   r c CTE-SEP$ STR:LEN c CTE-NAME @ STR:LEN +
-   c CTE-AS$ STR:LEN + c CTE-BODY @ SQL-LEN + ;
+: NEW-CURSORS ( ^ALLOC:allocator -- ^cursors )
+   {: al:^ :}
+   al [type] cursors ALLOC:NEW {: cs:^ :}
+   al 0 [type] frame VEC:NEW cs CURSORS-A !
+   al 0 [type] frame VEC:NEW cs CURSORS-B ! cs ;
 
-\ Byte n of the CTE of the rel's WITH, which ends after it.
-: CTE-BYTE ( ^rel ^cte n -- str ^rel n )
-   {: r:^ c:^ k:n :}
-   r c CTE-SEP$ {: sep:str :} c CTE-NAME @ {: name:str :}
-   k sep STR:LEN < if sep NULL-PTR k ITEM-BYTE exit then
-   k sep STR:LEN - {: j:n :}
-   j name STR:LEN < if name NULL-PTR j ITEM-BYTE exit then
-   c CTE-AS$ c CTE-BODY @ j name STR:LEN - ITEM-BYTE ;
+: INNER ( ^VEC:vector<frame> -- ^frame )
+   {: v:^ :} v v VEC:COUNT 1- VEC:AT ;
 
-\ Byte n of the rel's WITH and the space after it.
-: WITH-BYTE ( ^rel n -- str ^rel n )
-   {: r:^ n:n :}
-   n r REL-WITH @ begin dup NULL-PTR <> while
-      {: k:n c:^ :} r c CTE-LEN {: m:n :}
-      k m < if r c k CTE-BYTE exit then
-      k m - c CTE-NEXT @
-   repeat drop {: j:n :}
-   r REL-WITH @ NULL-PTR = if s" " NULL-PTR j exit then
-   s"  " NULL-PTR j ITEM-BYTE ;
+\ The frame stands at the CTE's separator, or past the last CTE at the
+\ space after the WITH.
+: AT-CTE ( ^frame ^cte -- )
+   {: f:^ c:^ :}
+   c f FRAME-CTE !
+   c NULL-PTR = if PART-SPACE else PART-SEP then f FRAME-PART ! ;
 
-\ Byte n of the rel's pieces and open text.
-: PIECES-BYTE ( ^rel n -- str ^rel n )
-   {: r:^ n:n :}
-   n r REL-FIRST @ begin dup NULL-PTR <> while
-      {: k:n p:^ :} p PIECE-TEXT @ {: t:str :} p PIECE-REL @ {: c:^ :}
-      t STR:LEN c CHILD-LEN + {: m:n :}
-      k m < if t c k ITEM-BYTE exit then
-      k m - r p NEXT-PIECE
-   repeat drop {: j:n :}
-   r OPEN? 0= if s" " NULL-PTR j exit then
-   r OPEN$ NULL-PTR j ITEM-BYTE ;
+\ The frame stands at the piece's text, or past the last piece at the
+\ open text.
+: AT-PIECE ( ^frame ^piece -- )
+   {: f:^ p:^ :}
+   p f FRAME-PIECE !
+   p NULL-PTR = if PART-OPEN else PART-TEXT then f FRAME-PART ! ;
 
-\ Byte n of the rel's text, not looking into its children.
-: FIND ( ^rel n -- str ^rel n )
-   {: r:^ k:n :}
-   r k WITH-BYTE {: s:str c:^ j:n :}
-   s STR:LEN 0<> c NULL-PTR <> or if s c j exit then
-   r j PIECES-BYTE ;
+\ Moves the cursor into the rel, to its first byte; NULL-PTR leaves it.
+: ENTER-REL ( ^VEC:vector<frame> ^rel -- )
+   {: v:^ r:^ :}
+   r NULL-PTR = if exit then
+   v VEC:PUSH {: f:^ :} r f FRAME-REL ! 0 f FRAME-OFF !
+   r REL-WITH @ NULL-PTR = if f r REL-FIRST @ AT-PIECE exit then
+   f r REL-WITH @ AT-CTE ;
 
-\ The rel's bytes from n to the end of the string holding byte n; empty
-\ from its length on.
-: SEG ( ^rel n -- str )
-   FIND {: s:str c:^ k:n :}
-   c NULL-PTR = if s exit then c k RECURSE ;
+\ Moves the cursor past the part it stands at: from a body or child into
+\ its rel, from the open text out of the rel.
+: NEXT-PART ( ^VEC:vector<frame> -- )
+   {: v:^ :}
+   v INNER {: f:^ :} 0 f FRAME-OFF !
+   f FRAME-REL @ {: r:^ :} f FRAME-CTE @ {: c:^ :}
+   f FRAME-PIECE @ {: p:^ :}
+   f FRAME-PART @ MATCH part
+      sep OF PART-NAME f FRAME-PART ! ENDOF
+      name OF PART-AS f FRAME-PART ! ENDOF
+      as OF PART-BODY f FRAME-PART ! ENDOF
+      body OF f c CTE-NEXT @ AT-CTE v c CTE-BODY @ ENTER-REL ENDOF
+      space OF f r REL-FIRST @ AT-PIECE ENDOF
+      text OF PART-CHILD f FRAME-PART ! ENDOF
+      child OF
+         f r p NEXT-PIECE AT-PIECE v p PIECE-REL @ ENTER-REL
+      ENDOF
+      open OF v v VEC:COUNT 1- VEC:RESIZE ENDOF
+   ;MATCH ;
 
-\ The bytes from n both rels write in one string each, and whether they
-\ are the same; n is less than their length.
-: SAME-RUN ( ^rel ^rel n -- n bool )
-   {: a:^ b:^ i:n :}
-   a i SEG b i SEG {: s:str t:str :}
+\ The part's string past the bytes passed; empty at a body or child.
+: PART$ ( ^frame -- str )
+   {: f:^ :}
+   f FRAME-REL @ {: r:^ :} f FRAME-CTE @ {: c:^ :}
+   f FRAME-PART @ MATCH part
+      sep OF r c CTE-SEP$ ENDOF
+      name OF c CTE-NAME @ ENDOF
+      as OF c CTE-AS$ ENDOF
+      body OF s" " ENDOF
+      space OF s"  " ENDOF
+      text OF f FRAME-PIECE @ PIECE-TEXT @ ENDOF
+      child OF s" " ENDOF
+      open OF r OPEN? if r OPEN$ else s" " then ENDOF
+   ;MATCH f FRAME-OFF @ STR-SKIP ;
+
+\ The bytes from the cursor to the end of the string it stands in, the
+\ cursor first moved past ended parts; empty past the text's end.
+: LEFT$ ( ^VEC:vector<frame> -- str )
+   {: v:^ :}
+   begin v VEC:COUNT 0<> while
+      v INNER PART$ {: s:str :}
+      s STR:LEN 0<> if s exit then
+      v NEXT-PART
+   repeat s" " ;
+
+: PASS ( ^VEC:vector<frame> n -- )
+   {: v:^ k:n :} k v INNER FRAME-OFF +! ;
+
+\ The bytes both cursors stand before in one string each, whether they
+\ are the same, and the cursors moved past them; 0 past either's end.
+: SAME-STRETCH ( ^VEC:vector<frame> ^VEC:vector<frame> -- n bool )
+   {: x:^ y:^ :}
+   x LEFT$ y LEFT$ {: s:str t:str :}
    s STR:LEN t STR:LEN min {: m:n :}
+   m 0= if 0 s STR:LEN t STR:LEN = exit then
+   x m PASS y m PASS
    m s m STR-TAKE t m STR-TAKE STR:= ;
 
-\ Whether the rels write one text, compared run by run, allocating nothing.
-: REL= ( ^rel ^rel -- bool )
-   {: a:^ b:^ :}
+\ Whether the rels write one text.
+: REL= ( ^cursors ^rel ^rel -- bool )
+   {: cs:^ a:^ b:^ :}
    a b = if true exit then
-   a SQL-LEN {: n:n :}
-   n b SQL-LEN <> if false exit then
-   0 begin dup n < while
-      {: i:n :} a b i SAME-RUN {: m:n same:bool :}
+   a SQL-LEN b SQL-LEN <> if false exit then
+   cs CURSORS-A @ {: x:^ :} cs CURSORS-B @ {: y:^ :}
+   x 0 VEC:RESIZE x a ENTER-REL
+   y 0 VEC:RESIZE y b ENTER-REL
+   begin
+      x y SAME-STRETCH {: m:n same:bool :}
       same 0= if false exit then
-      i m +
-   repeat drop true ;
+      m 0=
+   until true ;
 
 ;package
