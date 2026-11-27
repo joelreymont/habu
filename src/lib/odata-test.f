@@ -9,7 +9,8 @@
 \ in a key, keyed by it; a record copied as sets whose types share a member
 \ name with types they do not derive from; a navigation of another type
 \ leading to no set; sets and properties hidden by each rule, in listings and
-\ copies; and the hidden names found in a query option's text.
+\ copies; the hidden names found in a query option's text; and properties and
+\ navigations looked up by name.
 \ Run: bin/hb --load src/lib/odata-test.f
 
 require src/lib/string.f
@@ -845,6 +846,38 @@ variable VALUE-LEN
    GROSSE$ T$=
    a ARENA:RELEASE ;
 
+: FOUND-PROPERTY$ ( ^ODATA:entity-type str -- str )
+   ODATA:PROPERTY MATCH nullable
+      none OF s" none" ENDOF
+      some OF ODATA:PROPERTY-NAME$ ENDOF
+   ;MATCH ;
+
+: FOUND-NAVIGATION$ ( ^ODATA:entity-type str -- str )
+   ODATA:NAVIGATION MATCH nullable
+      none OF s" none" ENDOF
+      some OF ODATA:NAVIGATION-NAME$ ENDOF
+   ;MATCH ;
+
+\ A1's own X and its base A's K are found; A2's sibling X is not.
+: TEST-LOOKUPS ( -- )
+   ARENA:NEW {: a:^ :}
+   a s" test/fixtures/odata/derived-keys.xml" MODEL {: m:^ :}
+   m s" A1s" SET-TYPE {: t:^ :}
+   t s" X" FOUND-PROPERTY$ s" X" T$=
+   t s" K" FOUND-PROPERTY$ s" K" T$=
+   t s" Y" FOUND-PROPERTY$ s" none" T$=
+   m s" A2s" SET-TYPE s" X" FOUND-PROPERTY$ s" none" T$=
+   a s" test/fixtures/odata/singleton-target.xml" MODEL
+   s" Customers" SET-TYPE {: c:^ :}
+   c s" Household" FOUND-NAVIGATION$ s" Household" T$=
+   c s" Nope" FOUND-NAVIGATION$ s" none" T$=
+   c s" Name" FOUND-NAVIGATION$ s" none" T$=
+   c s" Household" FOUND-PROPERTY$ s" none" T$=
+   a s" test/fixtures/odata/hide-names.xml" MODEL {: h:^ :}
+   h GROSSE$ ODATA:HIDE-PROPERTY TTRUE
+   h s" Ts" SET-TYPE GROSSE$ FOUND-PROPERTY$ s" none" T$=
+   a ARENA:RELEASE ;
+
 \ A page of Customers with City, Amount and Name hidden, written plain
 \ against hide-page.txt.
 : HIDE-PAGE ( ^ODATA:metadata -- )
@@ -920,6 +953,7 @@ variable VALUE-LEN
    TEST-HIDE-CASCADE
    TEST-HIDDEN-NAME
    TEST-HIDE-NAMES
+   TEST-LOOKUPS
    TEST-HIDE-COPY
    OUT @ VEC:DELETE
    LINK @ VEC:DELETE

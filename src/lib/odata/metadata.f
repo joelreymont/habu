@@ -2719,6 +2719,14 @@ public
    t [: dup PROPERTY-NAME @ m swap HIDDEN?
       if drop else q execute then ;] PROPERTIES-OF ;
 
+\ The type's or a base type's property NAME; none when hidden.
+: PROPERTY ( ^entity-type str -- nullable<property> )
+   {: t:^ name:str :}
+   t name FIND-PROPERTY {: p:^ :}
+   p NULL-PTR = if NULLABLE:NONE exit then
+   t ENTITY-TYPE-MODEL @ name HIDDEN? if NULLABLE:NONE exit then
+   p NULLABLE:SOME ;
+
 \ The key in declared order: the type's own, else its nearest base type's.
 : EACH-KEY ( ^entity-type [ ^property -- ] -- )
    {: q :}
@@ -2734,6 +2742,14 @@ public
    t ENTITY-TYPE-MODEL @ {: m:^ :}
    t [: dup NAVIGATION-NAME @ m swap HIDDEN?
       if drop else q execute then ;] NAVIGATIONS-OF ;
+
+\ The type's or a base type's navigation property NAME; none when hidden.
+: NAVIGATION ( ^entity-type str -- nullable<navigation> )
+   {: t:^ name:str :}
+   t name FIND-NAVIGATION {: n:^ :}
+   n NULL-PTR = if NULLABLE:NONE exit then
+   t ENTITY-TYPE-MODEL @ name HIDDEN? if NULLABLE:NONE exit then
+   n NULLABLE:SOME ;
 
 : NAVIGATION-NAME$ ( ^navigation -- str ) NAVIGATION-NAME @ ;
 : TO-MANY? ( ^navigation -- bool ) NAVIGATION-MANY @ ;
