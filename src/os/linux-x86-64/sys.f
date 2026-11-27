@@ -34,8 +34,8 @@ using X64CODE
 
 $22 constant MAP-ANON-PRIVATE
 $32 constant MAP-ANON-PRIVATE-FIXED
-$01 constant MAP-SHARED
-$11 constant MAP-SHARED-FIXED
+$21 constant MAP-ANON-SHARED          \ MAP_SHARED | MAP_ANONYMOUS
+$31 constant MAP-ANON-SHARED-FIXED    \ the same | MAP_FIXED
 
 \ MAP-DATA-RESERVE maps the DATA window: MAP_PRIVATE $02 | MAP_ANONYMOUS $20 |
 \ MAP_NORESERVE $4000 | MAP_FIXED_NOREPLACE $100000. MAP_NORESERVE is Linux's
@@ -49,6 +49,8 @@ $104022 constant MAP-DATA-RESERVE
 \ MREMAP-MOVE-FIXED moves a mapping to an exact address, replacing what is
 \ mapped there: MREMAP_MAYMOVE 1 | MREMAP_FIXED 2.
 $3 constant MREMAP-MOVE-FIXED
+\ MREMAP-MAYMOVE lets the kernel place the result anywhere: MREMAP_MAYMOVE 1.
+$1 constant MREMAP-MAYMOVE
 
 60  constant NR-EXIT
 0   constant NR-READ
@@ -60,8 +62,6 @@ $3 constant MREMAP-MOVE-FIXED
 15  constant NR-SIGRETURN         \ rt_sigreturn
 257 constant NR-OPEN              \ openat(dirfd, path, flags, mode)
 3   constant NR-CLOSE
-77  constant NR-FTRUNCATE
-319 constant NR-MEMFD-CREATE
 62  constant NR-KILL
 109 constant NR-SETPGID
 39  constant NR-GETPID

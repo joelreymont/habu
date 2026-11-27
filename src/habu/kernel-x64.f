@@ -1004,10 +1004,8 @@ SPN-ENVP0 CELL + constant SPN-FRAME
 : CLONE-ARGS, ( -- )
    RDI CLONE-SIGCHLD IMM32,  RSI ZERO-REG,  RDX ZERO-REG,  R10 ZERO-REG,  R8 ZERO-REG, ;
 
-\ Copy the used region to the fresh view at frame[8], before clone. Include
-\ the pending record, the records a lowering retired, and code above CP
-\ still named by those records. A task reads the high-water from main DATA,
-\ not its own snapshot. This is LIBC-OS:FORK's Linux extent rule.
+\ Copy the used region into the fresh region's RW view before clone: the
+\ pending record, retired records and code above CP they name, by main's high-water.
 : FORK-COPY, ( -- )
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
    {: scan:label next:label span:label scanned:label :}
@@ -1018,7 +1016,7 @@ SPN-ENVP0 CELL + constant SPN-FRAME
    X64ASM:RAX DICT-CAP IMM32,
    X64ASM:RCX X64ASM:RAX X64CODE:ASM-SINK X64ASM:ENC-CMP-RR  X64ASM:C-A X64ASM:RCX X64ASM:RAX X64CODE:ASM-SINK X64ASM:ENC-CMOVCC
    X64ASM:RCX X64ASM:RCX DREC X64ASM:>IMM8 X64CODE:ASM-SINK X64ASM:ENC-IMUL-RRI8
-   X64ASM:RSI DBASE-REG X64CODE:ASM-SINK X64ASM:ENC-MOV-RR  X64ASM:RDI 8 FRAME@,
+   X64ASM:RSI DBASE-REG X64CODE:ASM-SINK X64ASM:ENC-MOV-RR  X64ASM:RDI 0 FRAME@,
    X64CODE:ASM-SINK X64ASM:ENC-REP-MOVSB
    X64ASM:R9 CP-REG X64CODE:ASM-SINK X64ASM:ENC-MOV-RR
    X64ASM:R10 X64ASM:R10 NDICT-HW-CELL X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-MOV-RM
@@ -1043,48 +1041,40 @@ SPN-ENVP0 CELL + constant SPN-FRAME
    X64ASM:R9 -8 X64ASM:>IMM8 X64CODE:ASM-SINK X64ASM:ENC-AND-RI8
    X64ASM:RSI DBASE-REG CFSTK-OFF X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-LEA
    X64ASM:RCX X64ASM:R9 X64CODE:ASM-SINK X64ASM:ENC-MOV-RR  X64ASM:RCX X64ASM:RSI X64CODE:ASM-SINK X64ASM:ENC-SUB-RR
-   X64ASM:RDI 8 FRAME@,  X64ASM:RDI CFSTK-OFF X64ASM:>IMM32 X64CODE:ASM-SINK X64ASM:ENC-ADD-RI32
+   X64ASM:RDI 0 FRAME@,  X64ASM:RDI CFSTK-OFF X64ASM:>IMM32 X64CODE:ASM-SINK X64ASM:ENC-ADD-RI32
    X64CODE:ASM-SINK X64ASM:ENC-REP-MOVSB ;
 
-\ The child replaces both shared mappings with its private backing before
-\ returning to Habu. Copying before clone prevents later parent writes from
-\ reaching it. Every inherited task DATA keeps the same alias delta.
+\ The parent fills a fresh shared region before clone and unmaps it after;
+\ the child moves its RW view to the alias and its RX view over its own.
 : FORK, ( -- )
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
-   {: unfd:label failed:label parent:label dead:label :}
+   {: unmap:label failed:label parent:label dead:label :}
    X64CODE:LBL X64CODE:LBL X64CODE:LBL {: plain:label done:label out:label :}
-   RSP 16 >IMM8 ASM-SINK ENC-SUB-RI8            \ [0] fd, [8] temporary view
+   RSP 16 >IMM8 ASM-SINK ENC-SUB-RI8            \ [0] the RW view, [8] the RX view
    RAX REGION-ALIAS:DELTA-CELL CELL@,
    RAX RAX ASM-SINK ENC-TEST-RR  C-E plain JCC,
-   failed X64BOOT:REGION-MEMFD,  RAX 0 FRAME!,
-   R8 RAX ASM-SINK ENC-MOV-RR  RDI ZERO-REG,
-   RSI REGION IMM32,  RDX PROT-RW IMM32,  R10 MAP-SHARED IMM32,  R9 ZERO-REG,
-   NR-MMAP SYS,  C-B unfd JCC,
-   RAX 8 FRAME!,
+   RDI ZERO-REG,  MAP-ANON-SHARED failed X64BOOT:REGION-PAIR,
+   RDI 0 FRAME!,  R8 8 FRAME!,
    FORK-COPY,
-   RDI 8 FRAME@,  RSI REGION IMM32,
-   NR-MUNMAP SYS,  C-B unfd JCC,
-   CLONE-ARGS,  NR-FORK SYS,  C-B unfd JCC,
+   CLONE-ARGS,  NR-FORK SYS,  C-B unmap JCC,
    RAX RAX ASM-SINK ENC-TEST-RR  C-NE parent JCC,
-   RDI DBASE-REG ASM-SINK ENC-MOV-RR  RDI WRITE-ALIAS,
-   RSI REGION IMM32,  RDX PROT-RW IMM32,  R10 MAP-SHARED-FIXED IMM32,
-   R8 0 FRAME@,  R9 ZERO-REG,
-   NR-MMAP SYS,  C-B dead JCC,
-   RDI DBASE-REG ASM-SINK ENC-MOV-RR  RDX PROT-RX IMM32,
-   NR-MMAP SYS,  C-B dead JCC,
-   RDI 0 FRAME@,  NR-CLOSE SYS,  C-B dead JCC,
+   RDI 0 FRAME@,  RSI REGION IMM32,  RDX REGION IMM32,  R10 MREMAP-MOVE-FIXED IMM32,
+   R8 DBASE-REG ASM-SINK ENC-MOV-RR  R8 WRITE-ALIAS,
+   NR-MREMAP SYS,  C-B dead JCC,
+   RDI 8 FRAME@,  R8 DBASE-REG ASM-SINK ENC-MOV-RR
+   NR-MREMAP SYS,  C-B dead JCC,
    RAX ZERO-REG,  done JMP,
    dead X64CODE:LBL,
    S\" hb: fork: cannot map the child's own region\n" EXIT-STATUS:SYSTEM STDERR-EXIT,
+   unmap X64CODE:LBL,
+   RAX MINUS-1,
    parent X64CODE:LBL,
    R10 RAX ASM-SINK ENC-MOV-RR
-   RDI 0 FRAME@,  NR-CLOSE SYS,
+   RDI 0 FRAME@,  RSI REGION IMM32,  NR-MUNMAP SYS,
+   RDI 8 FRAME@,  NR-MUNMAP SYS,
    RAX R10 ASM-SINK ENC-MOV-RR  done JMP,
    plain X64CODE:LBL,
    CLONE-ARGS,  NR-FORK SYS,  C-AE done JCC,
-   failed JMP,
-   unfd X64CODE:LBL,
-   RDI 0 FRAME@,  NR-CLOSE SYS,
    failed X64CODE:LBL,
    RAX MINUS-1,
    done X64CODE:LBL,

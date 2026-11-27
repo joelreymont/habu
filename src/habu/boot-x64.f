@@ -67,31 +67,20 @@ variable TEXT0                       \ the stream's byte 0, which OPEN, binds
 
 public
 
-\ A fresh executable, close-on-exec memfd of REGION bytes, returned in rax.
-\ Only EINVAL retries without MFD_EXEC, for Linux before 6.3. On failure no
-\ descriptor remains open and rsp is restored. Clobbers the syscall scratch
-\ registers and r8; the twin of LIBC-OS:REGION-MEMFD.
-: REGION-MEMFD, ( label -- ) {: bad:label :}
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL
-   {: made:label sized:label failed:label :}
-   RSP 16 >IMM8 ASM-SINK ENC-SUB-RI8
-   RAX $6F696765722D6268 IMM,  RAX RSP MEM-AT ASM-SINK ENC-MOV-MR
-   RAX $6E IMM,  RAX RSP 8 MEM-OFF ASM-SINK ENC-MOV-MR
-   RDI RSP ASM-SINK ENC-MOV-RR  RSI $11 IMM,
-   NR-MEMFD-CREATE SYS,  C-AE made JCC,
-   RAX -22 >IMM8 ASM-SINK ENC-CMP-RI8  C-NE failed JCC,
-   RDI RSP ASM-SINK ENC-MOV-RR  RSI 1 IMM,
-   NR-MEMFD-CREATE SYS,  C-B failed JCC,
-   made X64CODE:LBL,
-   R8 RAX ASM-SINK ENC-MOV-RR
-   RDI R8 ASM-SINK ENC-MOV-RR  RSI REGION IMM,
-   NR-FTRUNCATE SYS,  C-AE sized JCC,
-   RDI R8 ASM-SINK ENC-MOV-RR  NR-CLOSE SYS,
-   failed X64CODE:LBL,
-   RSP 16 >IMM8 ASM-SINK ENC-ADD-RI8  bad JMP,
-   sized X64CODE:LBL,
-   RAX R8 ASM-SINK ENC-MOV-RR
-   RSP 16 >IMM8 ASM-SINK ENC-ADD-RI8 ;
+\ r8 = REGION bytes shared anonymous RX at rdi by `flags`, rdi = their RW alias;
+\ a failure unmaps what it mapped, jumps to `bad`. Clobbers rax, rcx, rdx, rsi, r9-r11.
+: REGION-PAIR, ( n label -- ) {: flags:n bad:label :}
+   X64CODE:LBL X64CODE:LBL {: unview:label done:label :}
+   REGION PROT-RX flags MMAP,  C-B bad JCC,
+   RDI RAX ASM-SINK ENC-MOV-RR  RSI ZERO-REG,  RDX REGION IMM,  R10 MREMAP-MAYMOVE IMM,
+   NR-MREMAP SYS,  C-B unview JCC,
+   R8 RDI ASM-SINK ENC-MOV-RR
+   RDI RAX ASM-SINK ENC-MOV-RR  RSI REGION IMM,  RDX PROT-RW IMM,
+   NR-MPROTECT SYS,  C-AE done JCC,
+   NR-MUNMAP SYS,
+   RDI R8 ASM-SINK ENC-MOV-RR
+   unview X64CODE:LBL,  RSI REGION IMM,  NR-MUNMAP SYS,  bad JMP,
+   done X64CODE:LBL, ;
 
 private
 
@@ -117,21 +106,14 @@ private
 : TEXT-BASE, ( r64 -- ) {: r:r64 :}
    r TEXT0 @ >LABEL X64CODE:LEA-REL, ;
 
-\ Map the descriptor in r8, REGION bytes shared, at rdi.
-: VIEW, ( n n -- ) {: prot:n flags:n :}
-   RSI REGION IMM,  RDX prot IMM,  R10 flags IMM,  R9 ZERO-REG,
-   NR-MMAP SYS,  C-B REGION-BAD @ >LABEL JCC, ;
-
-\ r13 = the code region, REGION-OFF past the image base, and r15 past its
-\ records, of which r14 counts none; r12 = its RW alias - r13.
+\ r13 = the region, shared anonymous RX at image base + REGION-OFF; r12 = its
+\ RW alias (mremap of old size 0) - r13; r15 = past its records; r14 = 0.
 : CODE-REGION, ( -- )
    DBASE-REG RBASE-REG REGION-OFF LINUX-LAYOUT:CODE-OFF - MEM-OFF ASM-SINK ENC-LEA
-   REGION-BAD @ >LABEL REGION-MEMFD,  R8 RAX ASM-SINK ENC-MOV-RR
-   \ The RX view over the image's own load, the RW alias where the kernel puts it.
-   RDI DBASE-REG ASM-SINK ENC-MOV-RR  PROT-RX MAP-SHARED-FIXED VIEW,
-   RDI ZERO-REG,  PROT-RW MAP-SHARED VIEW,
-   DELTA-REG RAX ASM-SINK ENC-MOV-RR  DELTA-REG DBASE-REG ASM-SINK ENC-SUB-RR
-   RDI R8 ASM-SINK ENC-MOV-RR  NR-CLOSE SYS,  C-B REGION-BAD @ >LABEL JCC,
+   RDI DBASE-REG ASM-SINK ENC-MOV-RR
+   MAP-ANON-SHARED-FIXED REGION-BAD @ >LABEL REGION-PAIR,
+   DELTA-REG RDI ASM-SINK ENC-MOV-RR
+   DELTA-REG DBASE-REG ASM-SINK ENC-SUB-RR
    ENGINE-GPR:X64-CP >R64 DBASE-REG DICT-SIZE MEM-OFF ASM-SINK ENC-LEA
    ENGINE-GPR:X64-NDICT >R64 ZERO-REG, ;
 
@@ -907,7 +889,7 @@ variable HEX-AT
    OCC-BAD @ >LABEL S\" hb: cannot map definition occurrences\n" EXIT-STATUS:SYSTEM FAIL,
    DATA-BAD @ >LABEL S\" hb: cannot map fixed data region\n" EXIT-STATUS:SYSTEM FAIL,
    REGION-BAD @ >LABEL
-   S\" hb: cannot map the code region; raise the open-file limit (ulimit -n) or the address-space limit (ulimit -v)\n"
+   S\" hb: cannot map the code region; raise the address-space limit (ulimit -v)\n"
    EXIT-STATUS:SYSTEM FAIL,
    crash rest last CRASH-HANDLER,
    rest RESTORER,
