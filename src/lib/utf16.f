@@ -76,11 +76,13 @@ public
    PAIR-FIRST - {: bits:n :}
    bits PAIR-SHIFT rshift HIGH-FIRST +  bits PAIR-MASK and LOW-FIRST + ;
 
-private
-
+\ Whether the unit is a high (leading) surrogate, $D800 to $DBFF: a text cut
+\ into pieces must not end a piece on one.
 : HIGH? ( n -- bool )
    {: unit:n :}
    unit HIGH-FIRST >= unit LOW-FIRST < and ;
+
+private
 
 : LOW? ( n -- bool )
    {: unit:n :}

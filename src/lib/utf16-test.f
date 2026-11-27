@@ -267,6 +267,13 @@ TYPED-VARIABLE LE-OUT ^VEC:vector<u8>
    UTF8-REJECTIONS
    LE-BUF RELEASE  LE-OUT RELEASE ;
 
+\ The high surrogates' edges, and a low surrogate, which is none.
+: HIGHS ( -- )
+   $D7FF UTF16:HIGH? TFALSE
+   $D800 UTF16:HIGH? TTRUE
+   $DBFF UTF16:HIGH? TTRUE
+   $DC00 UTF16:HIGH? TFALSE ;
+
 : MAIN ( -- )
    T-RESET
    BMP
@@ -280,6 +287,7 @@ TYPED-VARIABLE LE-OUT ^VEC:vector<u8>
    ROUND-TRIPS
    REJECTIONS
    CONVERSIONS
+   HIGHS
    T-REPORT
    s" utf16-test: ok" type cr ;
 
