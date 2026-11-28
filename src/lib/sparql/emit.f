@@ -2781,6 +2781,15 @@ STRUCTURE pruning DERIVE addr
       plan keys i VEC:AT branches PROBED? if i unloop exit then
    loop -1 ;
 
+\ Every binding of the list on column sql, which a strict `=` reads,
+\ is not nullable.
+: COLUMN-TESTED ( ^plan ^VEC:vector<binding> ^rel -- )
+   {: plan bs:^ sql:^ :}
+   bs VEC:COUNT 0 ?do
+      plan PLAN-CURSORS @ bs i VEC:AT BINDING-SQL @ sql REL=
+      if false bs i VEC:AT BINDING-NULLABLE ! then
+   loop ;
+
 \ Appends to where that binding b of a key's variable is the key of
 \ row: `b = row.k`, through b's shape's `in` for a term key. That strict
 \ `=` leaves b not nullable.
@@ -3066,38 +3075,39 @@ STRUCTURE pruning DERIVE addr
    {: plan k:^ c:n :}
    plan k plan c CONSTANT-VALUE SAME-SQL ;
 
-\ Appends that variable e is constant c, when they are such and e native.
-\ Own: where is the WHERE of the relation binding e, and drops its rows;
-\ there the strict `=` leaves e's binding not nullable.
-: +FIXED ( ^plan n n ^rel bool -- )
-   {: plan e:n c:n where:^ own:bool :}
+\ Appends that variable e is constant c, when they are such and e native;
+\ its strict `=` drops the NULL of e's column in clear's bindings.
+: +FIXED ( ^plan n n ^rel ^VEC:vector<binding> -- )
+   {: plan e:n c:n where:^ clear:^ :}
    plan TREE c CONSTANT? 0= if exit then
    plan e NATIVE-VAR {: k:^ :}
    k NULL-PTR = if exit then
    plan k c FIXED-SQL {: eq:^ :}
    where eq +AND
-   own eq EMPTY? 0= and if false k BINDING-NULLABLE ! then ;
+   clear NULL-PTR <> eq EMPTY? 0= and if
+      plan clear k BINDING-SQL @ COLUMN-TESTED
+   then ;
 
-: +FIXED-EITHER ( ^plan n n ^rel bool -- )
-   {: plan a:n b:n where:^ own:bool :}
-   plan a b where own +FIXED plan b a where own +FIXED ;
+: +FIXED-EITHER ( ^plan n n ^rel ^VEC:vector<binding> -- )
+   {: plan a:n b:n where:^ clear:^ :}
+   plan a b where clear +FIXED plan b a where clear +FIXED ;
 
-: +EQUAL-FIXED ( ^plan n ^rel bool -- )
-   {: plan e:n where:^ own:bool :}
+: +EQUAL-FIXED ( ^plan n ^rel ^VEC:vector<binding> -- )
+   {: plan e:n where:^ clear:^ :}
    plan e PAIR-CLASS 0<> if exit then
    plan TREE e NODE-A@ {: a:n :} plan TREE e NODE-B@ {: b:n :}
    plan a UNTYPED? plan b UNTYPED? or 0= if exit then
-   plan a b where own +FIXED-EITHER ;
+   plan a b where clear +FIXED-EITHER ;
 
-: +SAME-FIXED ( ^plan n ^rel bool -- )
-   {: plan call:n where:^ own:bool :}
+: +SAME-FIXED ( ^plan n ^rel ^VEC:vector<binding> -- )
+   {: plan call:n where:^ clear:^ :}
    plan TREE {: state :}
    state call NODE-A@ {: list:n :}
    plan state list NODE-A@ state state list NODE-B@ NODE-A@
-      where own +FIXED-EITHER ;
+      where clear +FIXED-EITHER ;
 
-: +IN-FIXED ( ^plan n ^rel bool -- )
-   {: plan e:n where:^ own:bool :}
+: +IN-FIXED ( ^plan n ^rel ^VEC:vector<binding> -- )
+   {: plan e:n where:^ clear:^ :}
    plan e IN-CLASS 0<> if exit then
    plan TREE {: state :}
    state e NODE-B@ {: list:n :}
@@ -3111,32 +3121,32 @@ STRUCTURE pruning DERIVE addr
       where plan k state each NODE-A@ FIXED-SQL +REL
       state each NODE-B@
    repeat drop where s" )" +SQL
-   own if false k BINDING-NULLABLE ! then ;
+   clear NULL-PTR <> if plan clear k BINDING-SQL @ COLUMN-TESTED then ;
 
-\ Appends the native equalities the test's conjuncts imply; own as for
-\ +FIXED.
-: +IMPLIED ( ^plan n ^rel bool -- )
-   {: plan e:n where:^ own:bool :}
+\ Appends the native equalities the test's conjuncts imply, clearing as
+\ +FIXED does.
+: +IMPLIED ( ^plan n ^rel ^VEC:vector<binding> -- )
+   {: plan e:n where:^ clear:^ :}
    plan TREE {: state :}
    state e s" &&" INFIX? if
-      plan state e NODE-A@ where own RECURSE
-      plan state e NODE-B@ where own RECURSE exit
+      plan state e NODE-A@ where clear RECURSE
+      plan state e NODE-B@ where clear RECURSE exit
    then
-   state e s" =" INFIX? if plan e where own +EQUAL-FIXED exit then
-   state e s" IN" INFIX? if plan e where own +IN-FIXED exit then
+   state e s" =" INFIX? if plan e where clear +EQUAL-FIXED exit then
+   state e s" IN" INFIX? if plan e where clear +IN-FIXED exit then
    state e NODE-K N-CALL <> if exit then
-   state e s" SAMETERM" CALL-IS? if plan e where own +SAME-FIXED then ;
+   state e s" SAMETERM" CALL-IS? if plan e where clear +SAME-FIXED then ;
 
-\ Appends the expression's test, then the equalities it implies; under a
-\ substitution none is own: a variable may be an outer relation's.
+\ Appends the expression's test, then the equalities it implies; own:
+\ where is the scope's WHERE, so they clear the scope's bindings.
 : +TEST ( ^plan ^VEC:vector<binding> n ^rel bool -- )
    {: plan scope:^ e:n where:^ own:bool :}
    plan PLAN-SCOPE @ {: outer:^ :}
    plan PLAN-OUT @ {: out:^ :}
-   own plan PLAN-OUTER @ BINDS-ANY? 0= and {: mine:bool :}
+   own if scope else NULL-PTR then {: clear:^ :}
    plan scope SEEN plan PLAN-SCOPE ! where plan PLAN-OUT !
    where s"  AND " +SEP
-   plan e SQL-TEST plan e where mine +IMPLIED
+   plan e SQL-TEST plan e where clear +IMPLIED
    outer plan PLAN-SCOPE ! out plan PLAN-OUT ! ;
 
 : +FILTER ( ^plan ^VEC:vector<binding> n ^rel bool -- )
@@ -4313,11 +4323,8 @@ STRUCTURE pruning DERIVE addr
    name set NODE-SET-NAME ! kind set NODE-SET-KIND !
    name kind ;
 
-\ Appends `EXISTS (SELECT 1 ...)` to out, after ` OR ` unless out is
-\ empty: the triple over record rec with its variable's slot meeting k
-\ inside the record's own condition, where an index on the slot's column
-\ serves it; that strict `=` leaves every binding on the slot's column
-\ not nullable. Nothing when they cannot meet.
+\ Appends ` OR `-joined EXISTS of the triple over record rec, var's slot
+\ meeting k inside it for the column's index; that `=` drops its NULL.
 : +EXISTS ( ^plan n n n ^binding ^rel -- )
    {: plan triple:n rec:n var:n k:^ out:^ :}
    plan AL [type] relation ALLOC:NEW {: r:^ :}
@@ -4326,12 +4333,7 @@ STRUCTURE pruning DERIVE addr
    bs bs var FIND-VAR VEC:AT {: b:^ :}
    plan b k COMPATIBLE? 0= if exit then
    plan b k SAME-SQL {: same:^ :}
-   same EMPTY? 0= if
-      bs VEC:COUNT 0 ?do
-         plan PLAN-CURSORS @ bs i VEC:AT BINDING-SQL @ b BINDING-SQL @ REL=
-         if false bs i VEC:AT BINDING-NULLABLE ! then
-      loop
-   then
+   same EMPTY? 0= if plan bs b BINDING-SQL @ COLUMN-TESTED then
    r RELATION-WHERE @ same +CONDITION
    out s"  OR " +SEP out s" EXISTS (SELECT 1" +TEXT
    out r +FROM-WHERE out s" )" +TEXT ;
