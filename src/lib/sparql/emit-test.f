@@ -297,6 +297,20 @@ package SPARQL
 : HEAVY-STR-KEYS ( ^VEC:vector<u8> n -- )
    s" SELECT *" s" " s"  STR(?o)" HEAVY-ORDERED ;
 
+\ GROUP_CONCAT of a sum of k terms.
+: HEAVY-CONCAT ( ^VEC:vector<u8> n -- ) {: q:^ k:n :}
+   q HEAVY-PREFIXES  s" SELECT (GROUP_CONCAT(STR(" q VEC:APPEND
+   q k s" ?o" HEAVY-SUM
+   s" )) AS ?c) WHERE { ?s zen:has ?o }" q VEC:APPEND ;
+
+\ GROUP_CONCAT DISTINCT of a sum of k/2 terms, ordered by another.
+: HEAVY-CONCAT-DISTINCT ( ^VEC:vector<u8> n -- ) {: q:^ k:n :}
+   q HEAVY-PREFIXES
+   s" SELECT (GROUP_CONCAT(DISTINCT STR(" q VEC:APPEND
+   q k 2 / s" ?o" HEAVY-SUM  s" ); ORDER BY DESC(" q VEC:APPEND
+   q k 2 / s" ?o" HEAVY-SUM
+   s" )) AS ?c) WHERE { ?s zen:has ?o }" q VEC:APPEND ;
+
 : HEAVY-SAMPLES ( ^VEC:vector<u8> n -- ) {: q:^ k:n :}
    q k s" SAMPLE" HEAVY-SELECT
    s"  WHERE { ?s ?p ?o } GROUP BY ?s" q VEC:APPEND ;
@@ -407,6 +421,7 @@ package SPARQL
    s" keys" store q sql [: HEAVY-KEYS ;] HEAVY-FAMILY
    s" count-keys" store q sql [: HEAVY-COUNT-KEYS ;] HEAVY-FAMILY
    s" str-keys" store q sql [: HEAVY-STR-KEYS ;] HEAVY-FAMILY
+   s" concat" store q sql [: HEAVY-CONCAT ;] HEAVY-FAMILY
    s" opt-nested" store q sql [: HEAVY-OPT-NESTED ;] HEAVY-SHAPE
    s" opt-nested-bind" store q sql [: HEAVY-OPT-NESTED-BIND ;] HEAVY-SHAPE
    s" opt-nested-sum" store q sql [: HEAVY-OPT-NESTED-SUM ;] HEAVY-SHAPE
@@ -417,7 +432,9 @@ package SPARQL
    s" one-sum" store q sql [: HEAVY-ONE-SUM ;] HEAVY-SHAPE
    s" prefix-names" store q sql [: HEAVY-PREFIX-NAMES ;] HEAVY-SHAPE
    s" base-relative" store q sql [: HEAVY-BASE-RELATIVE ;] HEAVY-SHAPE
-   s" order-by" store q sql [: HEAVY-ORDER-BY ;] HEAVY-SHAPE ;
+   s" order-by" store q sql [: HEAVY-ORDER-BY ;] HEAVY-SHAPE
+   s" concat-distinct" store q sql [: HEAVY-CONCAT-DISTINCT ;]
+   HEAVY-SHAPE ;
 
 : TEST-EMIT ( -- ) [: TEST-HEAVY ;] ARENA:WITH ;
 

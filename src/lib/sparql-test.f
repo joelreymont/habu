@@ -1341,6 +1341,17 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    s" {'head':{'vars':['o','n']},'results':{'bindings':[{'o':{'type':'uri','value':'urn:test:1'},'n':{'type':'literal','value':'2','datatype':'http://www.w3.org/2001/XMLSchema#integer'}}]}}"
    EXPECT ;
 
+\ GROUP_CONCAT's text past the byte limit fails though the document,
+\ its length, fits.
+: CONCAT-LIMIT-IN ( ^ARENA:arena -- )
+   {: a:^ :}
+   s" SELECT (STRLEN(GROUP_CONCAT(?l; SEPARATOR='xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx')) AS ?n) WHERE { ?s rdfs:label ?l }"
+   {: q:str :}
+   q 1048576 a ANSWER-WITHIN VEC:COUNT {: len:n :}
+   q len a ANSWER-WITHIN $ s" 54000: " STR:STARTS-WITH? TTRUE ;
+
+: CONCAT-LIMIT ( -- ) [: CONCAT-LIMIT-IN ;] ARENA:WITH ;
+
 : AGGREGATES ( -- )
    s" SELECT (SUM(?w) AS ?t) (AVG(?w) AS ?a) WHERE { ?s t:30 ?w FILTER(?w IN (1200, 12)) }"
    s" {'head':{'vars':['t','a']},'results':{'bindings':[{'t':{'type':'literal','value':'1212','datatype':'http://www.w3.org/2001/XMLSchema#integer'},'a':{'type':'literal','value':'606','datatype':'http://www.w3.org/2001/XMLSchema#decimal'}}]}}"
@@ -1353,6 +1364,14 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    EXPECT
    s" SELECT (STRLEN(GROUP_CONCAT(DISTINCT ?o; SEPARATOR='||')) AS ?c) WHERE { ?s t:20 ?o }"
    s" {'head':{'vars':['c']},'results':{'bindings':[{'c':{'type':'literal','value':'22','datatype':'http://www.w3.org/2001/XMLSchema#integer'}}]}}"
+   EXPECT
+   \ DISTINCT keeps 'a' and 'a'@en apart, though their values match.
+   s" SELECT (GROUP_CONCAT(DISTINCT ?x; SEPARATOR=',') AS ?c) WHERE { VALUES ?x { 'a' 'a'@en 'a' } }"
+   s" {'head':{'vars':['c']},'results':{'bindings':[{'c':{'type':'literal','value':'a,a'}}]}}"
+   EXPECT
+   \ An unbound value makes GROUP_CONCAT unbound, DISTINCT or not.
+   s" SELECT (GROUP_CONCAT(?x) AS ?c) (GROUP_CONCAT(DISTINCT ?x) AS ?d) WHERE { VALUES ?x { 'a' UNDEF } }"
+   s" {'head':{'vars':['c','d']},'results':{'bindings':[{}]}}"
    EXPECT
    s" SELECT ?o ?l WHERE { { SELECT ?o (MIN(?s) AS ?m) WHERE { ?s t:20 ?o } GROUP BY ?o } ?m rdfs:label ?l }"
    s"  IS NULL OR "
@@ -1375,7 +1394,8 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    \ Without GROUP BY no solution is still one group.
    s" SELECT (MAX(?s) AS ?m) WHERE { ?s t:20 t:4 }"
    s" {'head':{'vars':['m']},'results':{'bindings':[{}]}}"
-   EXPECT ;
+   EXPECT
+   CONCAT-LIMIT ;
 
 \ GROUP_CONCAT joins its values in its ORDER BY conditions' order.
 : ORDERED-CONCATS ( -- )
@@ -1395,6 +1415,49 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    s" SELECT ?l (GROUP_CONCAT(STR(?a); SEPARATOR=' / '; ORDER BY ?d) AS ?p) WHERE { VALUES ?l { t:60 t:61 } ?l t:26* ?a { SELECT ?a (COUNT(?up) AS ?d) WHERE { ?a t:26* ?up } GROUP BY ?a } } GROUP BY ?l"
    s" {'head':{'vars':['l','p']},'results':{'bindings':[{'l':{'type':'uri','value':'urn:test:60'},'p':{'type':'literal','value':'urn:test:62 / urn:test:61 / urn:test:60'}},{'l':{'type':'uri','value':'urn:test:61'},'p':{'type':'literal','value':'urn:test:62 / urn:test:61'}}]}}"
    EXPECT ;
+
+\ Appends ` ?xvK ?pvK ?yvK .`, a pattern every source matches.
+: FREE+ ( ^VEC:vector<u8> n -- )
+   {: q:^ k:n :}
+   s"  ?x" q VEC:APPEND q k V+ s"  ?p" q VEC:APPEND q k V+
+   s"  ?y" q VEC:APPEND q k V+ s"  ." q VEC:APPEND ;
+
+: CONCAT-EXISTS-IN ( ^ARENA:arena -- )
+   {: a:^ :}
+   a TEXT-VEC {: q:^ :}
+   s" SELECT (GROUP_CONCAT(IF(EXISTS {" q VEC:APPEND
+   32 0 do q i FREE+ loop
+   s"  }, 'a', 'b')) AS ?c) WHERE { ?s t:20 ?o }" q VEC:APPEND
+   s" a GROUP_CONCAT of an EXISTS of 32 patterns" T-LABEL
+   q $ a PREFIXED $ s" 1048576" a STORE a COMPILED nip TTRUE ;
+
+\ A GROUP_CONCAT of an EXISTS of 32 patterns every source matches passes
+\ what a statement may read.
+: CONCAT-EXISTS ( -- ) [: CONCAT-EXISTS-IN ;] ARENA:WITH ;
+
+\ GROUP_CONCAT DISTINCT of each graph's predicates, a union split by
+\ graph.
+: SPLIT-CONCAT ( -- str )
+   s" SELECT ?g (GROUP_CONCAT(DISTINCT UCASE(STR(?p)); SEPARATOR=','; ORDER BY ?o) AS ?c) WHERE { GRAPH ?g { ?s ?p ?o } } GROUP BY ?g" ;
+
+\ A GROUP_CONCAT's operand, ORDER BY keys and group keys are written
+\ once, a split union's once in each branch.
+: ONCE-CONCATS ( -- )
+   \ DISTINCT keeps each value's first place by the descending key.
+   s" SELECT (GROUP_CONCAT(DISTINCT IF(EXISTS { ?x t:20 ?o }, ?w, 'n'); SEPARATOR=','; ORDER BY DESC(?w)) AS ?c) WHERE { VALUES (?o ?w) { (t:1 'a') (t:2 'b') (t:3 'c') (t:1 'a') } }"
+   s" EXISTS (" 1
+   s" {'head':{'vars':['c']},'results':{'bindings':[{'c':{'type':'literal','value':'n,b,a'}}]}}"
+   TIMES
+   CONCAT-EXISTS
+   s" {'head':{'vars':['g','c']},'results':{'bindings':[{'g':{'type':'uri','value':'urn:test:notes'},'c':{'type':'literal','value':'HTTP://WWW.W3.ORG/2000/01/RDF-SCHEMA#COMMENT'}},{'g':{'type':'uri','value':'urn:test:7'},'c':{'type':'literal','value':'URN:TEST:23'}}]}}"
+   {: w:str :}
+   SPLIT-CONCAT s"  GROUP BY " 2 w TIMES
+   SPLIT-CONCAT s" sparql.ucase(" 2 w TIMES
+   \ The key calls RAND once: each group holds 'a' once.
+   s" SELECT DISTINCT ?c WHERE { { SELECT (GROUP_CONCAT(DISTINCT ?o; SEPARATOR='') AS ?c) WHERE { VALUES ?o { 'a' 'a' 'a' 'a' 'a' 'a' 'a' 'a' } } GROUP BY (FLOOR(RAND()*2) AS ?b) } }"
+   s" sparql.rand(" 1
+   s" {'head':{'vars':['c']},'results':{'bindings':[{'c':{'type':'literal','value':'a'}}]}}"
+   TIMES ;
 
 \ Numbers by subject: whole and fractional, wide, long fractions, scales
 \ apart.
@@ -1471,14 +1534,24 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    s" select jsonb_set(s,'{sources}',jsonb_path_query_array(s,'$.sources[6,7]'))::text from sparql_test.store(1048576) s"
    a SELECTED-STORE ;
 
-\ The query answers alike on both descriptions; the text call is in the
-\ second's statement, and in the first's exactly when generic.
+\ How many calls of the space-separated list the text holds.
+: HELD ( str str -- n )
+   {: text:str calls:str :}
+   0 calls STR:SPACE 0 begin STR:SPLIT-NEXT while {: c:str next:n :}
+      text c STR:CONTAINS? if 1+ then
+      calls STR:SPACE next
+   repeat 2drop ;
+
+\ The query answers alike on both descriptions; each text call of the
+\ space-separated list is in the second's statement, and in the first's
+\ all when generic, else none.
 : ALIKE-ON ( str bool str ^VEC:vector<u8> ^VEC:vector<u8> ^ARENA:arena -- )
    {: q:str generic:bool call:str typed:^ plain:^ a:^ :}
    q typed a ANSWER-ON {: tsql:^ tdoc:^ :}
    q plain a ANSWER-ON {: psql:^ pdoc:^ :}
-   tsql $ call STR:CONTAINS? generic xor TFALSE
-   psql $ call STR:CONTAINS? TTRUE
+   call STR:SPACE STR:COUNT-CHAR 1+ {: calls:n :}
+   tsql $ call HELD generic if calls else 0 then = TTRUE
+   psql $ call HELD calls = TTRUE
    tdoc $ pdoc $ a false SAME? dup TTRUE
    0= if tdoc $ type cr pdoc $ type cr then ;
 
@@ -1488,8 +1561,8 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    a ALIKE-ON ;
 
 \ The query answers alike on EDGE-SOURCES with and without the shapes'
-\ `type`; with it, its statement holds the generic call, named up to its
-\ `(`, when generic.
+\ `type`; with it, its statement holds the generic calls, each named up
+\ to its `(`, when generic.
 : TYPED ( str bool str -- ) [: TYPED-IN ;] ARENA:WITH ;
 
 \ SUM, AVG, MIN and MAX of a numeric column and MIN and MAX of a text
@@ -1497,38 +1570,38 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
 \ a union's partials.
 : TYPED-AGGREGATES ( -- )
    s" SELECT ?s (SUM(?x) AS ?t) (AVG(?x) AS ?a) (MIN(?x) AS ?lo) (MAX(?x) AS ?hi) WHERE { ?s t:97 ?x } GROUP BY ?s"
-   false s" sparql.aggregate(" TYPED
+   false s" sparql.sum( sparql.avg( sparql.min( sparql.max(" TYPED
    s" SELECT (SUM(?x) AS ?t) (AVG(?x) AS ?a) (MIN(?x) AS ?lo) (MAX(?x) AS ?hi) WHERE { ?s t:97 ?x }"
-   false s" sparql.aggregate(" TYPED
+   false s" sparql.sum( sparql.avg( sparql.min( sparql.max(" TYPED
    s" SELECT (SUM(?x) AS ?t) (AVG(?x) AS ?a) (MIN(?x) AS ?lo) (MAX(?x) AS ?hi) WHERE { ?s t:97 ?x FILTER(?s = t:99) }"
-   false s" sparql.aggregate(" TYPED
+   false s" sparql.sum( sparql.avg( sparql.min( sparql.max(" TYPED
    \ A native SUM is always bound: it meets the column as a term.
    s" SELECT ?s WHERE { { SELECT (SUM(?x) AS ?t) WHERE { ?r t:97 ?x FILTER(?r = t:6) } } ?s t:97 ?t }"
-   false s" sparql.aggregate(" TYPED
+   false s" sparql.sum(" TYPED
    s" SELECT ?s (SUM(?x) AS ?t) (AVG(?x) AS ?a) (MIN(?x) AS ?lo) (MAX(?x) AS ?hi) WHERE { ?s t:95 ?x } GROUP BY ?s"
-   false s" sparql.aggregate(" TYPED
+   false s" sparql.sum( sparql.avg( sparql.min( sparql.max(" TYPED
    s" SELECT ?s (MIN(?x) AS ?lo) (MAX(?x) AS ?hi) (COUNT(*) AS ?n) WHERE { ?s t:95 ?x } GROUP BY ?s"
-   false s" sparql.aggregate(" TYPED
+   false s" sparql.min( sparql.max(" TYPED
    s" SELECT (MIN(?x) AS ?lo) (MAX(?x) AS ?hi) WHERE { ?s t:95 ?x }"
-   false s" sparql.aggregate(" TYPED
+   false s" sparql.min( sparql.max(" TYPED
    s" SELECT (MIN(?x) AS ?lo) (MAX(?x) AS ?hi) WHERE { ?s t:95 ?x FILTER(?s = t:99) }"
-   false s" sparql.aggregate(" TYPED
+   false s" sparql.min( sparql.max(" TYPED
    s" SELECT ?s (MIN(?x) AS ?lo) (MAX(?x) AS ?hi) WHERE { ?s t:96 ?x } GROUP BY ?s"
-   false s" sparql.aggregate(" TYPED
+   false s" sparql.min( sparql.max(" TYPED
    s" SELECT (MIN(?x) AS ?lo) (MAX(?x) AS ?hi) WHERE { ?s t:96 ?x }"
-   false s" sparql.aggregate(" TYPED
+   false s" sparql.min( sparql.max(" TYPED
    s" SELECT ?s (MIN(?x) AS ?lo) (MAX(?x) AS ?hi) WHERE { ?s t:98 ?x } GROUP BY ?s"
-   false s" sparql.aggregate(" TYPED
+   false s" sparql.min( sparql.max(" TYPED
    s" SELECT (MIN(?x) AS ?lo) (MAX(?x) AS ?hi) WHERE { ?s t:98 ?x FILTER(?s = t:99) }"
-   false s" sparql.aggregate(" TYPED
+   false s" sparql.min( sparql.max(" TYPED
    \ DISTINCT, SUM of strings, GROUP_CONCAT and a shape holding xsd:decimal
    \ alone stay generic.
    s" SELECT ?s (SUM(?x) AS ?t) WHERE { ?s t:94 ?x } GROUP BY ?s"
-   true s" sparql.aggregate(" TYPED
+   true s" sparql.sum(" TYPED
    s" SELECT ?s (SUM(DISTINCT ?x) AS ?t) (MIN(DISTINCT ?x) AS ?lo) WHERE { ?s t:97 ?x } GROUP BY ?s"
-   true s" sparql.aggregate(" TYPED
+   true s" sparql.sum( sparql.min(" TYPED
    s" SELECT ?s (SUM(?x) AS ?t) (GROUP_CONCAT(?x) AS ?c) WHERE { ?s t:96 ?x } GROUP BY ?s"
-   true s" sparql.aggregate(" TYPED ;
+   true s" sparql.sum( sparql.concat_bound(" TYPED ;
 
 : EQUAL-CALL ( -- str ) s" sparql.equal(" ;
 : RELATION-CALL ( -- str ) s" sparql.relation(" ;
@@ -1676,8 +1749,8 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    a ALIKE-ON ;
 
 \ The query answers alike on held with and without the value's `only`;
-\ call is in the statement without it, and in the one with it exactly
-\ when generic. The direct subject is column s alone.
+\ each call of the list is in the statement without it, and in the one
+\ with it all when generic, else none. The direct subject is column s alone.
 : ONLY ( str bool str -- ) false [: ONLY-IN ;] ARENA:WITH ;
 
 \ ONLY with the direct subject +HELD-SUBJECT's.
@@ -1731,17 +1804,16 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
 \ A value's `only` binds it to the one listing set's column, else to all;
 \ without `only`, a native binding meets the value by its root's column.
 : ONLY-COLUMNS ( -- )
-   s" sparql.aggregate(" {: call:str :}
    s" SELECT ?s (SUM(?w) AS ?t) (MIN(?w) AS ?lo) WHERE { ?s t:81 ?w } GROUP BY ?s"
-   false call ONLY
+   false s" sparql.sum( sparql.min(" ONLY
    s" SELECT ?s (MIN(?w) AS ?lo) (MAX(?w) AS ?hi) WHERE { ?s t:82 ?w } GROUP BY ?s"
-   false call ONLY
+   false s" sparql.min( sparql.max(" ONLY
    s" PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> SELECT (SUM(?w) AS ?t) WHERE { ?f rdf:predicate t:81 ; rdf:object ?w }"
-   false call ONLY
+   false s" sparql.sum(" ONLY
    s" SELECT ?s ?w WHERE { ?s rdfs:label ?l OPTIONAL { ?s t:81 ?w } }"
    false s" o_text" ONLY
-   s" SELECT (MIN(?w) AS ?lo) WHERE { ?s t:83 ?w }" true call ONLY
-   s" SELECT (MIN(?w) AS ?lo) WHERE { ?s t:84 ?w }" true call ONLY
+   s" SELECT (MIN(?w) AS ?lo) WHERE { ?s t:83 ?w }" true s" sparql.min(" ONLY
+   s" SELECT (MIN(?w) AS ?lo) WHERE { ?s t:84 ?w }" true s" sparql.min(" ONLY
    s" SELECT ?s ?w WHERE { ?s t:84 ?w }" true s" o_text" SUBJECT-ONLY
    s" SELECT ?s ?x WHERE { ?s t:82 ?w OPTIONAL { ?x rdfs:label ?w } }"
    s" ON t3.v1 = t2.o_text WHERE" s" sparql_test.string(COALESCE("
@@ -2171,7 +2243,8 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    NULL-TESTS SUBJECT-ROWS FILTERS FILTER-EQUALITIES GRAPHS NAMED-GRAPHS OPTIONALS
    UNIONS MINUSES FILTER-EXISTS
    SUBSTITUTIONS MANY BRANCHED CONSTANTS WIDE FORMS
-   PROJECTIONS GROUPING AGGREGATES ORDERED-CONCATS TYPED-AGGREGATES
+   PROJECTIONS GROUPING AGGREGATES ORDERED-CONCATS ONCE-CONCATS
+   TYPED-AGGREGATES
    ONLY-COLUMNS NESTED-ONLY
    TYPED-FILTERS BRANCH-GROUPING ORDERS DISTINCTS STAR-COUNTS
    SUBQUERIES

@@ -128,33 +128,37 @@ BEGIN
     IF sparql.boolean(NULL) IS NOT NULL OR sparql.boolean(false)->>'value' IS DISTINCT FROM 'false' THEN RAISE EXCEPTION 'boolean error/value distinction'; END IF;
     IF sparql.in(one,ARRAY[sparql.term('error'),decimal]) IS DISTINCT FROM true
        OR sparql.in(one,ARRAY[sparql.term('error')]) IS NOT NULL THEN RAISE EXCEPTION 'IN errors'; END IF;
-    IF sparql.aggregate('MIN',ARRAY[decimal,sparql.term('2','literal',x || 'integer')],false,' ') IS DISTINCT FROM decimal
-       OR sparql.aggregate('SAMPLE',ARRAY[decimal],false,' ') IS DISTINCT FROM decimal THEN RAISE EXCEPTION 'selected aggregate term'; END IF;
+    IF (SELECT sparql.min(t) FROM unnest(ARRAY[decimal,sparql.term('2','literal',x || 'integer')]) t) IS DISTINCT FROM decimal
+       THEN RAISE EXCEPTION 'selected aggregate term'; END IF;
     IF EXISTS (SELECT FROM (VALUES ('+001','integer'),('1.00','decimal'),('1.0e+2','double'),('-0','float')) v(lexical,kind)
         WHERE sparql.normalize(sparql.term(lexical,'literal',x || kind))->>'value' IS DISTINCT FROM lexical)
-       OR EXISTS (SELECT FROM (VALUES ('MIN'),('MAX'),('SAMPLE')) f(name)
-          CROSS JOIN (VALUES ('+001','integer'),('1.00','decimal'),('1.0e+2','double'),('-0','float')) v(lexical,kind)
-        WHERE sparql.aggregate(name,ARRAY[sparql.term(lexical,'literal',x || kind)],false,' ')
-              IS DISTINCT FROM sparql.term(lexical,'literal',x || kind))
+       OR EXISTS (SELECT FROM (VALUES ('+001','integer'),('1.00','decimal'),('1.0e+2','double'),('-0','float')) v(lexical,kind)
+          CROSS JOIN LATERAL (SELECT sparql.term(lexical,'literal',x || kind) AS term) i
+          CROSS JOIN LATERAL (SELECT sparql.min(t) AS lo,sparql.max(t) AS hi
+                                FROM (VALUES (i.term)) s(t)) f
+        WHERE lo IS DISTINCT FROM i.term OR hi IS DISTINCT FROM i.term)
        THEN RAISE EXCEPTION 'input and selected aggregate lexical forms'; END IF;
-    IF sparql.aggregate('MIN',ARRAY[sparql.term('0.1','literal',x || 'float'),
-            sparql.term('0.1000000001','literal',x || 'double')],false,' ')
+    IF (SELECT sparql.min(t) FROM unnest(ARRAY[sparql.term('0.1','literal',x || 'float'),
+            sparql.term('0.1000000001','literal',x || 'double')]) t)
             IS DISTINCT FROM sparql.term('0.1000000001','literal',x || 'double')
-       OR sparql.aggregate('MAX',ARRAY[sparql.term('0.1','literal',x || 'float'),
-            sparql.term('0.1000000001','literal',x || 'double')],false,' ')
+       OR (SELECT sparql.max(t) FROM unnest(ARRAY[sparql.term('0.1','literal',x || 'float'),
+            sparql.term('0.1000000001','literal',x || 'double')]) t)
             IS DISTINCT FROM sparql.term('0.1','literal',x || 'float')
        THEN RAISE EXCEPTION 'mixed floating extrema retain original terms'; END IF;
-    IF EXISTS (SELECT FROM (VALUES ('SUM'),('AVG')) f(name)
-        WHERE sparql.aggregate(name,ARRAY[sparql.term('16777217','literal',x || 'integer'),
-            sparql.term('-16777216','literal',x || 'float')],false,' ') IS DISTINCT FROM sparql.term('0','literal',x || 'float'))
+    IF EXISTS (SELECT FROM (SELECT sparql.sum(t) AS total,sparql.avg(t) AS average
+                              FROM unnest(ARRAY[sparql.term('16777217','literal',x || 'integer'),
+                                                sparql.term('-16777216','literal',x || 'float')]) t) f
+        WHERE total IS DISTINCT FROM sparql.term('0','literal',x || 'float')
+           OR average IS DISTINCT FROM sparql.term('0','literal',x || 'float'))
        THEN RAISE EXCEPTION 'aggregate operand promotion'; END IF;
-    IF sparql.aggregate('AVG',ARRAY[one,sparql.number(2,'integer'),
-            sparql.number(3,'integer'),sparql.number(4,'integer')],false,' ')
+    IF (SELECT sparql.avg(t) FROM unnest(ARRAY[one,sparql.number(2,'integer'),
+            sparql.number(3,'integer'),sparql.number(4,'integer')]) t)
             IS DISTINCT FROM sparql.term('2.5','literal',x || 'decimal')
        THEN RAISE EXCEPTION 'computed decimal scale'; END IF;
-    IF sparql.aggregate('SUM',ARRAY[one,sparql.term('error')],false,' ') IS NOT NULL THEN RAISE EXCEPTION 'SUM type error'; END IF;
-    IF EXISTS (SELECT FROM (VALUES ('SUM'),('AVG')) f(name)
-        WHERE sparql.aggregate(name,ARRAY[]::jsonb[],false,' ') IS DISTINCT FROM sparql.term('0','literal',x || 'integer'))
+    IF (SELECT sparql.sum(t) FROM unnest(ARRAY[one,sparql.term('error')]) t) IS NOT NULL THEN RAISE EXCEPTION 'SUM type error'; END IF;
+    IF EXISTS (SELECT FROM (SELECT sparql.sum(t) AS total,sparql.avg(t) AS average FROM unnest(ARRAY[]::jsonb[]) t) f
+        WHERE total IS DISTINCT FROM sparql.term('0','literal',x || 'integer')
+           OR average IS DISTINCT FROM sparql.term('0','literal',x || 'integer'))
        THEN RAISE EXCEPTION 'empty numeric aggregate'; END IF;
     -- W3C SPARQL 1.1 aggregates/agg-numeric2.ttl and the queries of
     -- agg-sum-02 and agg-avg-02 (whose HAVING retains averages <= 2.0).
@@ -165,8 +169,8 @@ BEGIN
             ('mixed1','1','integer'),('mixed1','2.2','decimal'),
             ('mixed2','2E-1','double'),('mixed2','0.2','decimal')),
         actual AS (SELECT subject,
-            sparql.aggregate('SUM',array_agg(sparql.term(lexical,'literal',x || kind)),false,' ') AS total,
-            sparql.aggregate('AVG',array_agg(sparql.term(lexical,'literal',x || kind)),false,' ') AS average
+            sparql.sum(sparql.term(lexical,'literal',x || kind)) AS total,
+            sparql.avg(sparql.term(lexical,'literal',x || kind)) AS average
             FROM input GROUP BY subject),
         expected(subject,total,total_kind,average,average_kind) AS (VALUES
             ('ints','6','integer','2','decimal'),('decimals','6.7','decimal',NULL,NULL),
@@ -177,16 +181,16 @@ BEGIN
            OR CASE WHEN sparql.relation('<=',a.average,sparql.term('2.0','literal',x || 'decimal'))
                    THEN a.average END IS DISTINCT FROM sparql.term(e.average,'literal',x || e.average_kind))
        THEN RAISE EXCEPTION 'W3C grouped SUM and AVG result terms'; END IF;
-    IF EXISTS (SELECT FROM (VALUES ('SUM'),('AVG')) f(name)
-        CROSS JOIN (VALUES ('float'),('double')) d(kind) CROSS JOIN (VALUES ('NaN'),('INF'),('-INF')) v(lexical)
-        WHERE sparql.aggregate(name,ARRAY[sparql.term(lexical,'literal',x || kind)],false,' ')
-              IS DISTINCT FROM sparql.term(lexical,'literal',x || kind))
+    IF EXISTS (SELECT FROM (VALUES ('float'),('double')) d(kind) CROSS JOIN (VALUES ('NaN'),('INF'),('-INF')) v(lexical)
+        CROSS JOIN LATERAL (SELECT sparql.term(lexical,'literal',x || kind) AS term) i
+        CROSS JOIN LATERAL (SELECT sparql.sum(t) AS total,sparql.avg(t) AS average FROM (VALUES (i.term)) s(t)) f
+        WHERE total IS DISTINCT FROM i.term OR average IS DISTINCT FROM i.term)
        THEN RAISE EXCEPTION 'aggregate nonfinite result terms'; END IF;
-    IF sparql.aggregate('SUM',ARRAY[sparql.term('0.1','literal',x || 'double'),
-            sparql.term('0.2','literal',x || 'double')],false,' ')
+    IF (SELECT sparql.sum(t) FROM unnest(ARRAY[sparql.term('0.1','literal',x || 'double'),
+            sparql.term('0.2','literal',x || 'double')]) t)
             IS DISTINCT FROM sparql.term('0.30000000000000004','literal',x || 'double')
        OR EXISTS (SELECT FROM (VALUES ('-1e-300','-1.0E-300'),('1e+300','1.0E300'),('0','0')) v(lexical,expected)
-        WHERE sparql.aggregate('SUM',ARRAY[sparql.term(lexical,'literal',x || 'double')],false,' ')
+        WHERE (SELECT sparql.sum(t) FROM (VALUES (sparql.term(lexical,'literal',x || 'double'))) s(t))
               IS DISTINCT FROM sparql.term(expected,'literal',x || 'double'))
        THEN RAISE EXCEPTION 'aggregate scientific spelling retains precision and exponent'; END IF;
     IF sparql.equal(sparql.term('bad','literal',x || 'integer'),sparql.term('bad','literal',x || 'integer')) IS DISTINCT FROM true THEN RAISE EXCEPTION 'ill-typed numeric term identity'; END IF;
@@ -284,6 +288,20 @@ BEGIN
         raised := true;
     END;
     IF NOT raised THEN RAISE EXCEPTION 'within one past the limit'; END IF;
+    -- GROUP_CONCAT's bound: a blank node or an unbound term makes the text
+    -- unbound; 'abc,de', the text string_agg holds, is 6 bytes: a limit of 6
+    -- passes, 5 raises 54000.
+    IF (SELECT sparql.concat_bound(t,',',10) FROM unnest(ARRAY[sparql.term('a'),sparql.term('b0','bnode')]) t) IS DISTINCT FROM false
+       OR (SELECT sparql.concat_bound(t,',',6) FROM unnest(ARRAY[NULL,sparql.term('abc'),sparql.term('de')]) t) IS DISTINCT FROM false
+       OR (SELECT sparql.concat_bound(t,',',0) FROM unnest(ARRAY[]::jsonb[]) t) IS DISTINCT FROM true
+       THEN RAISE EXCEPTION 'GROUP_CONCAT bound'; END IF;
+    raised := false;
+    BEGIN
+        PERFORM sparql.concat_bound(t,',',5) FROM unnest(ARRAY[NULL,sparql.term('abc'),sparql.term('de')]) t;
+    EXCEPTION WHEN SQLSTATE '54000' THEN
+        raised := true;
+    END;
+    IF NOT raised THEN RAISE EXCEPTION 'GROUP_CONCAT bound one past the limit'; END IF;
     FOR number,expected IN VALUES (1::double precision,'1'),(125,'125'),(1050,'1050'),(999999.5,'999999.5'),
             (1e6,'1.0E6'),(1e-7,'1.0E-7'),(-3.5e-7,'-3.5E-7'),(0,'0'),('-0','-0'),
             ('Infinity','INF'),('-Infinity','-INF'),('NaN','NaN') LOOP
@@ -295,13 +313,13 @@ BEGIN
             RAISE EXCEPTION 'format_decimal(%) is %, expected %',amount,sparql.format_decimal(amount),expected; END IF;
     END LOOP;
     -- A SUM or AVG and the arithmetic of the same value are spelled alike.
-    IF sparql.aggregate('SUM',ARRAY[sparql.term('1.0E2','literal',x || 'double'),
-            sparql.term('2.5E1','literal',x || 'double')],false,' ')
+    IF (SELECT sparql.sum(t) FROM unnest(ARRAY[sparql.term('1.0E2','literal',x || 'double'),
+            sparql.term('2.5E1','literal',x || 'double')]) t)
             IS DISTINCT FROM sparql.term('125','literal',x || 'double')
        OR sparql.arithmetic('+',sparql.term('1.0E2','literal',x || 'double'),sparql.term('2.5E1','literal',x || 'double'))
             IS DISTINCT FROM sparql.term('125','literal',x || 'double')
        THEN RAISE EXCEPTION 'double aggregate and arithmetic spelling'; END IF;
-    IF sparql.aggregate('AVG',ARRAY[sparql.number(1,'integer'),sparql.number(3,'integer')],false,' ')
+    IF (SELECT sparql.avg(t) FROM unnest(ARRAY[sparql.number(1,'integer'),sparql.number(3,'integer')]) t)
             IS DISTINCT FROM sparql.term('2','literal',x || 'decimal')
        OR sparql.arithmetic('/',sparql.number(4,'integer'),sparql.number(2,'integer'))
             IS DISTINCT FROM sparql.term('2','literal',x || 'decimal')
@@ -326,8 +344,8 @@ BEGIN
         WHERE (sparql.numeric(term) IS NULL) IS DISTINCT FROM (bytes>16383))
        THEN RAISE EXCEPTION 'a lexical form longer than 16383 bytes is no number'; END IF;
     IF EXISTS (SELECT FROM (VALUES (ARRAY[one,NULL]),(ARRAY[NULL,one])) v(terms)
-        WHERE sparql.aggregate('MIN',terms,false,' ') IS NOT NULL
-           OR sparql.aggregate('MAX',terms,false,' ') IS DISTINCT FROM one)
+        WHERE (SELECT sparql.min(t) FROM unnest(terms) t) IS NOT NULL
+           OR (SELECT sparql.max(t) FROM unnest(terms) t) IS DISTINCT FROM one)
        THEN RAISE EXCEPTION 'MIN and MAX over a partly unbound operand'; END IF;
 END $$;
 DO $$
@@ -414,7 +432,7 @@ BEGIN
        THEN RAISE EXCEPTION 'exact division'; END IF;
     IF EXISTS (SELECT FROM (SELECT sparql.term(repeat('9',16383),'literal',x || 'integer')) v(term)
         CROSS JOIN LATERAL (VALUES (sparql.arithmetic('+',term,term)),
-            (sparql.aggregate('SUM',ARRAY[term,term],false,NULL))) f(result)
+            ((SELECT sparql.sum(t) FROM unnest(ARRAY[term,term]) t))) f(result)
         WHERE result IS DISTINCT FROM sparql.term('1' || repeat('9',16382) || '8','literal',x || 'integer'))
        THEN RAISE EXCEPTION 'a sum of 16,383 digits'; END IF;
     IF sparql.strdt(sparql.term('a'),sparql.term('http://www.w3.org/1999/02/22-rdf-syntax-ns#langString','uri')) IS NOT NULL

@@ -4,15 +4,19 @@
 -- into an unbound term. A computed number is spelled as XPath 3.1 casts it to
 -- xs:string, through format_double and format_decimal, the form STR() answers;
 -- a selected RDF term keeps its original lexical form.
--- A reinstall drops these functions and composite types by name, never by
--- CASCADE: a host object that still uses one makes the install fail instead of
--- vanishing with it.
+-- A reinstall drops these aggregates, functions and composite types by name,
+-- never by CASCADE: a host object that still uses one makes the install fail
+-- instead of vanishing with it.
 -- The IMMUTABLE SQL functions inline into the statement that calls them. So
 -- their bodies call only immutable functions and are not STRICT, a NULL
 -- argument giving NULL through a CASE.
 DO $$
 DECLARE names text;
 BEGIN
+    SELECT string_agg(format('sparql.%I(%s)', p.proname, pg_get_function_identity_arguments(p.oid)), ', ') INTO names
+      FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+     WHERE n.nspname = 'sparql' AND p.prokind = 'a';
+    IF names IS NOT NULL THEN EXECUTE 'DROP AGGREGATE ' || names; END IF;
     SELECT string_agg(format('sparql.%I(%s)', p.proname, pg_get_function_identity_arguments(p.oid)), ', ') INTO names
       FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
      WHERE n.nspname = 'sparql';
@@ -1112,84 +1116,142 @@ BEGIN
     RETURN CASE WHEN failed THEN NULL ELSE false END;
 END $$;
 
--- The expression list retains errors: SUM/AVG must not silently discard a
--- nonnumeric value. MIN/MAX/SAMPLE return original terms; SUM/AVG are promoted
--- and spelled as arithmetic promotes and spells them.
--- SUM/AVG walk the terms once; kind is the running total's datatype. While it
--- is integer or decimal, terms add up as numeric and one that is no number
--- makes the total NaN. The first float or double turns it into one; from there
--- each term is added as arithmetic adds it to the running total's term, so
--- that term must read back: an exact one past 16,383 bytes is no number, and a
--- term that is no number or an overflow makes the result unbound. A float total
--- keeps its real: the real's shortest text, which arithmetic spells, reads back
--- as the same real.
-CREATE FUNCTION sparql.aggregate(name text,terms jsonb[],unique_terms boolean,separator text)
-RETURNS jsonb LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE SET extra_float_digits=3 AS $$
-DECLARE term_values jsonb[] := coalesce(terms,'{}'::jsonb[]); item jsonb; result jsonb;
-        amount integer; text_value text; key sparql.order_key; best sparql.order_key;
-        datatype text; kind text := 'integer'; next text; total numeric := 0; long boolean := false;
-        sum double precision; value double precision;
+-- An aggregate holds one term, one running total or one byte count per group,
+-- never the group's terms. SUM/AVG must not silently discard a nonnumeric
+-- value. MIN/MAX return original terms; SUM/AVG are promoted and spelled as
+-- arithmetic promotes and spells them.
+
+-- The term MIN or MAX keeps, and its key in ORDER BY's order.
+CREATE TYPE sparql.extreme AS (term jsonb, key sparql.order_key);
+
+-- MIN keeps the first term in ORDER BY's order, which an unbound one leads
+-- (SPARQL 1.1 sections 18.5.1.5, 15.1); of equal terms, MIN and MAX keep the
+-- first.
+CREATE FUNCTION sparql.min_step(best sparql.extreme, term jsonb) RETURNS sparql.extreme
+LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE AS $$
+DECLARE key sparql.order_key := sparql.order(term);
 BEGIN
-    IF unique_terms THEN
-        SELECT coalesce(array_agg(term ORDER BY first),'{}'::jsonb[]) INTO term_values
-          FROM (SELECT sparql.normalize(term) AS term,min(ord) AS first
-                  FROM unnest(term_values) WITH ORDINALITY t(term,ord) GROUP BY sparql.normalize(term)) t;
-    END IF;
-    amount := cardinality(term_values);
-    IF name='SAMPLE' THEN SELECT term INTO result FROM unnest(term_values) term WHERE term IS NOT NULL LIMIT 1; RETURN result; END IF;
-    IF name IN ('MIN','MAX') THEN
-        -- MIN takes the first term in ORDER BY's order, which an unbound one leads (SPARQL 1.1 sections 18.5.1.5, 15.1).
-        IF amount=0 THEN RETURN NULL; END IF;
-        result := term_values[1]; best := sparql.order(result);
-        FOREACH item IN ARRAY term_values LOOP
-            key := sparql.order(item);
-            IF (CASE name WHEN 'MIN' THEN key<best ELSE key>best END) THEN result := item; best := key; END IF;
-        END LOOP;
-        RETURN result;
-    END IF;
-    IF name='GROUP_CONCAT' THEN
-        IF EXISTS (SELECT FROM unnest(term_values) term WHERE term IS NULL OR term->>'type'='bnode') THEN RETURN NULL; END IF;
-        SELECT string_agg(term->>'value',coalesce(separator,' ') ORDER BY ord) INTO text_value FROM unnest(term_values) WITH ORDINALITY t(term,ord);
-        RETURN sparql.term(coalesce(text_value,''));
-    END IF;
-    FOREACH item IN ARRAY term_values LOOP
-        datatype := item->>'datatype';
-        IF kind IN ('integer','decimal') AND (datatype IN ('http://www.w3.org/2001/XMLSchema#float',
-                                                           'http://www.w3.org/2001/XMLSchema#double')) IS NOT TRUE THEN
-            -- Shorter than 16,002 bytes otherwise.
-            IF abs(total)>=1e8000 OR scale(total)>8000 THEN
-                long := long OR (octet_length(sparql.format_decimal(total))>16383) IS TRUE;
-            END IF;
-            total := total + coalesce(sparql.numeric(item),'NaN');
-            IF datatype='http://www.w3.org/2001/XMLSchema#decimal' THEN kind := 'decimal'; END IF;
-            CONTINUE;
-        END IF;
-        next := CASE WHEN kind='double' OR datatype LIKE '%#double' THEN 'double' ELSE 'float' END;
-        IF kind IN ('integer','decimal') THEN
-            IF long THEN RETURN NULL; END IF;
-            sum := sparql.floating(sparql.number(total,kind),next);
-        END IF;
-        value := sparql.floating(item,next);
-        IF sum IS NULL OR value IS NULL THEN RETURN NULL; END IF;
-        IF abs(sum)<1e37 AND abs(value)<1e37 THEN
-            sum := CASE next WHEN 'float' THEN sum::real+value::real ELSE sum+value END;
-        ELSE
-            BEGIN
-                sum := CASE next WHEN 'float' THEN sum::real+value::real ELSE sum+value END;
-            EXCEPTION WHEN numeric_value_out_of_range THEN
-                RETURN NULL;
-            END;
-        END IF;
-        kind := next;
-    END LOOP;
-    IF kind IN ('float','double') THEN
-        result := sparql.term(sparql.format_double(CASE kind WHEN 'float' THEN sum::real::text::double precision ELSE sum END),
-                              'literal','http://www.w3.org/2001/XMLSchema#' || kind);
-    ELSIF total='NaN' THEN
-        RETURN NULL;
-    ELSE
-        result := sparql.number(total,kind);
-    END IF;
-    IF name='AVG' AND amount>0 THEN result:=sparql.arithmetic('/',result,sparql.number(amount,'integer')); END IF;
-    RETURN result;
+    IF best IS NULL OR key<best.key THEN RETURN ROW(term,key)::sparql.extreme; END IF;
+    RETURN best;
 END $$;
+
+CREATE FUNCTION sparql.max_step(best sparql.extreme, term jsonb) RETURNS sparql.extreme
+LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE AS $$
+DECLARE key sparql.order_key := sparql.order(term);
+BEGIN
+    IF best IS NULL OR key>best.key THEN RETURN ROW(term,key)::sparql.extreme; END IF;
+    RETURN best;
+END $$;
+
+CREATE FUNCTION sparql.extreme_term(best sparql.extreme) RETURNS jsonb
+LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
+    SELECT (best).term
+$$;
+
+CREATE AGGREGATE sparql.min(jsonb) (SFUNC=sparql.min_step, STYPE=sparql.extreme,
+    FINALFUNC=sparql.extreme_term, PARALLEL=SAFE);
+CREATE AGGREGATE sparql.max(jsonb) (SFUNC=sparql.max_step, STYPE=sparql.extreme,
+    FINALFUNC=sparql.extreme_term, PARALLEL=SAFE);
+
+-- SUM's and AVG's walk over the terms: kind is the running total's datatype,
+-- total its exact value and sum its floating one; long says total's text may
+-- pass 16,383 bytes, amount counts the terms and failed makes the result
+-- unbound. While kind is integer or decimal, terms add up as numeric and one
+-- that is no number makes the total NaN. The first float or double turns it
+-- into one; from there each term is added as arithmetic adds it to the running
+-- total's term, so that term must read back: an exact one past 16,383 bytes is
+-- no number, and a term that is no number or an overflow makes the result
+-- unbound. A float total keeps its real: the real's shortest text, which
+-- arithmetic spells, reads back as the same real.
+CREATE TYPE sparql.total AS (kind text, total numeric, long boolean, sum double precision,
+                             amount bigint, failed boolean);
+
+CREATE FUNCTION sparql.total_step(walk sparql.total, term jsonb) RETURNS sparql.total
+LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE AS $$
+DECLARE datatype text := term->>'datatype'; next text; value double precision;
+BEGIN
+    walk.amount := walk.amount+1;
+    IF walk.failed THEN RETURN walk; END IF;
+    IF walk.kind IN ('integer','decimal') AND (datatype IN ('http://www.w3.org/2001/XMLSchema#float',
+                                                            'http://www.w3.org/2001/XMLSchema#double')) IS NOT TRUE THEN
+        -- Shorter than 16,002 bytes otherwise.
+        IF abs(walk.total)>=1e8000 OR scale(walk.total)>8000 THEN
+            walk.long := walk.long OR (octet_length(sparql.format_decimal(walk.total))>16383) IS TRUE;
+        END IF;
+        walk.total := walk.total + coalesce(sparql.numeric(term),'NaN');
+        IF datatype='http://www.w3.org/2001/XMLSchema#decimal' THEN walk.kind := 'decimal'; END IF;
+        RETURN walk;
+    END IF;
+    next := CASE WHEN walk.kind='double' OR datatype LIKE '%#double' THEN 'double' ELSE 'float' END;
+    IF walk.kind IN ('integer','decimal') THEN
+        IF walk.long THEN walk.failed := true; RETURN walk; END IF;
+        walk.sum := sparql.floating(sparql.number(walk.total,walk.kind),next);
+    END IF;
+    value := sparql.floating(term,next);
+    IF walk.sum IS NULL OR value IS NULL THEN walk.failed := true; RETURN walk; END IF;
+    IF abs(walk.sum)<1e37 AND abs(value)<1e37 THEN
+        walk.sum := CASE next WHEN 'float' THEN walk.sum::real+value::real ELSE walk.sum+value END;
+    ELSE
+        BEGIN
+            walk.sum := CASE next WHEN 'float' THEN walk.sum::real+value::real ELSE walk.sum+value END;
+        EXCEPTION WHEN numeric_value_out_of_range THEN
+            walk.failed := true;
+        END;
+    END IF;
+    walk.kind := next;
+    RETURN walk;
+END $$;
+
+CREATE FUNCTION sparql.total_sum(walk sparql.total) RETURNS jsonb
+LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE SET extra_float_digits=3 AS $$
+BEGIN
+    IF walk.failed THEN RETURN NULL; END IF;
+    IF walk.kind IN ('float','double') THEN
+        RETURN sparql.term(sparql.format_double(CASE walk.kind WHEN 'float' THEN walk.sum::real::text::double precision
+                                                               ELSE walk.sum END),
+                           'literal','http://www.w3.org/2001/XMLSchema#' || walk.kind);
+    END IF;
+    IF walk.total='NaN' THEN RETURN NULL; END IF;
+    RETURN sparql.number(walk.total,walk.kind);
+END $$;
+
+CREATE FUNCTION sparql.total_avg(walk sparql.total) RETURNS jsonb
+LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE SET extra_float_digits=3 AS $$
+DECLARE result jsonb := sparql.total_sum(walk);
+BEGIN
+    IF result IS NULL OR walk.amount=0 THEN RETURN result; END IF;
+    RETURN sparql.arithmetic('/',result,sparql.number(walk.amount,'integer'));
+END $$;
+
+CREATE AGGREGATE sparql.sum(jsonb) (SFUNC=sparql.total_step, STYPE=sparql.total,
+    FINALFUNC=sparql.total_sum, INITCOND='(integer,0,f,,0,f)', PARALLEL=SAFE);
+CREATE AGGREGATE sparql.avg(jsonb) (SFUNC=sparql.total_step, STYPE=sparql.total,
+    FINALFUNC=sparql.total_avg, INITCOND='(integer,0,f,,0,f)', PARALLEL=SAFE);
+
+-- GROUP_CONCAT's guard: over the rows string_agg reads, it counts the bytes
+-- string_agg's text holds and raises 54000 once they pass the byte limit;
+-- false once an unbound term or a blank node makes the text unbound. Its
+-- state: bytes, NULL while no value is held, each value after the first
+-- adding the separator's; bound, the result.
+CREATE TYPE sparql.concat_count AS (bytes bigint, bound boolean);
+
+CREATE FUNCTION sparql.count_step(count sparql.concat_count, term jsonb, separator text, bytes bigint)
+RETURNS sparql.concat_count LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE AS $$
+DECLARE piece text := term->>'value';
+BEGIN
+    IF piece IS NOT NULL THEN
+        count.bytes := coalesce(count.bytes+octet_length(separator),0)+octet_length(piece);
+        -- Called only to raise: a call on every row costs a fifth more.
+        IF count.bytes>bytes THEN PERFORM sparql.within(count.bytes,bytes); END IF;
+    END IF;
+    count.bound := count.bound AND term IS NOT NULL AND term->>'type' IS DISTINCT FROM 'bnode';
+    RETURN count;
+END $$;
+
+CREATE FUNCTION sparql.count_bound(count sparql.concat_count) RETURNS boolean
+LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
+    SELECT (count).bound
+$$;
+
+CREATE AGGREGATE sparql.concat_bound(jsonb, text, bigint) (SFUNC=sparql.count_step, STYPE=sparql.concat_count,
+    FINALFUNC=sparql.count_bound, INITCOND='(,t)', PARALLEL=SAFE);

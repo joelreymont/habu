@@ -174,8 +174,19 @@
 \ AVG are sparql.number of its sum and of that over the count, in SPARQL's
 \ datatype, an integer 0 for no solution, and MIN and MAX the shape's
 \ `out` of its min or max, text compared COLLATE "C". Any other goes
-\ through sparql.aggregate over array_agg of its operand's terms,
-\ DISTINCT and GROUP_CONCAT always. Where the
+\ through its runtime aggregate, or any_value for SAMPLE, DISTINCT always,
+\ which holds one term or one running total per group, DISTINCT dropping
+\ duplicates of sparql.normalize of the operand. GROUP_CONCAT is
+\ string_agg beside sparql.concat_bound, which raises past the store's
+\ byte limit. A query with a GROUP_CONCAT groups a derived table of its
+\ solutions whose columns hold every GROUP_CONCAT's operand term, each of
+\ its ORDER BY keys and every group key's term, which the aggregates, the
+\ GROUP BY and the grouped SELECT read: each is evaluated once, so a
+\ volatile key or operand gives one value to every reader. A
+\ GROUP_CONCAT DISTINCT reads a derived table above that one whose
+\ row_number over its group's keys and sparql.normalize of its value,
+\ in ORDER BY's order, keeps each value's first row: string_agg's
+\ DISTINCT compares value text, merging "a" with "a"@en. Where the
 \ grouped solutions are one union's of two or more branches and no key or
 \ aggregate calls EXISTS, each branch groups on its own as the union's
 \ columns present it. Where a GROUP BY variable binds each branch always
@@ -3187,7 +3198,7 @@ STRUCTURE pruning DERIVE addr
 
 \ Whether shape k holds xsd:integer and xsd:decimal, its values numeric.
 \ A float or double column stays generic: its native sum raises on
-\ overflow, where sparql.aggregate answers unbound, and its min and max do
+\ overflow, where sparql.sum answers unbound, and its min and max do
 \ not tell -0 from 0, which ORDER BY's order does.
 : NUMBERS? ( ^plan n -- bool )
    s" numeric" s" http://www.w3.org/2001/XMLSchema#integer"
@@ -5944,10 +5955,10 @@ STRUCTURE pruning DERIVE addr
    then v plan r e EXPRESSION-SQL +REL ;
 
 \ Appends GROUP_CONCAT's SEPARATOR, the literal node, or zero for its
-\ default.
+\ default, a space.
 : +SEPARATOR ( ^plan ^rel n -- )
    {: plan v:^ sep:n :}
-   sep 0= if v s" NULL::text" +SQL exit then
+   sep 0= if plan v s"  " +TEXT-ARG exit then
    plan v plan TREE sep TEXT$ +TEXT-ARG ;
 
 \ The binding in r of the call's operand, a variable r binds.
@@ -5986,7 +5997,7 @@ STRUCTURE pruning DERIVE addr
    v s" ,0),CASE WHEN max(" +SQL v s" min_scale" c +APPLY
    v s" )>0 THEN 'decimal' ELSE 'integer' END)" +SQL v ;
 
-\ AVG over column c as sparql.aggregate answers it: the sum's canonical
+\ AVG over column c as sparql.avg answers it: the sum's canonical
 \ value over the count, unbound where the sum's text is past the 16,383
 \ bytes sparql.numeric reads, an integer 0 for no value.
 : AVG-SQL ( ^plan ^rel -- ^rel )
@@ -6029,6 +6040,17 @@ STRUCTURE pruning DERIVE addr
    state m NODE-K N-ORDER <> if false exit then
    plan seen state m NODE-A@ SEEN? 0= ;
 
+\ Appends ORDER BY condition m's key over r.
+: +ORDER-TERM ( ^plan ^rel ^relation n -- )
+   {: plan v:^ r:^ m:n :}
+   v s" sparql.order(" +SQL
+   v plan r plan TREE m NODE-A@ EXPRESSION-SQL +REL v s" )" +SQL ;
+
+\ Appends ` DESC` where ORDER BY condition m is descending.
+: +DESC ( ^syntax ^rel n -- )
+   {: state v:^ m:n :}
+   state m NODE-FLAGS@ F-DESC and 0<> if v s"  DESC" +SQL then ;
+
 \ List n's ORDER BY keys over r, `,`-joined. An expression an earlier key
 \ sorts by adds none: rows that tie on that key hold one value for it.
 : CONDITION-KEYS ( ^plan ^relation n -- ^rel )
@@ -6039,48 +6061,112 @@ STRUCTURE pruning DERIVE addr
    list begin dup 0<> while
       {: each:n :} state each NODE-A@ {: m:n :}
       plan seen m NEW-KEY? if
-         v s" ," +SEP v s" sparql.order(" +SQL
-         v plan r state m NODE-A@ EXPRESSION-SQL +REL v s" )" +SQL
-         state m NODE-FLAGS@ F-DESC and 0<> if
-            v s"  DESC" +SQL
-         then
+         v s" ," +SEP plan v r m +ORDER-TERM state v m +DESC
       then state each NODE-B@
    repeat drop v ;
 
-\ array_agg of the call's operand terms over r, in its ORDER BY's order
-\ where it has one.
-: TERMS-SQL ( ^plan ^relation n -- ^rel )
-   {: plan r:^ call:n :}
+\ Appends prefix and node k, the name of a column of CONCAT-ROWS.
+: +NODE-COLUMN ( ^rel str n -- )
+   {: v:^ prefix:str k:n :} v prefix +SQL v k +INT ;
+
+\ List n's ORDER BY keys as CONDITION-KEYS writes them, each read from
+\ CONCAT-ROWS's column `oK` of condition node K.
+: ORDER-COLUMNS ( ^plan n -- ^rel )
+   {: plan list:n :}
    plan TREE {: state :}
    plan NEW-SQL {: v:^ :}
-   v s" array_agg(" +SQL
+   plan list NEW-SEEN {: seen:^ :}
+   list begin dup 0<> while
+      {: each:n :} state each NODE-A@ {: m:n :}
+      plan seen m NEW-KEY? if
+         v s" ," +SEP v s" o" m +NODE-COLUMN state v m +DESC
+      then state each NODE-B@
+   repeat drop v ;
+
+\ The aggregate of a call neither COUNT, GROUP_CONCAT nor native, up to
+\ `(`: its runtime aggregate, or any_value for SAMPLE.
+: FOLD$ ( ^syntax n -- str )
+   {: state call:n :}
+   state call s" SUM" CALL-IS? if s" sparql.sum(" exit then
+   state call s" AVG" CALL-IS? if s" sparql.avg(" exit then
+   state call s" MIN" CALL-IS? if s" sparql.min(" exit then
+   state call s" MAX" CALL-IS? if s" sparql.max(" exit then
+   s" any_value(" ;
+
+\ Whether the call is a GROUP_CONCAT DISTINCT.
+: FIRSTS? ( ^syntax n -- bool )
+   {: state call:n :}
+   state call NODE-FLAGS@ F-DISTINCT and 0<>
+   state call s" GROUP_CONCAT" CALL-IS? and ;
+
+\ Appends the call's operand term over r, DISTINCT sparql.normalize of
+\ it for DISTINCT.
+: +FOLD-OPERAND ( ^plan ^rel ^relation n -- )
+   {: plan v:^ r:^ call:n :}
+   plan TREE {: state :}
+   state call NODE-FLAGS@ F-DISTINCT and 0<> {: unique:bool :}
+   unique if v s" DISTINCT sparql.normalize(" +SQL then
    v plan r state state call NODE-A@ NODE-A@ EXPRESSION-SQL +REL
+   unique if v s" )" +SQL then ;
+
+\ Ends GROUP_CONCAT's arguments: its ORDER BY where it has one, `)`,
+\ and for FIRSTS? the filter on its column `fK` of call node K.
+: +CONCAT-END ( ^plan ^rel n -- )
+   {: plan v:^ call:n :}
+   plan TREE {: state :}
    state call NODE-C@ {: conditions:n :}
    conditions 0<> if
-      v s"  ORDER BY " +SQL v plan r conditions CONDITION-KEYS +REL
-   then v s" )" +SQL v ;
+      v s"  ORDER BY " +SQL v plan conditions ORDER-COLUMNS +REL
+   then v s" )" +SQL
+   state call FIRSTS? 0= if exit then
+   v s"  FILTER (WHERE " +SQL v s" f" call +NODE-COLUMN
+   v s" =1)" +SQL ;
+
+\ Appends GROUP_CONCAT's separator and the store's byte limit.
+: +CONCAT-ARGS ( ^plan ^rel n -- )
+   {: plan v:^ sep:n :}
+   v s" ," +SQL plan v sep +SEPARATOR
+   v s" ," +SQL v plan PLAN-STORE @ STORE-LIMIT @ +INT ;
+
+\ GROUP_CONCAT over CONCAT-ROWS's columns. sparql.concat_bound is
+\ written first: an aggregate that sorts its own input is fed in
+\ statement order.
+: CONCAT-SQL ( ^plan n -- ^rel )
+   {: plan call:n :}
+   plan TREE call NODE-B@ {: sep:n :}
+   plan NEW-SQL {: v:^ :}
+   v s" CASE WHEN sparql.concat_bound(" +SQL
+   v s" c" call +NODE-COLUMN
+   plan v sep +CONCAT-ARGS plan v call +CONCAT-END
+   v s"  THEN sparql.term(coalesce(string_agg(" +SQL
+   v s" c" call +NODE-COLUMN v s" ->>'value'," +SQL
+   plan v sep +SEPARATOR plan v call +CONCAT-END
+   v s" ,'')) END" +SQL v ;
+
+\ The call's aggregate over r.
+: FOLD-SQL ( ^plan ^relation n -- ^rel )
+   {: plan r:^ call:n :}
+   plan TREE {: state :}
+   state call s" GROUP_CONCAT" CALL-IS? if plan call CONCAT-SQL exit then
+   plan NEW-SQL {: v:^ :}
+   v state call FOLD$ +SQL plan v r call +FOLD-OPERAND v s" )" +SQL v ;
 
 \ The aggregate call over the relation: COUNT is count, a NATIVE-SHAPE
-\ one native; any other goes through sparql.aggregate over array_agg of
-\ its operand's terms.
+\ one native; any other goes through FOLD-SQL.
 : CALL-SQL ( ^plan ^relation n -- ^rel )
    {: plan r:^ call:n :}
    plan TREE {: state :}
    plan r call NATIVE-SHAPE {: k:n :}
+   state call s" COUNT" CALL-IS? k -1 > or 0= if
+      plan r call FOLD-SQL exit
+   then
    plan NEW-SQL {: v:^ :}
    k -1 > if
       plan v r call +OPERAND plan call k v NATIVE-SQL exit
    then
-   state call NODE-FLAGS@ F-DISTINCT and 0<> {: unique:bool :}
-   state call s" COUNT" CALL-IS? if
-      v s" sparql.number(count(" +SQL
-      unique if v s" DISTINCT " +SQL then
-      plan v r call +COUNTED v s" ),'integer')" +SQL v exit
-   then
-   v s" sparql.aggregate(" +SQL plan v state call TEXT$ +TEXT-ARG
-   v s" ," +SQL v plan r call TERMS-SQL +REL
-   unique if v s" ,true," +SQL else v s" ,false," +SQL then
-   plan v state call NODE-B@ +SEPARATOR v s" )" +SQL v ;
+   v s" sparql.number(count(" +SQL
+   state call NODE-FLAGS@ F-DISTINCT and 0<> if v s" DISTINCT " +SQL then
+   plan v r call +COUNTED v s" ),'integer')" +SQL v ;
 
 \ Whether every group of r's solutions binds the aggregate call.
 : BOUND-CALL? ( ^plan n ^relation n -- bool )
@@ -6138,33 +6224,51 @@ STRUCTURE pruning DERIVE addr
       state list NODE-B@
    repeat drop ;
 
+\ The node of GROUP BY key e's term: an alias's expression, else e when
+\ e is no variable and seen does not hold it, else 0.
+: KEY-NODE ( ^plan ^VEC:vector<hashed> n -- n )
+   {: plan seen:^ e:n :}
+   plan TREE {: state :}
+   state e NODE-K N-ALIAS = if state e NODE-A@ exit then
+   state e NODE-K N-VAR = if 0 exit then
+   plan seen e SEEN? if 0 else e then ;
+
+\ Key expression x's term over r: where concat, its column `kK` of
+\ node K in CONCAT-ROWS.
+: KEY-TERM ( ^plan ^relation n bool -- ^rel )
+   {: plan r:^ x:n concat:bool :}
+   concat 0= if plan r x EXPRESSION-SQL exit then
+   plan NEW-SQL {: v:^ :} v s" k" x +NODE-COLUMN v ;
+
 \ GROUP BY key e: a bound variable binds its anchor in g, `(e AS ?v)` ?v
 \ to e's term; another expression's term goes to keys unless seen has it.
-: GROUP-KEY ( ^plan ^relation ^relation ^VEC:vector<hashed> n ^rel -- )
-   {: plan r:^ g:^ seen:^ e:n keys:^ :}
+: GROUP-KEY ( ^plan ^relation ^relation ^VEC:vector<hashed> n ^rel
+      bool -- )
+   {: plan r:^ g:^ seen:^ e:n keys:^ concat:bool :}
    plan TREE {: state :}
    g RELATION-BINDINGS @ {: gs:^ :}
+   plan seen e KEY-NODE {: x:n :}
    state e NODE-K N-ALIAS = if
       plan state e NODE-B@ VAR {: var:n :}
-      gs var GENERIC plan r state e NODE-A@ EXPRESSION-SQL
-      s" " BIND
-      plan r state e NODE-A@ SURE? gs LAST BINDING-ALWAYS ! exit
+      gs var GENERIC plan r x concat KEY-TERM s" " BIND
+      plan r x SURE? gs LAST BINDING-ALWAYS ! exit
    then
    state e NODE-K N-VAR <> if
-      plan seen e SEEN? if exit then
-      keys s" ," +SEP keys plan r e EXPRESSION-SQL +REL exit
+      x 0= if exit then
+      keys s" ," +SEP keys plan r x concat KEY-TERM +REL exit
    then
    r RELATION-BINDINGS @ {: bs:^ :}
    bs plan e VAR FIND-VAR {: k:n :}
    k 0< gs plan e VAR FIND-VAR -1 > or if exit then
    bs k VEC:AT gs COPY-BINDING ;
 
-: GROUP-KEYS ( ^plan n ^relation ^relation ^rel -- )
-   {: plan exprs:n r:^ g:^ keys:^ :}
+: GROUP-KEYS ( ^plan n ^relation ^relation ^rel bool -- )
+   {: plan exprs:n r:^ g:^ keys:^ concat:bool :}
    plan TREE {: state :}
    plan exprs NEW-SEEN {: seen:^ :}
    exprs begin dup 0<> while
-      {: list:n :} plan r g seen state list NODE-A@ keys GROUP-KEY
+      {: list:n :} state list NODE-A@ {: e:n :}
+      plan r g seen e keys concat GROUP-KEY
       state list NODE-B@
    repeat drop ;
 
@@ -6229,12 +6333,157 @@ STRUCTURE pruning DERIVE addr
       keys s" ," +SEP keys gs i VEC:AT +BINDING
    loop ;
 
-\ GROUP BY's keys over r: g's bindings, the other keys' terms to keys.
+\ Whether a call of the list is a GROUP_CONCAT.
+: CONCATS-IN? ( ^syntax n -- bool )
+   {: state list:n :}
+   list begin dup 0<> while
+      {: each:n :} state each NODE-A@ {: call:n :}
+      state call s" GROUP_CONCAT" CALL-IS? if true exit then
+      state each NODE-B@
+   repeat drop false ;
+
+\ GROUP BY's keys over r: g's bindings, the other keys' terms to keys;
+\ each term KEY-TERM's, concat where the query has a GROUP_CONCAT.
 : KEYS-OF ( ^plan n ^relation ^relation ^rel -- )
    {: plan query:n r:^ g:^ keys:^ :}
    plan TREE {: state :}
    state query GROUP-BY-NODE {: grouping:n :}
-   grouping 0<> if plan state grouping NODE-A@ r g keys GROUP-KEYS then ;
+   grouping 0= if exit then
+   state state query QUERY-AGGREGATES CONCATS-IN? {: concat:bool :}
+   plan state grouping NODE-A@ r g keys concat GROUP-KEYS ;
+
+\ Appends `,` x `AS` the column of prefix and node k to terms, and `,`
+\ that column to names.
+: +DERIVED ( ^rel ^rel ^rel str n -- )
+   {: terms:^ names:^ x:^ prefix:str k:n :}
+   terms s" ," +SEP terms x +REL
+   terms s"  AS " +SQL terms prefix k +NODE-COLUMN
+   names s" ," +SEP names prefix k +NODE-COLUMN ;
+
+\ Appends the term over r of each GROUP BY key KEY-TERM reads from a
+\ column.
+: +KEY-TERMS ( ^plan n ^relation ^rel ^rel -- )
+   {: plan query:n r:^ terms:^ names:^ :}
+   plan TREE {: state :}
+   state query GROUP-BY-NODE {: grouping:n :}
+   grouping 0= if exit then
+   state grouping NODE-A@ {: exprs:n :}
+   plan exprs NEW-SEEN {: seen:^ :}
+   exprs begin dup 0<> while
+      {: list:n :} plan seen state list NODE-A@ KEY-NODE {: x:n :}
+      x 0<> if
+         terms names plan r x EXPRESSION-SQL s" k" x +DERIVED
+      then state list NODE-B@
+   repeat drop ;
+
+\ Appends list n's ORDER BY keys over r as ORDER-COLUMNS reads them.
+: +ORDER-TERMS ( ^plan ^relation n ^rel ^rel -- )
+   {: plan r:^ list:n terms:^ names:^ :}
+   plan TREE {: state :}
+   plan list NEW-SEEN {: seen:^ :}
+   list begin dup 0<> while
+      {: each:n :} state each NODE-A@ {: m:n :}
+      plan seen m NEW-KEY? if
+         plan NEW-SQL {: x:^ :} plan x r m +ORDER-TERM
+         terms names x s" o" m +DERIVED
+      then state each NODE-B@
+   repeat drop ;
+
+\ Appends GROUP_CONCAT's operand term over r, as its column `cK` of
+\ call node K, and its ORDER BY keys.
+: +CONCAT-TERM ( ^plan ^relation n ^rel ^rel -- )
+   {: plan r:^ call:n terms:^ names:^ :}
+   plan TREE {: state :}
+   state state call NODE-A@ NODE-A@ {: e:n :}
+   terms names plan r e EXPRESSION-SQL s" c" call +DERIVED
+   plan r state call NODE-C@ terms names +ORDER-TERMS ;
+
+\ Whether the call is a GROUP_CONCAT no call of seen is one with; it
+\ joins seen.
+: NEW-CONCAT? ( ^plan ^VEC:vector<hashed> n -- bool )
+   {: plan seen:^ call:n :}
+   plan seen call SEEN? 0=
+   plan TREE call s" GROUP_CONCAT" CALL-IS? and ;
+
+\ Appends the terms over r of the list's GROUP_CONCAT calls, one for
+\ calls that are one, as AGGREGATES keeps them.
+: +CONCAT-TERMS ( ^plan n ^relation ^rel ^rel -- )
+   {: plan calls:n r:^ terms:^ names:^ :}
+   plan TREE {: state :}
+   plan calls NEW-SEEN {: seen:^ :}
+   calls begin dup 0<> while
+      {: list:n :} state list NODE-A@ {: call:n :}
+      plan seen call NEW-CONCAT? if
+         plan r call terms names +CONCAT-TERM
+      then state list NODE-B@
+   repeat drop ;
+
+\ Whether a call of the list is FIRSTS?.
+: FIRSTS-IN? ( ^syntax n -- bool )
+   {: state list:n :}
+   list begin dup 0<> while
+      {: each:n :} state state each NODE-A@ FIRSTS? if true exit then
+      state each NODE-B@
+   repeat drop false ;
+
+\ Appends a FIRSTS? call's column `fK` of call node K: 1 on the first
+\ row of each group's value, in its ORDER BY's order, the group's keys
+\ parts.
+: +FIRST ( ^plan ^rel ^rel n -- )
+   {: plan v:^ parts:^ call:n :}
+   plan TREE call NODE-C@ {: conditions:n :}
+   v s"  row_number() OVER (PARTITION BY " +SQL
+   parts EMPTY? 0= if v parts +REL v s" ," +SQL then
+   v s" sparql.normalize(" +SQL v s" c" call +NODE-COLUMN
+   v s" )" +SQL
+   conditions 0<> if
+      v s"  ORDER BY " +SQL v plan conditions ORDER-COLUMNS +REL
+   then v s" ) AS " +SQL v s" f" call +NODE-COLUMN ;
+
+\ Appends `,` and the column of each FIRSTS? call of the query over s,
+\ CONCAT-ROWS's, one for calls that are one, to v.
+: +FIRST-COLUMNS ( ^plan n ^relation ^rel -- )
+   {: plan query:n s:^ v:^ :}
+   plan TREE {: state :}
+   state query QUERY-AGGREGATES {: calls:n :}
+   plan NEW-RELATION {: g:^ :} plan NEW-SQL {: parts:^ :}
+   plan query s g parts KEYS-OF parts g +KEY-COLUMNS
+   plan calls NEW-SEEN {: seen:^ :}
+   calls begin dup 0<> while
+      {: list:n :} state list NODE-A@ {: call:n :}
+      plan seen call NEW-CONCAT? state call FIRSTS? and if
+         v s" ," +SQL plan v parts call +FIRST
+      then state list NODE-B@
+   repeat drop ;
+
+\ r's solutions beside cols, `,`-joined `x AS name` items, a derived
+\ table. OFFSET 0 keeps PostgreSQL from copying the items into readers.
+: DERIVED ( ^plan ^relation ^rel -- ^relation )
+   {: plan r:^ cols:^ :}
+   plan NEW-SQL {: t:^ :}
+   t s" (" +TEXT plan t r +SELECT-LIST
+   r RELATION-BINDINGS @ VEC:COUNT 0<> if t s" ," +SQL then
+   t s"  " +SQL t cols +REL plan t r +FROM-WHERE
+   t s"  OFFSET 0)" +TEXT
+   plan NEW-SQL {: from:^ :}
+   plan t r RELATION-BINDINGS @ from +TABLE {: bs:^ :}
+   plan from plan NEW-CLAUSE bs RELATION-OF {: s:^ :}
+   r RELATION-EMPTY @ s RELATION-EMPTY ! s ;
+
+\ r's solutions with the columns KEY-TERM and CONCAT-SQL read, a derived
+\ table, and above it the FIRSTS? calls' columns where the query has
+\ one; r itself when no call is a GROUP_CONCAT.
+: CONCAT-ROWS ( ^plan n ^relation -- ^relation )
+   {: plan query:n r:^ :}
+   plan TREE query QUERY-AGGREGATES {: calls:n :}
+   plan TREE calls CONCATS-IN? 0= if r exit then
+   plan NEW-SQL {: terms:^ :} plan NEW-SQL {: names:^ :}
+   plan query r terms names +KEY-TERMS
+   plan calls r terms names +CONCAT-TERMS
+   plan r terms DERIVED {: s:^ :}
+   plan TREE calls FIRSTS-IN? 0= if s exit then
+   plan query s names +FIRST-COLUMNS
+   plan s names DERIVED ;
 
 \ g's FROM item over r, with HAVING. A GROUP BY that leaves no key still
 \ answers no group for no solution.
@@ -6277,7 +6526,8 @@ STRUCTURE pruning DERIVE addr
    {: plan query:n from:^ b:^ r:^ partial:bool :}
    plan WORK-ARENA {: work:^ :}
    work ARENA:MARK {: mark:n :}
-   plan b r RELATION-BINDINGS @ PRESENTED {: u:^ :}
+   plan query plan b r RELATION-BINDINGS @ PRESENTED CONCAT-ROWS
+   {: u:^ :}
    plan NEW-RELATION {: gb:^ :}
    plan NEW-SQL {: keys:^ :} plan NEW-CLAUSE {: having:^ :}
    plan query u gb keys KEYS-OF
@@ -6311,9 +6561,7 @@ STRUCTURE pruning DERIVE addr
       v s" sparql.number(coalesce(sum(" +SQL v c +SPLICE
       v s" ),0),'integer')" +SQL v exit
    then
-   v s" sparql.aggregate(" +SQL plan v state call TEXT$ +TEXT-ARG
-   v s" ,array_agg(" +SQL v c +SPLICE v s" ),false," +SQL
-   plan v state call NODE-B@ +SEPARATOR v s" )" +SQL v ;
+   v state call FOLD$ +SQL v c +SPLICE v s" )" +SQL v ;
 
 \ Points each aggregate at its combination over the partials it names.
 : COMBINE ( ^plan -- )
@@ -6439,10 +6687,11 @@ STRUCTURE pruning DERIVE addr
       plan query r SPLIT? if plan query r SPLIT exit then
       plan query COMBINES? if plan query r COMBINED exit then
    then
+   plan query r CONCAT-ROWS {: s:^ :}
    plan NEW-RELATION {: g:^ :} plan NEW-SQL {: keys:^ :}
-   plan query r g keys KEYS-OF
-   plan query r AGGREGATES
-   plan query r g keys GROUPS-OF g ;
+   plan query s g keys KEYS-OF
+   plan query s AGGREGATES
+   plan query s g keys GROUPS-OF g ;
 
 \ Joins the trailing VALUES' data block with s; no rows is no solution.
 : JOIN-VALUES ( ^plan ^relation n -- )
