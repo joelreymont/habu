@@ -299,7 +299,8 @@ STRUCTURE item DERIVE addr
    \ A union's, an OPTIONAL's when its group's solutions are a union's,
    \ else NULL-PTR.
    FIELD branches ^VEC:vector<relation>
-   \ An OPTIONAL group's WHERE when the group joins as it is, else NULL-PTR.
+   \ An OPTIONAL's or MINUS's group's WHERE when the group joins as it is,
+   \ else NULL-PTR.
    FIELD where ^rel
 ;STRUCTURE
 
@@ -2673,6 +2674,17 @@ STRUCTURE pruning DERIVE addr
       then
    loop list swap VEC:RESIZE ;
 
+\ The list keeps only its bindings of the variables the scope binds, in
+\ their order.
+: KEEP-MET ( ^VEC:vector<binding> ^VEC:vector<binding> -- )
+   {: scope:^ list:^ :}
+   0 list VEC:COUNT 0 ?do
+      list i VEC:AT {: o:^ :}
+      scope o BINDING-VAR @ FIND-VAR -1 > if
+         list over VEC:AT o MOVE-BINDING 1+
+      then
+   loop list swap VEC:RESIZE ;
+
 \ The list's bindings move up behind copies of the scope's.
 : SCOPE-FIRST ( ^VEC:vector<binding> ^VEC:vector<binding> -- )
    {: scope:^ list:^ :}
@@ -3222,11 +3234,11 @@ STRUCTURE pruning DERIVE addr
       plan items branches 0 VEC:AT GROUP-ITEM exit
    then plan items branches UNION-CHILD ;
 
-\ An OPTIONAL's or MINUS's group as a derived table.
-: SIDE-ITEM ( ^plan ^VEC:vector<item> ^relation n -- ^item )
-   {: plan items:^ r:^ mode:n :}
+\ An OPTIONAL's group as a derived table.
+: SIDE-ITEM ( ^plan ^VEC:vector<item> ^relation -- ^item )
+   {: plan items:^ r:^ :}
    plan items 0 NEW-ITEM {: it:^ :}
-   mode it ITEM-MODE !
+   N-OPTIONAL it ITEM-MODE !
    plan r SUBSELECT it ITEM-COLUMNS ! it ITEM-TABLE ! it ;
 
 \ Whether an OPTIONAL of the items binds b's variable, which b reads
@@ -3255,13 +3267,13 @@ STRUCTURE pruning DERIVE addr
       items b MET-SPREAD? if false unloop exit then
    loop true ;
 
-\ An OPTIONAL's group as it is: its FROM, its bindings and its WHERE,
-\ its null tests written.
-: AS-IS-ITEM ( ^plan ^VEC:vector<item> ^relation -- ^item )
-   {: plan items:^ r:^ :}
+\ An OPTIONAL's or MINUS's group as it is: its FROM, its bindings and its
+\ WHERE, its null tests written.
+: AS-IS-ITEM ( ^plan ^VEC:vector<item> ^relation n -- ^item )
+   {: plan items:^ r:^ mode:n :}
    r +NULL-TESTS
    plan items 0 NEW-ITEM {: it:^ :}
-   N-OPTIONAL it ITEM-MODE !
+   mode it ITEM-MODE !
    r RELATION-FROM @ it ITEM-TABLE ! r RELATION-WHERE @ it ITEM-WHERE !
    r RELATION-BINDINGS @ it ITEM-COLUMNS ! it ;
 
@@ -3271,8 +3283,8 @@ STRUCTURE pruning DERIVE addr
    {: plan items:^ node:n :}
    plan plan TREE node NODE-A@ GROUP-SQL {: r:^ filters:^ :}
    r RELATION-EMPTY @ if exit then
-   items r AS-IS? if plan items r AS-IS-ITEM
-   else plan items r N-OPTIONAL SIDE-ITEM then
+   items r AS-IS? if plan items r N-OPTIONAL AS-IS-ITEM
+   else plan items r SIDE-ITEM then
    {: it:^ :} filters it ITEM-FILTERS !
    r RELATION-BRANCHES @ it ITEM-BRANCHES ! ;
 
@@ -3280,7 +3292,7 @@ STRUCTURE pruning DERIVE addr
    {: plan items:^ node:n :}
    plan plan TREE node NODE-A@ CLOSED {: r:^ :}
    r RELATION-EMPTY @ if exit then
-   plan items r N-MINUS SIDE-ITEM drop ;
+   plan items r N-MINUS AS-IS-ITEM drop ;
 
 \ BIND: an item whose place in the fold is its Extend.
 : BIND-ITEM ( ^plan ^VEC:vector<item> n -- )
@@ -3755,10 +3767,18 @@ STRUCTURE pruning DERIVE addr
    it ITEM-COLUMNS @ {: cols:^ :}
    scope cols SHARING {: sharing:n :}
    sharing 0= if exit then
+   \ Cuts the item's own column list: nothing reads it after.
+   scope cols KEEP-MET
+   plan WORK-ARENA {: work:^ :}
+   work ARENA:MARK {: mark:n :}
+   plan WORK-AL [type] relation ALLOC:NEW {: u:^ :}
+   it ITEM-TABLE @ it ITEM-WHERE @ cols u INIT-RELATION
+   plan u SUBSELECT {: t:^ ts:^ :}
    r RELATION-WHERE @ {: where:^ :}
    where s"  AND " +SEP
    where s" NOT EXISTS (SELECT 1 FROM " +SQL
-   plan it ITEM-TABLE @ cols where +TABLE {: occs:^ :}
+   plan t ts where +TABLE {: occs:^ :}
+   work mark ARENA:CUT
    plan NEW-SQL {: cond:^ :}
    plan plan scope COPY-SCOPE occs cond false MEET-ALL
    sharing 1 = if plan scope occs cond +BOUND-BOTH then
