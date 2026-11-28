@@ -445,11 +445,16 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    s" SELECT ?g ?o WHERE { GRAPH ?g { t:1 t:92 ?o } }"
    s" {'head':{'vars':['g','o']},'results':{'bindings':[{'g':{'type':'uri','value':'urn:test:o\u0027k'},'o':{'type':'literal','value':'it\u0027s \\ here'}}]}}"
    SPELLED
-   \ A variable needs no test that a column never NULL holds a value.
+   \ A variable needs no null test of a column never NULL, nor of one a
+   \ FILTER's `=` reads.
    s" SELECT ?s ?l WHERE { ?s rdfs:label ?l FILTER(?l = 'Lathe') }"
-   s" .label IS NOT NULL" s" .id IS NOT NULL"
+   s" .label = sparql_test.string(" s" IS NOT NULL"
    s" {'head':{'vars':['s','l']},'results':{'bindings':[{'s':{'type':'uri','value':'urn:test:1'},'l':{'type':'literal','value':'Lathe'}}]}}"
-   SPELLED-ALONE ;
+   SPELLED-ALONE
+   \ An equality an EXISTS reads leaves the outer variable's null test.
+   s" SELECT ?s ?l WHERE { ?s rdfs:label ?l FILTER(?s IN (t:2, t:5)) FILTER NOT EXISTS { ?x rdfs:label ?z FILTER(?l = 'Lathe') } }"
+   s" {'head':{'vars':['s','l']},'results':{'bindings':[{'s':{'type':'uri','value':'urn:test:2'},'l':{'type':'literal','value':'Mill'}}]}}"
+   SPELLED ;
 
 : SLOTS ( -- )
    s" SELECT ?l WHERE { t:1 rdfs:label ?l }"

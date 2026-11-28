@@ -91,7 +91,8 @@
 \ binding meets also where either is NULL, and the variable is then the
 \ first bound of the two. A variable's slot on a column that may hold
 \ NULL is tested `IS NOT NULL` where its relation's WHERE is written,
-\ unless a strict `=` of that WHERE already reads the column, since
+\ unless a strict condition of that WHERE already reads the column (an
+\ `=`, an IN's `=`s, another slot's constant or null test), since
 \ PostgreSQL would count the column's null fraction twice. The group's
 \ other FILTERs read the folded bindings. An
 \ expression has two SQL forms, its term, JSONB, and its test, an SQL
@@ -3066,33 +3067,37 @@ STRUCTURE pruning DERIVE addr
    plan k plan c CONSTANT-VALUE SAME-SQL ;
 
 \ Appends that variable e is constant c, when they are such and e native.
-: +FIXED ( ^plan n n ^rel -- )
-   {: plan e:n c:n where:^ :}
+\ Own: where is the WHERE of the relation binding e, and drops its rows;
+\ there the strict `=` leaves e's binding not nullable.
+: +FIXED ( ^plan n n ^rel bool -- )
+   {: plan e:n c:n where:^ own:bool :}
    plan TREE c CONSTANT? 0= if exit then
    plan e NATIVE-VAR {: k:^ :}
    k NULL-PTR = if exit then
-   where plan k c FIXED-SQL +AND ;
+   plan k c FIXED-SQL {: eq:^ :}
+   where eq +AND
+   own eq EMPTY? 0= and if false k BINDING-NULLABLE ! then ;
 
-: +FIXED-EITHER ( ^plan n n ^rel -- )
-   {: plan a:n b:n where:^ :}
-   plan a b where +FIXED plan b a where +FIXED ;
+: +FIXED-EITHER ( ^plan n n ^rel bool -- )
+   {: plan a:n b:n where:^ own:bool :}
+   plan a b where own +FIXED plan b a where own +FIXED ;
 
-: +EQUAL-FIXED ( ^plan n ^rel -- )
-   {: plan e:n where:^ :}
+: +EQUAL-FIXED ( ^plan n ^rel bool -- )
+   {: plan e:n where:^ own:bool :}
    plan e PAIR-CLASS 0<> if exit then
    plan TREE e NODE-A@ {: a:n :} plan TREE e NODE-B@ {: b:n :}
    plan a UNTYPED? plan b UNTYPED? or 0= if exit then
-   plan a b where +FIXED-EITHER ;
+   plan a b where own +FIXED-EITHER ;
 
-: +SAME-FIXED ( ^plan n ^rel -- )
-   {: plan call:n where:^ :}
+: +SAME-FIXED ( ^plan n ^rel bool -- )
+   {: plan call:n where:^ own:bool :}
    plan TREE {: state :}
    state call NODE-A@ {: list:n :}
    plan state list NODE-A@ state state list NODE-B@ NODE-A@
-      where +FIXED-EITHER ;
+      where own +FIXED-EITHER ;
 
-: +IN-FIXED ( ^plan n ^rel -- )
-   {: plan e:n where:^ :}
+: +IN-FIXED ( ^plan n ^rel bool -- )
+   {: plan e:n where:^ own:bool :}
    plan e IN-CLASS 0<> if exit then
    plan TREE {: state :}
    state e NODE-B@ {: list:n :}
@@ -3105,36 +3110,38 @@ STRUCTURE pruning DERIVE addr
       each list <> if where s"  OR " +SQL then
       where plan k state each NODE-A@ FIXED-SQL +REL
       state each NODE-B@
-   repeat drop where s" )" +SQL ;
+   repeat drop where s" )" +SQL
+   own if false k BINDING-NULLABLE ! then ;
 
-\ Appends the native equalities the test's conjuncts imply.
-: +IMPLIED ( ^plan n ^rel -- )
-   {: plan e:n where:^ :}
+\ Appends the native equalities the test's conjuncts imply; own as for
+\ +FIXED.
+: +IMPLIED ( ^plan n ^rel bool -- )
+   {: plan e:n where:^ own:bool :}
    plan TREE {: state :}
    state e s" &&" INFIX? if
-      plan state e NODE-A@ where RECURSE
-      plan state e NODE-B@ where RECURSE exit
+      plan state e NODE-A@ where own RECURSE
+      plan state e NODE-B@ where own RECURSE exit
    then
-   state e s" =" INFIX? if plan e where +EQUAL-FIXED exit then
-   state e s" IN" INFIX? if plan e where +IN-FIXED exit then
+   state e s" =" INFIX? if plan e where own +EQUAL-FIXED exit then
+   state e s" IN" INFIX? if plan e where own +IN-FIXED exit then
    state e NODE-K N-CALL <> if exit then
-   state e s" SAMETERM" CALL-IS? if plan e where +SAME-FIXED then ;
+   state e s" SAMETERM" CALL-IS? if plan e where own +SAME-FIXED then ;
 
-\ Appends the expression's test over the scope to the conditions, then
-\ the equalities it implies. The outer scope and output are kept: an
-\ EXISTS's group holds FILTERs.
-: +TEST ( ^plan ^VEC:vector<binding> n ^rel -- )
-   {: plan scope:^ e:n where:^ :}
+\ Appends the expression's test, then the equalities it implies; under a
+\ substitution none is own: a variable may be an outer relation's.
+: +TEST ( ^plan ^VEC:vector<binding> n ^rel bool -- )
+   {: plan scope:^ e:n where:^ own:bool :}
    plan PLAN-SCOPE @ {: outer:^ :}
    plan PLAN-OUT @ {: out:^ :}
+   own plan PLAN-OUTER @ BINDS-ANY? 0= and {: mine:bool :}
    plan scope SEEN plan PLAN-SCOPE ! where plan PLAN-OUT !
    where s"  AND " +SEP
-   plan e SQL-TEST plan e where +IMPLIED
+   plan e SQL-TEST plan e where mine +IMPLIED
    outer plan PLAN-SCOPE ! out plan PLAN-OUT ! ;
 
-: +FILTER ( ^plan ^VEC:vector<binding> n ^rel -- )
-   {: plan scope:^ filter:n where:^ :}
-   plan scope plan TREE filter NODE-A@ where +TEST ;
+: +FILTER ( ^plan ^VEC:vector<binding> n ^rel bool -- )
+   {: plan scope:^ filter:n where:^ own:bool :}
+   plan scope plan TREE filter NODE-A@ where own +TEST ;
 
 \ The group with its FILTERs on all its bindings; a FILTER leaves its
 \ solutions no union's.
@@ -3144,7 +3151,7 @@ STRUCTURE pruning DERIVE addr
    filters VEC:COUNT 0<> if NULL-PTR r RELATION-BRANCHES ! then
    filters VEC:COUNT 0 ?do
       plan r RELATION-BINDINGS @ filters i VEC:AT @ r RELATION-WHERE @
-         +FILTER
+         true +FILTER
    loop r ;
 
 \ A nested group: its relation as a derived table.
@@ -3595,7 +3602,7 @@ STRUCTURE pruning DERIVE addr
    {: plan scope:^ it:^ where:^ :}
    it ITEM-FILTERS @ {: filters:^ :}
    filters VEC:COUNT 0 ?do
-      plan scope filters i VEC:AT @ where +FILTER
+      plan scope filters i VEC:AT @ where false +FILTER
    loop ;
 
 \ Whether the scope binds always a variable branch b binds always.
@@ -3963,7 +3970,7 @@ STRUCTURE pruning DERIVE addr
    0 filters VEC:COUNT 0 ?do
       filters i VEC:AT @ {: f:n :}
       plan r plan TREE f NODE-A@ ALL-BOUND? if
-         plan r RELATION-BINDINGS @ f r RELATION-WHERE @ +FILTER
+         plan r RELATION-BINDINGS @ f r RELATION-WHERE @ true +FILTER
       else f over filters swap VEC:AT ! 1+ then
    loop filters swap VEC:RESIZE ;
 
@@ -5297,7 +5304,7 @@ STRUCTURE pruning DERIVE addr
    plan TREE {: state :}
    list begin dup 0<> while
       {: each:n :}
-      plan r RELATION-BINDINGS @ state each NODE-A@ v +TEST
+      plan r RELATION-BINDINGS @ state each NODE-A@ v false +TEST
       state each NODE-B@
    repeat drop ;
 
