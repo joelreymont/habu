@@ -282,7 +282,8 @@ STRUCTURE col DERIVE addr
    FIELD sql ^rel  FIELD len n  FIELD next ^col
 ;STRUCTURE
 
-\ digest: sql's REL-HASH.
+\ digest: sql's REL-HASH, or its address where its text names an alias
+\ made for it.
 STRUCTURE condition DERIVE addr
    FIELD sql ^rel  FIELD digest n  FIELD next ^condition
 ;STRUCTURE
@@ -564,10 +565,11 @@ defer EXISTS-SQL ( ^plan n -- )
 : FIRST-CONDITION ( ^clause -- ^condition )
    CLAUSE-LAST @ dup NULL-PTR <> if CONDITION-NEXT @ then ;
 
-\ The condition after e in the clause, NULL-PTR after its last.
-: NEXT-CONDITION ( ^clause ^condition -- ^condition )
-   {: c:^ e:^ :}
-   e c CLAUSE-LAST @ = if NULL-PTR else e CONDITION-NEXT @ then ;
+\ The condition after e in the ring whose last is last, NULL-PTR after
+\ it.
+: NEXT-CONDITION ( ^condition ^condition -- ^condition )
+   {: last:^ e:^ :}
+   e last = if NULL-PTR else e CONDITION-NEXT @ then ;
 
 \ Adds the condition, whose digest is h, to the clause.
 : +LISTED ( ^plan ^clause ^rel n -- )
@@ -586,14 +588,18 @@ defer EXISTS-SQL ( ^plan n -- )
       {: e:^ :}
       e CONDITION-DIGEST @ h = if
          plan PLAN-CURSORS @ e CONDITION-SQL @ a REL= if true exit then
-      then e last = if NULL-PTR else e CONDITION-NEXT @ then
+      then last e NEXT-CONDITION
    repeat drop false ;
 
-\ Adds the condition to the clause without comparing it with the others:
-\ only a VOLATILE? one, each of its calls its own evaluation, or one
-\ whose text names an alias of its own.
+\ Adds the VOLATILE? condition to the clause without comparing it with
+\ the others: each of its calls is its own evaluation.
 : +FRESH ( ^plan ^clause ^rel -- )
    {: plan c:^ a:^ :} plan c a plan a REL-HASH +LISTED ;
+
+\ Adds the condition, whose text names an alias made for it, to the
+\ clause: it equals no other, aliases being unique within a compile.
+: +NAMED ( ^plan ^clause ^rel -- )
+   {: plan c:^ a:^ :} plan c a a PTR>N +LISTED ;
 
 \ Adds the condition to the clause unless it is empty or a condition of
 \ the clause writes its text.
@@ -642,7 +648,7 @@ defer EXISTS-SQL ( ^plan n -- )
       {: e:^ :} e CONDITION-SQL @ {: a:^ :}
       e CONDITION-DIGEST @ {: h:n :}
       plan first held a h WRITES? 0= if plan c a h +LISTED then
-      inner e NEXT-CONDITION
+      inner CLAUSE-LAST @ e NEXT-CONDITION
    repeat drop
    inner CLAUSE-READS @ begin dup NULL-PTR <> while
       {: r:^ :} plan c r COL-SQL @ r COL-LEN @ +CLAUSE-READ r COL-NEXT @
@@ -851,7 +857,7 @@ defer EXISTS-SQL ( ^plan n -- )
 
 : ABSORB-TEXT ( ^SIPHASH:state str -- )
    {: sip text:str :}
-   sip text STR:LEN SIPHASH:ABSORB-WORD sip text ABSORB$ ;
+   sip text STR:LEN SIPHASH:ABSORB-WORD sip text SIPHASH:ABSORB$ ;
 
 : STRING-HASH ( ^plan str -- n )
    {: plan text:str :}
@@ -4463,8 +4469,8 @@ STRUCTURE pruning DERIVE addr
    plan plan scope COPY-SCOPE occs cond false MEET-ALL
    sharing 1 = if plan scope occs cond +BOUND-BOTH then
    plan v cond +WHERE v s" )" +SQL
-   \ Its text names the alias its own SUBSELECT made, so it repeats none.
-   plan r RELATION-WHERE @ v +FRESH ;
+   \ Its text names the alias made for its own SUBSELECT.
+   plan r RELATION-WHERE @ v +NAMED ;
 
 \ The expression's SQL over the relation's bindings through the
 \ substitution, a rel.

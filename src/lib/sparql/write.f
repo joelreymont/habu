@@ -15,7 +15,6 @@ require src/lib/allocator.f
 require src/lib/vector.f
 require src/lib/siphash.f
 require src/lib/sparql/statement.f
-require src/lib/sparql/terms.f
 
 package SPARQL
 private
@@ -35,7 +34,7 @@ STRUCTURE sink DERIVE addr
    {: k:^ s:str :}
    s STR:LEN k SINK-COUNT +!
    k SINK-OUT @ NULL-PTR <> if s k SINK-OUT @ VEC:APPEND then
-   k SINK-SIP @ NULL-PTR <> if k SINK-SIP @ s ABSORB$ then ;
+   k SINK-SIP @ NULL-PTR <> if k SINK-SIP @ s SIPHASH:ABSORB$ then ;
 
 \ `WITH ` or `WITH RECURSIVE ` before the rel's first CTE, a comma
 \ before any other.

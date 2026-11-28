@@ -120,6 +120,14 @@ public
    BLOCK-BYTES 0 ?do s  w i 8 * rshift  ABSORB-BYTE loop ;
 
 
+: ABSORB$ ( ^state str -- )
+   {: sip text:str :}
+   text str> {: bytes size:n :}
+   size 7 invert and {: whole:n :}
+   whole 0 ?do sip bytes i + LE:U64@ ABSORB-WORD 8 +loop
+   size whole ?do sip bytes i + c@ ABSORB-BYTE loop ;
+
+
 : FINISH ( ^state -- n )
    {: s:^ :}
    s V@  s STATE-LEN @ LEN-SHIFT lshift  s STATE-TAIL @ or  FINAL ;

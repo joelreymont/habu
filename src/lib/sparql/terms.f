@@ -6,7 +6,6 @@ require src/lib/sparql/iri.f
 require src/lib/sparql/syntax.f
 require src/lib/vector.f
 require src/lib/siphash.f
-require src/lib/le.f
 
 package SPARQL
 private
@@ -229,20 +228,13 @@ private
       then
    repeat drop out VEC:BYTES ;
 
-: ABSORB$ ( ^SIPHASH:state str -- )
-   {: sip text:str :}
-   text str> {: bytes size:n :}
-   size 7 invert and {: whole:n :}
-   whole 0 ?do sip bytes i + LE:U64@ SIPHASH:ABSORB-WORD 8 +loop
-   size whole ?do sip bytes i + c@ SIPHASH:ABSORB-BYTE loop ;
-
 \ A name's key: its node's kind and its text.
 : NAME-HASH ( ^syntax n str -- n )
    {: state kind:n text:str :}
    state SYNTAX-NAMES INTERNS-HASH {: sip :}
    sip kind SIPHASH:ABSORB-WORD
    sip text str> nip SIPHASH:ABSORB-WORD
-   sip text ABSORB$
+   sip text SIPHASH:ABSORB$
    sip SIPHASH:FINISH ;
 
 : NODE-NAME-HASH ( ^syntax n -- n )
@@ -273,8 +265,8 @@ private
    sip kind SIPHASH:ABSORB-WORD
    sip datatype SIPHASH:ABSORB-WORD
    sip head str> nip text str> nip + SIPHASH:ABSORB-WORD
-   sip head ABSORB$
-   sip text ABSORB$
+   sip head SIPHASH:ABSORB$
+   sip text SIPHASH:ABSORB$
    language str> {: tag size:n :}
    size 0 ?do sip tag i + c@ STR:ASCII-LOWER SIPHASH:ABSORB-BYTE loop
    sip SIPHASH:FINISH ;
