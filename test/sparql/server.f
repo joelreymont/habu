@@ -4,7 +4,7 @@
 \ runs the body on that connection and closes it; without the argument it
 \ dies naming the harness. RUN-SQL, RUN, RUN-TEXT and COMPILE are the
 \ body's.
-\ STORAGE CLASS. PROCESS-WIDE: one connection and one script buffer.
+\ STORAGE CLASS. PROCESS-WIDE: one connection.
 
 require src/core/exit-status.f
 require src/lib/test/assert.f
@@ -22,8 +22,6 @@ package SPARQL-TEST
 private
 
 TYPED-VARIABLE CONN PG:connection
-$10000 constant SCRIPT-CAP
-SCRIPT-CAP BUFFER: SCRIPT
 
 \ A failed script shows PostgreSQL's message and SQLSTATE.
 : SCRIPT-OK ( PG:result -- PG:result )
@@ -57,15 +55,24 @@ SCRIPT-CAP BUFFER: SCRIPT
 
 public
 
-: RUN-SQL ( str -- ) {: path:str :}
-   path T-LABEL
-   CONN @ path SCRIPT SCRIPT-CAP FS:READ-ALL SCRIPT swap >str
-   [: SCRIPT-OK ;] PG:WITH-SCRIPT ;
-
 : TEXT-VEC ( ^ARENA:arena -- ^VEC:vector<u8> )
    ARENA:ALLOCATOR 0 [type] u8 VEC:NEW ;
 
 : $ ( ^VEC:vector<u8> -- str ) VEC:SPAN SPAN:$ ;
+
+private
+
+: SCRIPT-RUN ( str ^ARENA:arena -- )
+   {: path:str a:^ :}
+   a TEXT-VEC {: text:^ :}
+   path text FS:READ-FILE+ TTRUE
+   CONN @ text $ [: SCRIPT-OK ;] PG:WITH-SCRIPT ;
+
+public
+
+: RUN-SQL ( str -- ) {: path:str :}
+   path T-LABEL
+   [: path swap SCRIPT-RUN ;] ARENA:WITH ;
 
 \ Runs a statement with the parameters staged; true when it answered a
 \ row. The first row's one text, or the failure as `SQLSTATE: message`,
