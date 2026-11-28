@@ -283,7 +283,7 @@ STRUCTURE col DERIVE addr
 ;STRUCTURE
 
 \ digest: sql's REL-HASH, or its address where its text names an alias
-\ made for it.
+\ made for it or is volatile: such a condition equals no other.
 STRUCTURE condition DERIVE addr
    FIELD sql ^rel  FIELD digest n  FIELD next ^condition
 ;STRUCTURE
@@ -591,7 +591,7 @@ defer EXISTS-SQL ( ^plan n -- )
 \ Adds the VOLATILE? condition to the clause without comparing it with
 \ the others: each of its calls is its own evaluation.
 : +FRESH ( ^plan ^clause ^rel -- )
-   {: plan c:^ a:^ :} plan c a plan a REL-HASH +LISTED ;
+   {: plan c:^ a:^ :} plan c a a PTR>N +LISTED ;
 
 \ Adds the condition, whose text names an alias made for it, to the
 \ clause: it equals no other, aliases being unique within a compile.
@@ -636,8 +636,7 @@ defer EXISTS-SQL ( ^plan n -- )
 
 \ Adds each condition of the inner clause to the clause unless one the
 \ clause held on entry writes its text; the inner clause decided between
-\ its own, volatile repeats included. Its reads and needs join the
-\ clause's.
+\ its own. Its reads and needs join the clause's.
 : ABSORB ( ^plan ^clause ^clause -- )
    {: plan c:^ inner:^ :}
    c FIRST-CONDITION {: first:^ :} c CLAUSE-LAST @ {: held:^ :}
@@ -3364,20 +3363,46 @@ STRUCTURE pruning DERIVE addr
    kind N-SELECT = if b state node QUERY-VALUES@ d a exit then
    b c d a ;
 
-\ Whether node n or a node below it, an EXISTS's group's included, calls
-\ RAND, UUID or STRUUID, which give a new value at each call.
-: VOLATILE? ( ^syntax n -- bool )
+\ Whether node n calls RAND, UUID or STRUUID, which give a new value at
+\ each call.
+: VOLATILE-CALL? ( ^syntax n -- bool )
+   {: state node:n :}
+   state node NODE-K N-CALL <> if false exit then
+   state node s" RAND UUID STRUUID" CALL-IN? ;
+
+: +FLAG ( ^syntax n n -- )
+   {: state node:n f:n :}
+   state node state node NODE-FLAGS@ f or NODE-FLAGS! ;
+
+\ Flags F-VOLATILE node top and each node after it through last on the
+\ walk NODE-PARTS goes on.
+: FLAG-THROUGH ( ^syntax n n -- )
+   {: state top:n last:n :}
+   top begin
+      state over F-VOLATILE +FLAG
+      dup last <> while
+      state swap NODE-PARTS nip nip nip
+   repeat drop ;
+
+\ Flags F-VOLATILE each node at or below top, an EXISTS's group's
+\ included, that calls a VOLATILE-CALL? or has one below it; whether top
+\ does. The walk's own nodes are flagged after it, through the last that
+\ is volatile on its own.
+: FLAG-VOLATILE ( ^syntax n -- bool )
    {: state top:n :}
-   top begin dup 0<> while
+   0 top begin dup 0<> while
       {: node:n :}
-      state node NODE-K N-CALL = if
-         state node s" RAND UUID STRUUID" CALL-IN? if true exit then
-      then
       state node NODE-PARTS {: one:n two:n three:n next:n :}
       state one RECURSE state two RECURSE or
-      state three RECURSE or if true exit then
+      state three RECURSE or
+      state node VOLATILE-CALL? or if drop node then
       next
-   repeat drop false ;
+   repeat drop {: last:n :}
+   last 0= if false exit then
+   state top last FLAG-THROUGH true ;
+
+\ Whether EMIT's flag pass marked node n volatile; before it runs, none is.
+: VOLATILE? ( ^syntax n -- bool ) NODE-FLAGS@ F-VOLATILE and 0<> ;
 
 \ Adds the expression's test, then the equalities it implies.
 : +TEST ( ^plan ^VEC:vector<binding> n ^clause -- )
@@ -6746,6 +6771,8 @@ STRUCTURE pruning DERIVE addr
    INDEXES plan PLAN-FRESH !
    al NEW-CURSORS plan PLAN-CURSORS !
    al 0 [type] level VEC:NEW plan PLAN-LEVELS !
+   \ The nodes a statement adds, of paths, call nothing.
+   state state SYNTAX-ROOT @ FLAG-VOLATILE drop
    plan STATEMENT {: r:^ :}
    al NULL-PTR NEW-SINK {: count:^ :}
    count r WRITE-REL

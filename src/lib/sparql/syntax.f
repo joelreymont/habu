@@ -83,6 +83,8 @@ private
 32 constant N-QUERY-INFO
 
 1 constant F-DISTINCT
+\ The node or one below it calls RAND, UUID or STRUUID.
+2 constant F-VOLATILE
 4 constant F-STAR
 32 constant F-DESC
 
