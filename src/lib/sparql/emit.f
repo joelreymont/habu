@@ -22,7 +22,10 @@
 \ its row, N does not list i and another entry's `only` on k of the slot
 \ lists it: the triple's own constant at a slot keyed on k pins it, and so
 \ does that of another joined triple of its subject whose every candidate
-\ reads the row by the same unique subject slot. A pattern's candidates
+\ reads the row by the same unique subject slot. A nested group's items
+\ are narrowed with its parent's joined items before it, as one group,
+\ the parent's items keeping their choices; an EXISTS group, a subquery
+\ and a walk step are narrowed alone. A pattern's candidates
 \ group by the description source they were read from: one group is that
 \ source's FROM item, several a UNION ALL of one branch per group, and
 \ where a group's candidates read several columns at a slot, a variable
@@ -424,8 +427,9 @@ defer SQL-EXPRESSION ( ^plan n -- )
 defer SQL-TEST ( ^plan n -- )
 \ A group's `{ SELECT ... }`, the node, as a joined item.
 defer SUBQUERY-ITEM ( ^plan ^VEC:vector<item> n -- )
-\ A group's relation before its FILTERs, and the FILTER nodes.
-defer GROUP-SQL ( ^plan n -- ^relation ^VEC:vector<n> )
+\ A group's relation before its FILTERs, and the FILTER nodes; the
+\ given items, which may be NULL-PTR, narrow it.
+defer GROUP-SQL ( ^plan n ^VEC:vector<item> -- ^relation ^VEC:vector<n> )
 \ An EXISTS or NOT EXISTS call as an SQL boolean.
 defer EXISTS-SQL ( ^plan n -- )
 
@@ -1659,15 +1663,22 @@ STRUCTURE pruning DERIVE addr
       1 w PRUNING-HEAD +!
    repeat ;
 
-\ Kills each choice another item cannot support, until none changes; its
-\ scratch lives in the work arena until it returns.
-: PRUNE ( ^plan ^VEC:vector<item> -- )
-   {: plan items:^ :}
-   items VEC:COUNT 2 < if exit then
+\ Runs q on each item, then on each given item; given may be NULL-PTR.
+: EACH-ITEM ( ^VEC:vector<item> ^VEC:vector<item> [ ^item -- ] -- )
+   {: items:^ given:^ q :}
+   items VEC:COUNT 0 ?do items i VEC:AT q execute loop
+   given LEN 0 ?do given i VEC:AT q execute loop ;
+
+\ Kills each choice another item, given ones included, cannot support,
+\ until none changes; its scratch lives in the work arena until it
+\ returns.
+: PRUNE ( ^plan ^VEC:vector<item> ^VEC:vector<item> -- )
+   {: plan items:^ given:^ :}
+   items VEC:COUNT given LEN + 2 < if exit then
    plan WORK-ARENA {: work:^ :}
    work ARENA:MARK {: mark:n :}
    plan NEW-PRUNING {: w:^ :}
-   items VEC:COUNT 0 ?do w items i VEC:AT +SITES loop
+   items given [: w swap +SITES ;] EACH-ITEM
    w [: CLASSIFY ;] EACH-SHARED
    w [: COUNT-LIVE ;] EACH-SHARED
    w [: SITE-DOMAIN @ ENQUEUE ;] EACH-SHARED
@@ -2282,14 +2293,14 @@ STRUCTURE pruning DERIVE addr
    plan k SOURCE@ {: ra:^ :}
    3 0 do plan pinned a ra i +PIN loop ;
 
-\ The pins of the joined triples, one `pinned` per subject.
-: PINS ( ^plan ^VEC:vector<item> -- ^VEC:vector<pinned> )
-   {: plan items:^ :}
+\ The pins of the joined triples, given ones included, one `pinned`
+\ per subject.
+: PINS ( ^plan ^VEC:vector<item> ^VEC:vector<item> -- ^VEC:vector<pinned> )
+   {: plan items:^ given:^ :}
    plan WORK-AL 0 [type] pinned VEC:NEW {: pinned:^ :}
-   items VEC:COUNT 0 ?do
-      items i VEC:AT {: a:^ :}
-      a JOINED-TRIPLE? if plan pinned a +PINS then
-   loop pinned ;
+   items given [:
+      dup JOINED-TRIPLE? if plan pinned rot +PINS else drop then
+   ;] EACH-ITEM pinned ;
 
 \ Whether the pin puts in r's row an IRI that leaves r's entry o at
 \ slot j empty.
@@ -2359,17 +2370,55 @@ STRUCTURE pruning DERIVE addr
       then
    loop ;
 
-\ Kills the choices an `only` leaves empty, by pins taken before any
-\ kill; the pins live in the work arena until it returns.
-: DROP-UNFILLED ( ^plan ^VEC:vector<item> -- )
-   {: plan items:^ :}
+\ Kills the choices of the items and the given items an `only` leaves
+\ empty, by pins taken before any kill; the pins live in the work arena
+\ until it returns.
+: DROP-UNFILLED ( ^plan ^VEC:vector<item> ^VEC:vector<item> -- )
+   {: plan items:^ given:^ :}
    plan WORK-ARENA {: work:^ :}
    work ARENA:MARK {: mark:n :}
-   plan items PINS {: pinned:^ :}
-   items VEC:COUNT 0 ?do
-      items i VEC:AT {: b:^ :}
-      b JOINED-TRIPLE? if plan pinned b DROP-CHOICES then
-   loop work mark ARENA:CUT ;
+   plan items given PINS {: pinned:^ :}
+   items given [:
+      dup JOINED-TRIPLE? if plan pinned rot DROP-CHOICES else drop then
+   ;] EACH-ITEM work mark ARENA:CUT ;
+
+: +ALIVE ( ^VEC:vector<u8> ^item -- )
+   {: flags:^ it:^ :}
+   it ITEM-CHOICES @ {: cs:^ :}
+   cs VEC:COUNT 0 ?do
+      cs i VEC:AT CHOICE-ALIVE @ if 1 else 0 then flags VEC:PUSH c!
+   loop ;
+
+\ One byte per choice of the items, in order, 1 where it is alive.
+: ALIVE-FLAGS ( ^plan ^VEC:vector<item> -- ^VEC:vector<u8> )
+   {: plan items:^ :}
+   plan WORK-AL 0 [type] u8 VEC:NEW {: flags:^ :}
+   items LEN 0 ?do flags items i VEC:AT +ALIVE loop flags ;
+
+\ Sets the item's choices alive by the flags from k on; the index after.
+: RESTORE-CHOICES ( ^VEC:vector<u8> n ^item -- n )
+   {: flags:^ k:n it:^ :}
+   it ITEM-CHOICES @ {: cs:^ :}
+   cs VEC:COUNT 0 ?do
+      flags k i + VEC:AT c@ 0<> cs i VEC:AT CHOICE-ALIVE !
+   loop k cs VEC:COUNT + ;
+
+\ Sets the items' choices alive by the flags ALIVE-FLAGS gave.
+: RESTORE-ALIVE ( ^VEC:vector<item> ^VEC:vector<u8> -- )
+   {: items:^ flags:^ :}
+   0 items LEN 0 ?do
+      flags swap items i VEC:AT RESTORE-CHOICES
+   loop drop ;
+
+\ Narrows the items as one group with the given items, which may be
+\ NULL-PTR; the given items keep their choices.
+: NARROW ( ^plan ^VEC:vector<item> ^VEC:vector<item> -- )
+   {: plan items:^ given:^ :}
+   plan WORK-ARENA {: work:^ :}
+   work ARENA:MARK {: mark:n :}
+   plan given ALIVE-FLAGS {: flags:^ :}
+   plan items given DROP-UNFILLED plan items given PRUNE
+   given flags RESTORE-ALIVE work mark ARENA:CUT ;
 
 \ The group's rows, made at the first kept.
 : ROWS ( ^plan ^relation -- ^VEC:vector<subject-row> )
@@ -3182,9 +3231,9 @@ STRUCTURE pruning DERIVE addr
 
 \ The group with its FILTERs on all its bindings; a FILTER leaves its
 \ solutions no union's.
-: CLOSED ( ^plan n -- ^relation )
-   {: plan group:n :}
-   plan group GROUP-SQL {: r:^ filters:^ :}
+: CLOSED ( ^plan n ^VEC:vector<item> -- ^relation )
+   {: plan group:n given:^ :}
+   plan group given GROUP-SQL {: r:^ filters:^ :}
    filters VEC:COUNT 0<> if NULL-PTR r RELATION-BRANCHES ! then
    filters VEC:COUNT 0 ?do
       plan r RELATION-BINDINGS @ filters i VEC:AT @ r RELATION-WHERE @
@@ -3208,9 +3257,9 @@ STRUCTURE pruning DERIVE addr
    false c RELATION-EMPTY ! ;
 
 \ Adds the group to the branches unless it is statically empty.
-: +GROUP ( ^plan ^VEC:vector<relation> n -- )
-   {: plan branches:^ group:n :}
-   plan group CLOSED {: r:^ :}
+: +GROUP ( ^plan ^VEC:vector<relation> n ^VEC:vector<item> -- )
+   {: plan branches:^ group:n given:^ :}
+   plan group given CLOSED {: r:^ :}
    r RELATION-EMPTY @ if exit then
    plan branches r +RELATION ;
 
@@ -3228,10 +3277,10 @@ STRUCTURE pruning DERIVE addr
    plan TREE {: state :}
    plan AL 0 [type] relation VEC:NEW {: branches:^ :}
    state node N-UNION N-UNION SPINE {: spine:^ leaf:n :}
-   plan branches leaf +GROUP
+   plan branches leaf items +GROUP
    spine begin dup NULL-PTR <> while
       {: at:^ :}
-      plan branches state at LINK-NODE @ NODE-B@ +GROUP
+      plan branches state at LINK-NODE @ NODE-B@ items +GROUP
       at LINK-NEXT @
    repeat drop
    plan items branches UNION-CHILD ;
@@ -3245,13 +3294,13 @@ STRUCTURE pruning DERIVE addr
 
 \ The GRAPH's group with source k's graph active, a variable g joined with
 \ that graph, to the branches unless statically empty.
-: +GRAPH ( ^plan ^VEC:vector<relation> n n -- )
-   {: plan branches:^ node:n k:n :}
+: +GRAPH ( ^plan ^VEC:vector<relation> n n ^VEC:vector<item> -- )
+   {: plan branches:^ node:n k:n given:^ :}
    plan TREE {: state :}
    plan k SOURCE@ SOURCE-GRAPH @ {: t:str :}
    plan PLAN-GRAPH @ {: outer:str :}
    t plan PLAN-GRAPH !
-   plan state node NODE-B@ CLOSED {: r:^ :}
+   plan state node NODE-B@ given CLOSED {: r:^ :}
    outer plan PLAN-GRAPH !
    r RELATION-EMPTY @ if exit then
    state node NODE-A@ {: g:n :}
@@ -3272,7 +3321,7 @@ STRUCTURE pruning DERIVE addr
    plan PLAN-STORE @ STORE-GRAPHS @ {: firsts:^ :}
    firsts VEC:COUNT 0 ?do
       firsts i VEC:AT @ {: k:n :}
-      plan g k READS? if plan branches node k +GRAPH then
+      plan g k READS? if plan branches node k items +GRAPH then
    loop
    branches VEC:COUNT 1 = if
       plan items branches 0 VEC:AT GROUP-ITEM exit
@@ -3325,7 +3374,7 @@ STRUCTURE pruning DERIVE addr
 \ LeftJoin holds, and the branches of P's solutions when they are a union's.
 : OPTIONAL-ITEM ( ^plan ^VEC:vector<item> n -- )
    {: plan items:^ node:n :}
-   plan plan TREE node NODE-A@ GROUP-SQL {: r:^ filters:^ :}
+   plan plan TREE node NODE-A@ items GROUP-SQL {: r:^ filters:^ :}
    r RELATION-EMPTY @ if exit then
    items r AS-IS? if plan items r N-OPTIONAL AS-IS-ITEM
    else plan items r SIDE-ITEM then
@@ -3334,7 +3383,7 @@ STRUCTURE pruning DERIVE addr
 
 : MINUS-ITEM ( ^plan ^VEC:vector<item> n -- )
    {: plan items:^ node:n :}
-   plan plan TREE node NODE-A@ CLOSED {: r:^ :}
+   plan plan TREE node NODE-A@ items CLOSED {: r:^ :}
    r RELATION-EMPTY @ if exit then
    plan items r N-MINUS AS-IS-ITEM drop ;
 
@@ -3579,7 +3628,7 @@ STRUCTURE pruning DERIVE addr
          N-COLLECTION of plan items node COLLECTION-ITEMS endof
          N-GROUP of
             state node JOINED? if plan node items filters RECURSE
-            else plan items plan node CLOSED GROUP-ITEM then
+            else plan items plan node items CLOSED GROUP-ITEM then
          endof
          N-UNION of plan items node UNION-ITEM endof
          N-OPTIONAL of plan items node OPTIONAL-ITEM endof
@@ -4244,7 +4293,7 @@ STRUCTURE pruning DERIVE addr
    w WALK-INVERSE @ if b a else a b then {: x:n y:n :}
    plan plan w WALK-NODE @ x w WALK-OPERAND @ y TRIPLE-NODE GROUP-NODE
       {: g:n :}
-   plan g CLOSED {: rp:^ :}
+   plan g NULL-PTR CLOSED {: rp:^ :}
    rp RELATION-EMPTY @ if
       GENERIC w WALK-START ! GENERIC w WALK-END !
       plan w
@@ -5153,13 +5202,12 @@ STRUCTURE pruning DERIVE addr
    it ITEM-BRANCHES @ r RELATION-BRANCHES ! ;
 
 \ The group's items folded in order, and its FILTERs the fold has not applied.
-: GROUP ( ^plan n -- ^relation ^VEC:vector<n> )
-   {: plan group:n :}
+: GROUP ( ^plan n ^VEC:vector<item> -- ^relation ^VEC:vector<n> )
+   {: plan group:n given:^ :}
    plan AL 0 [type] item VEC:NEW {: items:^ :}
    plan AL 0 [type] n VEC:NEW {: filters:^ :}
    plan group items filters ITEMS
-   plan items DROP-UNFILLED
-   plan items PRUNE
+   plan items given NARROW
    plan NEW-RELATION {: r:^ :}
    items DEAD? r RELATION-EMPTY !
    r RELATION-EMPTY @ 0= if
@@ -5174,7 +5222,7 @@ STRUCTURE pruning DERIVE addr
    plan PLAN-OUTER @ {: outer:^ :}
    plan PLAN-SCOPE @ plan PLAN-OUTER !
    plan TREE call s" NOT EXISTS" CALL-IS? {: negated:bool :}
-   plan plan TREE call NODE-A@ CLOSED {: r:^ :}
+   plan plan TREE call NODE-A@ NULL-PTR CLOSED {: r:^ :}
    outer plan PLAN-OUTER !
    r RELATION-EMPTY @ if
       negated if out s" true" +SQL else out s" false" +SQL then exit
@@ -5968,7 +6016,7 @@ STRUCTURE pruning DERIVE addr
 : SOLUTIONS ( ^plan n -- ^relation )
    {: plan query:n :}
    plan TREE {: state :}
-   plan state query NODE-B@ CLOSED {: r:^ :}
+   plan state query NODE-B@ NULL-PTR CLOSED {: r:^ :}
    r RELATION-EMPTY @ if
       r RELATION-WHERE @ {: where:^ :}
       where s"  AND " +SEP where s" false" +SQL

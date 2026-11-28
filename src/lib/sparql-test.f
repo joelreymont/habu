@@ -1671,6 +1671,40 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    s" SELECT ?s ?p ?w WHERE { ?s ?p ?w }" ONLY-SAME
    s" SELECT ?s ?p ?w WHERE { ?s t:81 3 . ?s ?p ?w }" ONLY-SAME ;
 
+\ An earlier joined triple's pins and shapes narrow a nested group, one
+\ level down, the earlier triple keeping its choices.
+: NESTED-ONLY ( -- )
+   \ The OPTIONAL binds ?w to t:81's numeric column alone.
+   s" PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> SELECT ?f ?w WHERE { ?f rdf:predicate t:81 OPTIONAL { ?f rdf:object ?w } }"
+   false s" o_text" ONLY
+   \ It narrows a MINUS's group and a UNION's branch too.
+   s" PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> SELECT ?f WHERE { ?f rdf:predicate t:81 MINUS { ?f rdf:object ?w FILTER(?w > 3) } }"
+   false s" o_text" ONLY
+   s" PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> SELECT ?f ?w WHERE { ?f rdf:predicate t:81 { ?f rdf:object ?w } UNION { ?f rdf:predicate ?w } }"
+   false s" o_text" ONLY
+   \ The earlier triple keeps the choices the nested group would kill.
+   s" PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> SELECT ?f ?w WHERE { ?f rdf:object ?w OPTIONAL { ?f rdf:predicate t:81 } }"
+   true s" o_text" ONLY
+   \ The outer group's items do not narrow a group nested in the nested
+   \ group.
+   s" PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> SELECT ?f ?w WHERE { ?f rdf:predicate t:81 OPTIONAL { ?f rdf:predicate ?p OPTIONAL { ?f rdf:object ?w } } }"
+   true s" o_text" ONLY
+   \ A text ?l kills the class choice of the OPTIONAL's triple.
+   s" SELECT ?l ?t WHERE { t:1 rdfs:label ?l OPTIONAL { ?t a ?l } }"
+   s" kind" 0
+   s" {'head':{'vars':['l','t']},'results':{'bindings':[{'l':{'type':'literal','value':'Lathe'}}]}}"
+   ON-NODES
+   \ And that of a UNION branch's triple.
+   s" SELECT ?l ?t WHERE { t:1 rdfs:label ?l { ?t a ?l } UNION { ?t rdfs:label ?l } }"
+   s" kind" 0
+   s" {'head':{'vars':['l','t']},'results':{'bindings':[{'l':{'type':'literal','value':'Lathe'},'t':{'type':'uri','value':'urn:test:1'}}]}}"
+   ON-NODES
+   \ A later triple does not narrow a nested group: its ?w, never text,
+   \ would leave 41 unextended to join it.
+   s" SELECT ?s ?w WHERE { ?s a t:12 OPTIONAL { ?s t:80 ?w } t:1 a ?w }"
+   s" {'head':{'vars':['s','w']},'results':{'bindings':[{'s':{'type':'uri','value':'urn:test:43'},'w':{'type':'uri','value':'urn:test:10'}}]}}"
+   EXPECT ;
+
 \ A union grouped branch by branch answers as the whole union does when a
 \ branch has an error or no solution. STRLEN of an IRI is an error.
 : BRANCH-GROUPING ( -- )
@@ -1944,7 +1978,7 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    UNIONS MINUSES FILTER-EXISTS
    SUBSTITUTIONS MANY BRANCHED CONSTANTS WIDE FORMS
    PROJECTIONS GROUPING AGGREGATES ORDERED-CONCATS TYPED-AGGREGATES
-   ONLY-COLUMNS
+   ONLY-COLUMNS NESTED-ONLY
    TYPED-FILTERS BRANCH-GROUPING ORDERS DISTINCTS STAR-COUNTS
    SUBQUERIES
    BINDS CHAINS LEVELS UUIDS VOLATILE-BINDS FENCES DATA-BLOCKS PATHS
