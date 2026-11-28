@@ -58,12 +58,14 @@
 \ which PostgreSQL can hash or merge; a LEFT JOIN's ON meets a variable a
 \ branch leaves unbound by `IS NULL OR`, which it tests row by row,
 \ running the union once per row on the left. A BIND's variable is its
-\ expression, written at each read; one that calls RAND, UUID or STRUUID,
-\ or that PostgreSQL would plan as more than MOST-COPIED bytes, is a
-\ column of a derived table of the bindings
-\ so far. Each of the group's FILTERs whose every variable, an EXISTS's
-\ included, those bindings bind always holds in that table, which no
-\ condition outside it reaches: there it keeps the same rows, and such a
+\ expression, written at each read; one that calls RAND, UUID, STRUUID or
+\ a value-building function outside an aggregate, or that PostgreSQL
+\ would plan as more than MOST-COPIED bytes, is a column of a derived
+\ table of the bindings so far: each solution then evaluates a building
+\ call once, which its share of the byte limit counts on. Each of the
+\ group's FILTERs whose every variable, an EXISTS's included, those
+\ bindings bind always holds in that table, which no condition outside
+\ it reaches: there it keeps the same rows, and such a
 \ variable keeps its value through the items after. A VALUES is a joined
 \ derived table of its data block's terms. The joined items up to the next
 \ OPTIONAL, MINUS or BIND fold in connected order, next the first written
@@ -3363,8 +3365,8 @@ STRUCTURE pruning DERIVE addr
    state e NODE-K N-CALL <> if exit then
    state e s" SAMETERM" CALL-IS? if plan e where +SAME-FIXED then ;
 
-\ Node n's children, 0 for none: three walked on their own, then the one the
-\ walk goes on to: a list's tail, else a chain's long side, child a.
+\ Node n's children, 0 for none: three walked on their own, then the next:
+\ a list's tail, a query's trailing VALUES, else child a, a chain's long side.
 : NODE-PARTS ( ^syntax n -- n n n n )
    {: state node:n :}
    state node NODE-K {: kind:n :}
@@ -3372,7 +3374,7 @@ STRUCTURE pruning DERIVE addr
    state node NODE-A@ state node NODE-B@ {: a:n b:n :}
    state node NODE-C@ state node NODE-D@ {: c:n d:n :}
    kind N-LIST = if a c d b exit then
-   kind N-SELECT = if b state node QUERY-VALUES@ d a exit then
+   kind N-SELECT = if b a d state node QUERY-VALUES@ exit then
    b c d a ;
 
 \ Whether node n calls RAND, UUID or STRUUID, which give a new value at
@@ -3382,39 +3384,76 @@ STRUCTURE pruning DERIVE addr
    state node NODE-K N-CALL <> if false exit then
    state node s" RAND UUID STRUUID" CALL-IN? ;
 
+\ Whether the node is a call whose value can be longer than any one of
+\ its arguments.
+: BUILDS? ( ^syntax n -- bool )
+   {: state node:n :}
+   state node NODE-K N-CALL <> if false exit then
+   state node
+   s" CONCAT REPLACE UCASE LCASE ENCODE_FOR_URI IRI URI GROUP_CONCAT"
+   CALL-IN? ;
+
 : +FLAG ( ^syntax n n -- )
    {: state node:n f:n :}
    state node state node NODE-FLAGS@ f or NODE-FLAGS! ;
 
-\ Flags F-VOLATILE node top and each node after it through last on the
-\ walk NODE-PARTS goes on.
-: FLAG-THROUGH ( ^syntax n n -- )
-   {: state top:n last:n :}
+\ Flags f node top and each node after it through last on the walk
+\ NODE-PARTS goes on.
+: FLAG-THROUGH ( ^syntax n n n -- )
+   {: state top:n last:n f:n :}
    top begin
-      state over F-VOLATILE +FLAG
+      state over f +FLAG
       dup last <> while
       state swap NODE-PARTS nip nip nip
    repeat drop ;
 
-\ Flags F-VOLATILE each node at or below top, an EXISTS's group's
-\ included, that calls a VOLATILE-CALL? or has one below it; whether top
-\ does. The walk's own nodes are flagged after it, through the last that
-\ is volatile on its own.
-: FLAG-VOLATILE ( ^syntax n -- bool )
-   {: state top:n :}
+\ Whether a part of node n is flagged f.
+: PARTS-FLAGGED? ( ^syntax n n -- bool )
+   {: state node:n f:n :}
+   state node NODE-PARTS {: one:n two:n three:n next:n :}
+   false
+   one 0<> if state one NODE-FLAGS@ f and 0<> or then
+   two 0<> if state two NODE-FLAGS@ f and 0<> or then
+   three 0<> if state three NODE-FLAGS@ f and 0<> or then
+   next 0<> if state next NODE-FLAGS@ f and 0<> or then ;
+
+\ Flags f each node at or below top that makes a test call, but not by
+\ its own query's aggregate calls unless through; whether top is flagged.
+: FLAG-CALLS ( ^syntax n n bool [ ^syntax n -- bool ] -- bool )
+   {: state top:n f:n through:bool test :}
    0 top begin dup 0<> while
       {: node:n :}
       state node NODE-PARTS {: one:n two:n three:n next:n :}
-      state one RECURSE state two RECURSE or
-      state three RECURSE or
-      state node VOLATILE-CALL? or if drop node then
-      next
+      state one f through test RECURSE
+      state two f through test RECURSE or
+      state three f through test RECURSE or
+      through 0= state node AGGREGATE-CALL? and if
+         drop state next f through test RECURSE drop 0
+      else
+         state node test execute or
+         \ Running a nested query in place runs its aggregate calls, whose parts
+         \ its own parts hold and have flagged.
+         through 0= state node NODE-K N-SELECT = and if
+            state node QUERY-AGGREGATES begin dup 0<> while
+               {: list:n :}
+               state list NODE-A@ {: agg:n :}
+               state agg test execute or
+               state agg f PARTS-FLAGGED? or
+               state list NODE-B@
+            repeat drop
+         then
+         if drop node then next
+      then
    repeat drop {: last:n :}
    last 0= if false exit then
-   state top last FLAG-THROUGH true ;
+   state top last f FLAG-THROUGH true ;
 
 \ Whether EMIT's flag pass marked node n volatile; before it runs, none is.
 : VOLATILE? ( ^syntax n -- bool ) NODE-FLAGS@ F-VOLATILE and 0<> ;
+
+\ Whether node n, evaluated in place, makes a BUILDS? call; its own
+\ query's aggregate calls are columns of the grouped SELECT.
+: BUILT? ( ^syntax n -- bool ) NODE-FLAGS@ F-BUILDS and 0<> ;
 
 \ Adds the expression's test, then the equalities it implies.
 : +TEST ( ^plan ^VEC:vector<binding> n ^clause -- )
@@ -4620,22 +4659,51 @@ STRUCTURE pruning DERIVE addr
    v s" (" +SQL v x +REL v s" )" +SQL
    r RELATION-BINDINGS @ var GENERIC v s" " BIND ;
 
+\ Appends ` x AS aK` for each of the plan's aggregates, after a comma
+\ where a column precedes it.
+: +AGGREGATE-COLUMNS ( ^plan ^rel bool -- )
+   {: plan out:^ more:bool :}
+   plan PLAN-AGGREGATES @ {: as:^ :}
+   as VEC:COUNT 0 ?do
+      more i 0<> or if out s" ," +SQL then
+      out s"  " +SQL out as i VEC:AT AGGREGATE-SQL @ +SPLICE
+      out s"  AS a" +SQL out i +INT
+   loop ;
+
+\ Points the plan's aggregates at their columns under the alias.
+: RENAME-AGGREGATES ( ^plan str -- )
+   {: plan alias:str :}
+   plan PLAN-AGGREGATES @ {: as:^ :}
+   as VEC:COUNT 0 ?do
+      plan NEW-SQL {: c:^ :}
+      c alias +SQL c s" .a" +SQL c i +INT
+      c as i VEC:AT AGGREGATE-SQL !
+   loop ;
+
+\ r's solutions as a materialized CTE's table; with grouped, the plan's
+\ aggregates too.
+: CTE-TABLE ( ^plan ^relation bool -- ^rel )
+   {: plan r:^ grouped:bool :}
+   plan NEW-SQL {: out:^ :}
+   out s" (WITH c AS MATERIALIZED (" +TEXT plan out r +SELECT-LIST
+   grouped if plan out true +AGGREGATE-COLUMNS then
+   plan out r +FROM-WHERE out s" ) SELECT * FROM c)" +TEXT out ;
+
 \ PostgreSQL runs a materialized CTE once, but may rerun a LATERAL or OFFSET 0
 \ table per joined row, so r reads a CTE, whose column leaves copy nothing.
-: +EVALUATED ( ^plan ^relation n ^rel -- )
-   {: plan r:^ var:n x:^ :}
-   r RELATION-BINDINGS @ var GENERIC x s" " BIND
-   plan r SUBSELECT {: t:^ cols:^ :}
-   plan NEW-SQL {: out:^ :}
-   out s" (WITH c AS MATERIALIZED " +TEXT out t +REL
-   out s"  SELECT * FROM c)" +TEXT
-   plan NEW-SQL {: from:^ :}
-   plan out cols from +TABLE {: bs:^ :}
+: +EVALUATED ( ^plan ^relation n ^rel bool -- )
+   {: plan r:^ var:n x:^ grouped:bool :}
+   r RELATION-BINDINGS @ {: cols:^ :}
+   cols var GENERIC x s" " BIND
+   plan r grouped CTE-TABLE plan NEW-SQL {: t:^ from:^ :}
+   plan t cols from +TABLE-ALIAS {: bs:^ alias:str :}
    bs VEC:COUNT 0 ?do 0 bs i VEC:AT BINDING-SQL @ REL-COPIES ! loop
+   grouped if plan alias RENAME-AGGREGATES then
    from plan NEW-CLAUSE bs r INIT-RELATION ;
 
-\ +EVALUATED of r's bindings read after item it (NULL-PTR: an Extend step);
-\ false, binding nothing, when neither a later reader nor the substitution does.
+\ +EVALUATED of r's bindings read after item it (NULL-PTR: an Extend step,
+\ whose expressions may read the plan's aggregates); false, binding
+\ nothing, when neither a later reader nor the substitution does.
 : +LIVE-EVALUATED ( ^plan ^item ^relation n ^rel -- bool )
    {: plan it:^ r:^ var:n x:^ :}
    plan WORK-ARENA {: work:^ :}
@@ -4645,7 +4713,7 @@ STRUCTURE pruning DERIVE addr
    {: kept:bool :}
    kept if plan r DROP-DEAD then
    work mark ARENA:CUT
-   kept if plan r var x +EVALUATED then kept ;
+   kept if plan r var x it NULL-PTR = +EVALUATED then kept ;
 
 \ Whether each variable at or below node n is one r binds always.
 : ALL-BOUND? ( ^plan ^relation n -- bool )
@@ -4682,7 +4750,8 @@ STRUCTURE pruning DERIVE addr
    plan state e NODE-B@ VAR {: var:n :}
    state e NODE-A@ {: value:n :}
    plan r value EXPRESSION-SQL {: x:^ :}
-   state value VOLATILE? x SQL-LEN x COPIES + MOST-COPIED > or if
+   state value VOLATILE? state value BUILT? or
+   x SQL-LEN x COPIES + MOST-COPIED > or if
       plan r filters +EARLY-FILTERS
       plan it r var x +LIVE-EVALUATED 0= if exit then
    else plan r var x +COPIED then
@@ -6282,12 +6351,7 @@ STRUCTURE pruning DERIVE addr
       gs i VEC:AT {: b:^ :}
       plan alias b BINDING-VAR @ COLUMN-OF b SET-SQL
    loop
-   plan PLAN-AGGREGATES @ {: as:^ :}
-   as VEC:COUNT 0 ?do
-      plan NEW-SQL {: c:^ :}
-      c alias +SQL c s" .a" +SQL c i +INT
-      c as i VEC:AT AGGREGATE-SQL !
-   loop ;
+   plan alias RENAME-AGGREGATES ;
 
 \ Appends `SELECT` g's columns and the aggregates `FROM` r, grouped by
 \ keys and kept by having.
@@ -6295,17 +6359,12 @@ STRUCTURE pruning DERIVE addr
       ^rel ^clause -- )
    {: plan out:^ r:^ g:^ keys:^ having:^ :}
    g RELATION-BINDINGS @ {: gs:^ :}
-   plan PLAN-AGGREGATES @ {: as:^ :}
    out s" SELECT" +SQL
    gs VEC:COUNT 0 ?do
       i 0<> if out s" ," +SQL then
       gs i VEC:AT {: b:^ :} plan out b b BINDING-SHAPE @ +COLUMN
    loop
-   as VEC:COUNT 0 ?do
-      gs VEC:COUNT 0<> i 0<> or if out s" ," +SQL then
-      out s"  " +SQL out as i VEC:AT AGGREGATE-SQL @ +SPLICE
-      out s"  AS a" +SQL out i +INT
-   loop
+   plan out gs VEC:COUNT 0<> +AGGREGATE-COLUMNS
    plan out r +FROM-WHERE
    keys EMPTY? 0= if out s"  GROUP BY " +TEXT out keys +REL then
    having CLAUSE-EMPTY? if exit then
@@ -6945,15 +7004,15 @@ STRUCTURE pruning DERIVE addr
       plan r RELATION-WHERE @ plan TEXTS s" false" TEXT-REL +CONDITION
    then r ;
 
-\ { SELECT ... }: its projection, a derived table, joins the group. Its
-\ variables are a frame of their own, so one it does not project is not
-\ the same-named one outside it.
+\ { SELECT ... }: its projection, a derived table, joins the group. It reads
+\ no outer aggregate, and its variables are a frame of their own.
 : SELECT-ITEM ( ^plan ^VEC:vector<item> n -- )
    {: plan items:^ query:n :}
    plan PLAN-FRAME @ {: outer:n :}
    plan PLAN-SCOPE @ {: scope:^ :}
    plan PLAN-OUT @ {: out:^ :}
    plan PLAN-AGGREGATES @ {: as:^ :}
+   plan AL 0 [type] aggregate VEC:NEW plan PLAN-AGGREGATES !
    1 plan PLAN-SERIAL +! plan PLAN-SERIAL @ plan PLAN-FRAME !
    plan EDGE-SELECT query NULL-PTR NULL-PTR PUSH-LEVEL
    plan query plan query SOLUTIONS outer SELECTED drop
@@ -6999,15 +7058,6 @@ STRUCTURE pruning DERIVE addr
 \ byte limit, shared among the query's value-building calls.
 16 constant BUILT-LIMITS
 
-\ Whether the node is a call whose value can be longer than any one of
-\ its arguments.
-: BUILDS? ( ^syntax n -- bool )
-   {: state node:n :}
-   state node NODE-K N-CALL <> if false exit then
-   state node
-   s" CONCAT REPLACE UCASE LCASE ENCODE_FOR_URI IRI URI GROUP_CONCAT"
-   CALL-IN? ;
-
 : BUILDING-CALLS ( ^syntax -- n )
    {: state :}
    0 state SYNTAX-NODES @ SEG-COUNT 1 ?do
@@ -7052,7 +7102,9 @@ STRUCTURE pruning DERIVE addr
    al NEW-CURSORS plan PLAN-CURSORS !
    al 0 [type] level VEC:NEW plan PLAN-LEVELS !
    \ The nodes a statement adds, of paths, call nothing.
-   state state SYNTAX-ROOT @ FLAG-VOLATILE drop
+   state SYNTAX-ROOT @ {: root:n :}
+   state root F-VOLATILE true [: VOLATILE-CALL? ;] FLAG-CALLS drop
+   state root F-BUILDS false [: BUILDS? ;] FLAG-CALLS drop
    plan STATEMENT {: r:^ :}
    al NULL-PTR NEW-SINK {: count:^ :}
    count r WRITE-REL

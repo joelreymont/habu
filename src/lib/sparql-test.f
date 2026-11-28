@@ -221,7 +221,8 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    {: q:str t:str n:n w:str store:^ a:^ :}
    q store a ANSWER-ON {: sql:^ doc:^ :}
    sql $ t STR:COUNT-SUB n T=
-   doc $ w a UNQUOTE $ a false SAME? TTRUE ;
+   doc $ w a UNQUOTE $ a false SAME? dup TTRUE
+   0= if doc $ type cr then ;
 
 : TIMES-IN ( str str n str ^ARENA:arena -- )
    {: a:^ :} s" 1048576" a STORE a TIMES-ON ;
@@ -1194,6 +1195,46 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    s" 54000: SPARQL value exceeds 37 bytes, its share" STR:STARTS-WITH? TTRUE ;
 
 : SHARES ( -- ) [: SHARES-IN ;] ARENA:WITH ;
+
+\ A BIND's or SELECT expression's building call runs once per solution,
+\ however often its variable is read, as its share of the limit assumes;
+\ a grouped query's aggregates stay readable after it.
+: BUILT-ONCE ( -- )
+   s" SELECT ?l WHERE { VALUES ?l { 'ab' 'cde' } BIND(UCASE(?l) AS ?u) FILTER(?u = 'AB' || STRLEN(?u) > 3) }"
+   s" sparql.ucase(" 1
+   s" {'head':{'vars':['l']},'results':{'bindings':[{'l':{'type':'literal','value':'ab'}}]}}"
+   TIMES
+   s" SELECT (UCASE(?l) AS ?u) WHERE { VALUES ?l { 'b' 'a' } } ORDER BY ?u"
+   s" sparql.ucase(" 1
+   s" {'head':{'vars':['u']},'results':{'bindings':[{'u':{'type':'literal','value':'A'}},{'u':{'type':'literal','value':'B'}}]}}"
+   TIMES
+   s" SELECT (CONCAT(GROUP_CONCAT(?l), 'a') AS ?c) WHERE { VALUES ?l { 'x' } } ORDER BY ?c"
+   s" sparql.concat(" 1
+   s" {'head':{'vars':['c']},'results':{'bindings':[{'c':{'type':'literal','value':'xa'}}]}}"
+   TIMES
+   s" SELECT ?l WHERE { VALUES ?l { 'a' } BIND(EXISTS { SELECT (GROUP_CONCAT(?m) AS ?g) WHERE { VALUES ?m { 'x' } } } AS ?e) FILTER(?e && ?e) }"
+   s" concat_bound(" 1
+   s" {'head':{'vars':['l']},'results':{'bindings':[{'l':{'type':'literal','value':'a'}}]}}"
+   TIMES
+   s" SELECT ?l WHERE { VALUES ?l { 'a' } BIND(EXISTS { SELECT (MAX(UCASE(?m)) AS ?g) WHERE { VALUES ?m { 'x' } } } AS ?e) FILTER(?e && ?e) }"
+   s" sparql.ucase(" 1
+   s" {'head':{'vars':['l']},'results':{'bindings':[{'l':{'type':'literal','value':'a'}}]}}"
+   TIMES
+   s" SELECT ?k (UCASE(?k) AS ?u) (COUNT(*) AS ?n) WHERE { VALUES ?k { 'a' 'b' 'a' } } GROUP BY ?k"
+   s" sparql.ucase(" 1
+   s" {'head':{'vars':['k','u','n']},'results':{'bindings':[{'k':{'type':'literal','value':'a'},'u':{'type':'literal','value':'A'},'n':{'type':'literal','value':'2','datatype':'http://www.w3.org/2001/XMLSchema#integer'}},{'k':{'type':'literal','value':'b'},'u':{'type':'literal','value':'B'},'n':{'type':'literal','value':'1','datatype':'http://www.w3.org/2001/XMLSchema#integer'}}]}}"
+   TIMES
+   s" SELECT ?k (UCASE(?k) AS ?u) (COUNT(*) AS ?n) WHERE { VALUES ?k { 'a' 'b' 'a' } } GROUP BY ?k ORDER BY DESC(COUNT(*))"
+   s" sparql.ucase(" 1
+   s" {'head':{'vars':['k','u','n']},'results':{'bindings':[{'k':{'type':'literal','value':'a'},'u':{'type':'literal','value':'A'},'n':{'type':'literal','value':'2','datatype':'http://www.w3.org/2001/XMLSchema#integer'}},{'k':{'type':'literal','value':'b'},'u':{'type':'literal','value':'B'},'n':{'type':'literal','value':'1','datatype':'http://www.w3.org/2001/XMLSchema#integer'}}]}}"
+   TIMES
+   s" SELECT ?k (STRLEN(STRUUID()) AS ?u) (COUNT(*) AS ?n) WHERE { VALUES ?k { 'a' 'b' 'a' } } GROUP BY ?k ORDER BY ?k"
+   s" {'head':{'vars':['k','u','n']},'results':{'bindings':[{'k':{'type':'literal','value':'a'},'u':{'type':'literal','value':'36','datatype':'http://www.w3.org/2001/XMLSchema#integer'},'n':{'type':'literal','value':'2','datatype':'http://www.w3.org/2001/XMLSchema#integer'}},{'k':{'type':'literal','value':'b'},'u':{'type':'literal','value':'36','datatype':'http://www.w3.org/2001/XMLSchema#integer'},'n':{'type':'literal','value':'1','datatype':'http://www.w3.org/2001/XMLSchema#integer'}}]}}"
+   ORDERED
+   s" SELECT (COUNT(*) AS ?n) WHERE { VALUES ?l { 'a' 'b' } } HAVING (EXISTS { { SELECT (UCASE(?x) AS ?u) WHERE { VALUES ?x { 'a' } } } FILTER(?u = 'A') } && COUNT(*) > 1)"
+   s" sparql.ucase(" 1
+   s" {'head':{'vars':['n']},'results':{'bindings':[{'n':{'type':'literal','value':'2','datatype':'http://www.w3.org/2001/XMLSchema#integer'}}]}}"
+   TIMES ;
 
 : +N ( ^VEC:vector<u8> str n -- )
    {: q:^ t:str n:n :} t q VEC:APPEND n FMT:INT$ q VEC:APPEND ;
@@ -2273,7 +2314,7 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    ONLY-COLUMNS NESTED-ONLY
    TYPED-FILTERS BRANCH-GROUPING ORDERS DISTINCTS STAR-COUNTS
    SUBQUERIES
-   BINDS GROWTHS SHARES CHAINS LEVELS UUIDS VOLATILE-BINDS FENCES
+   BINDS GROWTHS SHARES BUILT-ONCE CHAINS LEVELS UUIDS VOLATILE-BINDS FENCES
    DATA-BLOCKS PATHS NODE-READS CTE-COLUMNS ;
 
 T-RESET

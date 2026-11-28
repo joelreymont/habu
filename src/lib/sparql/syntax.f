@@ -86,6 +86,9 @@ private
 \ The node or one below it calls RAND, UUID or STRUUID.
 2 constant F-VOLATILE
 4 constant F-STAR
+\ The node, evaluated in place, calls a function whose value can be
+\ longer than any one of its arguments; set when emission starts.
+8 constant F-BUILDS
 32 constant F-DESC
 
 \ A term (IRI, literal, variable, blank node, UNDEF) has no parts; its
