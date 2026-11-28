@@ -1080,34 +1080,47 @@ defer EXISTS-SQL ( ^plan n -- )
    sure if s o TAKE true s BINDING-ALWAYS ! exit then
    plan s o COALESCED ;
 
-\ Joins binding o into the scope, its condition to where. A first o's
-\ copy is nullable as o is; a strict `=` leaves the scope's binding not
-\ nullable, else a nullable o's null test goes to where at once, unless
-\ o reads the scope binding's column, which that binding's flag covers.
-\ An OPTIONAL's ON drops no row of the scope, so it changes no flag.
-: MEET ( ^plan ^VEC:vector<binding> ^binding ^rel bool -- )
+\ The list's bindings on column sql are not nullable: the caller wrote to
+\ their relation's WHERE a strict condition that reads sql.
+: COLUMN-TESTED ( ^plan ^VEC:vector<binding> ^rel -- )
+   {: plan bs:^ sql:^ :}
+   bs VEC:COUNT 0 ?do
+      plan PLAN-CURSORS @ bs i VEC:AT BINDING-SQL @ sql REL=
+      if false bs i VEC:AT BINDING-NULLABLE ! then
+   loop ;
+
+\ Joins o into the scope, its condition to where; an OPTIONAL's ON drops
+\ no row of the scope. Answers s's column after a strict `=`, else NULL-PTR.
+: MEET ( ^plan ^VEC:vector<binding> ^binding ^rel bool -- ^rel )
    {: plan scope:^ o:^ where:^ optional:bool :}
    scope o BINDING-VAR @ FIND-VAR {: k:n :}
    k 0< if
       o scope COPY-BINDING
-      optional if false scope LAST BINDING-ALWAYS ! exit then
-      o BINDING-NULLABLE @ scope LAST BINDING-NULLABLE ! exit
+      optional if false scope LAST BINDING-ALWAYS ! NULL-PTR exit then
+      o BINDING-NULLABLE @ scope LAST BINDING-NULLABLE ! NULL-PTR exit
    then
-   scope k VEC:AT {: s:^ :}
+   scope k VEC:AT {: s:^ :} s BINDING-SQL @ {: col:^ :}
    plan s o where +MEETS {: strict:bool :}
-   plan PLAN-CURSORS @ s BINDING-SQL @ o BINDING-SQL @ REL=
-   {: same:bool :}
+   plan PLAN-CURSORS @ col o BINDING-SQL @ REL= {: same:bool :}
+   \ s's flag covers an o on s's column.
    o BINDING-NULLABLE @ same 0= and {: open:bool :}
    plan s o optional MERGE
-   optional if exit then
-   strict if false s BINDING-NULLABLE ! exit then
-   open if where o +NULL-TEST then ;
+   optional if NULL-PTR exit then
+   strict if
+      plan scope col COLUMN-TESTED
+      plan scope o BINDING-SQL @ COLUMN-TESTED col exit
+   then
+   open if where o +NULL-TEST then NULL-PTR ;
 
 : MEET-ALL ( ^plan ^VEC:vector<binding> ^VEC:vector<binding>
       ^rel bool -- )
    {: plan scope:^ list:^ where:^ optional:bool :}
    list VEC:COUNT 0 ?do
-      plan scope list i VEC:AT where optional MEET
+      list i VEC:AT {: o:^ :}
+      plan scope o where optional MEET {: col:^ :}
+      col NULL-PTR <> if
+         plan list col COLUMN-TESTED plan list o BINDING-SQL @ COLUMN-TESTED
+      then
    loop ;
 
 \ The occurrences joined into one binding per variable, their conditions
@@ -2708,7 +2721,7 @@ STRUCTURE pruning DERIVE addr
    list VEC:COUNT 0 ?do
       list i VEC:AT {: o:^ :}
       scope o BINDING-VAR @ FIND-VAR -1 > if
-         plan scope o where true MEET
+         plan scope o where true MEET drop
       else o MAY-MISS then
    loop
    scope list DROP-MET scope list SCOPE-FIRST
@@ -2733,7 +2746,7 @@ STRUCTURE pruning DERIVE addr
    plan PLAN-COLUMN @ {: b:^ :}
    cols VEC:COUNT 0 ?do
       plan b alias cols i VEC:AT SET-COLUMN
-      plan scope b r RELATION-WHERE @ false MEET
+      plan scope b r RELATION-WHERE @ false MEET drop
    loop r done FORGET-ALL ;
 
 \ The derived table's rows whose columns meet the substitution.
@@ -2781,25 +2794,16 @@ STRUCTURE pruning DERIVE addr
       plan keys i VEC:AT branches PROBED? if i unloop exit then
    loop -1 ;
 
-\ Every binding of the list on column sql, which a strict `=` reads,
-\ is not nullable.
-: COLUMN-TESTED ( ^plan ^VEC:vector<binding> ^rel -- )
-   {: plan bs:^ sql:^ :}
-   bs VEC:COUNT 0 ?do
-      plan PLAN-CURSORS @ bs i VEC:AT BINDING-SQL @ sql REL=
-      if false bs i VEC:AT BINDING-NULLABLE ! then
-   loop ;
-
-\ Appends to where that binding b of a key's variable is the key of
-\ row: `b = row.k`, through b's shape's `in` for a term key. That strict
-\ `=` leaves b not nullable.
-: +MEET-KEY ( ^plan ^binding ^binding str ^rel -- )
-   {: plan key:^ b:^ row:str where:^ :}
+\ Appends `b = row.k` to r's WHERE, through b's shape's `in` for a term
+\ key; that strict `=` drops the NULL of b's column.
+: +MEET-KEY ( ^plan ^binding ^binding str ^relation -- )
+   {: plan key:^ b:^ row:str r:^ :}
+   r RELATION-WHERE @ {: where:^ :}
    plan NEW-SQL {: k:^ :} k row +SQL k s" .k" +SQL
    where s"  AND " +SEP where b +BINDING where s"  = " +SQL
    key BINDING-SHAPE @ GENERIC <> if where k SQL$ +SQL else
       where plan b BINDING-SHAPE @ SHAPE@ SHAPE-IN @ k SQL$ +CALL
-   then false b BINDING-NULLABLE ! ;
+   then plan r RELATION-BINDINGS @ b BINDING-SQL @ COLUMN-TESTED ;
 
 \ Meets the key of row in each branch that PROBED it; answers the
 \ indexes of those branches, then of the others.
@@ -2811,8 +2815,7 @@ STRUCTURE pruning DERIVE addr
       branches i VEC:AT {: r:^ :}
       plan key r PROBED {: k:n :}
       k 0< if probed plan rest i +INDEX else
-         plan key r RELATION-BINDINGS @ k VEC:AT row
-            r RELATION-WHERE @ +MEET-KEY
+         plan key r RELATION-BINDINGS @ k VEC:AT row r +MEET-KEY
          plan probed i +INDEX rest
       then
    loop ;
@@ -2915,7 +2918,7 @@ STRUCTURE pruning DERIVE addr
    plan NEW-SQL {: where:^ :}
    scope VEC:COUNT 0 ?do
       scope i VEC:AT {: o:^ :}
-      seen outer o INHERIT plan seen o where false MEET
+      seen outer o INHERIT plan seen o where false MEET drop
    loop plan seen outer NEW-LAYER ;
 
 \ Whether the node is an infix expression of the operator.

@@ -353,6 +353,10 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
 : SPELLED-CALL ( -- str )
    s" {'from':'(SELECT 1::bigint AS id)','graph':null,'s':{'col':'id','shape':'id'},'p':{'term':{'type':'uri','value':'urn:test:93'}},'o':{'term':{'type':'literal','value':'sparql.rand('}}}" ;
 
+\ A subject and object on one column that may hold NULL.
+: SPELLED-SHARED ( -- str )
+   s" {'from':'(SELECT * FROM (VALUES (601::bigint),(602),(NULL)) t(id))','graph':null,'s':{'col':'id','shape':'id'},'p':{'term':{'type':'uri','value':'urn:test:94'}},'o':{'col':'id','shape':'id'}}" ;
+
 : SPELLED-STORE ( ^ARENA:arena -- ^VEC:vector<u8> )
    {: a:^ :}
    a TEXT-VEC {: out:^ :}
@@ -364,7 +368,8 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    SPELLED-PAIRS out VEC:APPEND s" ," out VEC:APPEND
    SPELLED-CONSTANT out VEC:APPEND s" ," out VEC:APPEND
    SPELLED-QUOTED out VEC:APPEND s" ," out VEC:APPEND
-   SPELLED-CALL out VEC:APPEND s" ]}" out VEC:APPEND
+   SPELLED-CALL out VEC:APPEND s" ," out VEC:APPEND
+   SPELLED-SHARED out VEC:APPEND s" ]}" out VEC:APPEND
    out $ a UNQUOTE ;
 
 : SPELLED-IN ( str str ^ARENA:arena -- )
@@ -454,7 +459,22 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    \ An equality an EXISTS reads leaves the outer variable's null test.
    s" SELECT ?s ?l WHERE { ?s rdfs:label ?l FILTER(?s IN (t:2, t:5)) FILTER NOT EXISTS { ?x rdfs:label ?z FILTER(?l = 'Lathe') } }"
    s" {'head':{'vars':['s','l']},'results':{'bindings':[{'s':{'type':'uri','value':'urn:test:2'},'l':{'type':'literal','value':'Mill'}}]}}"
-   SPELLED ;
+   SPELLED
+   \ A FILTER's `=` on a column drops every slot's null test of it.
+   s" SELECT ?s ?o WHERE { ?s t:94 ?o FILTER(?o = t:601) }"
+   s" .id = sparql_test.id(" s" IS NOT NULL"
+   s" {'head':{'vars':['s','o']},'results':{'bindings':[{'s':{'type':'uri','value':'urn:test:601'},'o':{'type':'uri','value':'urn:test:601'}}]}}"
+   SPELLED-ALONE
+   \ A join's `=` on a column drops every slot's null test of it.
+   s" SELECT ?s ?t WHERE { ?s t:94 ?o . ?t t:94 ?o }"
+   s" t1.id = t2.id" s" IS NOT NULL"
+   s" {'head':{'vars':['s','t']},'results':{'bindings':[{'s':{'type':'uri','value':'urn:test:601'},'t':{'type':'uri','value':'urn:test:601'}},{'s':{'type':'uri','value':'urn:test:602'},'t':{'type':'uri','value':'urn:test:602'}}]}}"
+   SPELLED-ALONE
+   \ An EXISTS group's own FILTER `=` drops its slots' null tests.
+   s" SELECT ?s WHERE { ?s t:94 ?o FILTER(?o = t:601) FILTER EXISTS { ?y t:94 ?z FILTER(?z = t:602) } }"
+   s" t2.id = sparql_test.id(" s" IS NOT NULL"
+   s" {'head':{'vars':['s']},'results':{'bindings':[{'s':{'type':'uri','value':'urn:test:601'}}]}}"
+   SPELLED-ALONE ;
 
 : SLOTS ( -- )
    s" SELECT ?l WHERE { t:1 rdfs:label ?l }"
