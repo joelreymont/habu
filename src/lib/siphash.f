@@ -1,8 +1,9 @@
 \ siphash.f - keyed SipHash-2-4 with a 64-bit result. Keyed with a secret drawn
 \ per owner (src/lib/entropy.f), a table spreads names an adversary cannot aim
 \ at one bucket, which an unkeyed hash such as FNV cannot promise. k0 is the
-\ key's bytes 0..7 little-endian, k1 bytes 8..15. ABSORB-WORD is eight
-\ ABSORB-BYTEs at any alignment; FINISH answers BYTES's hash and spends the state.
+\ key's bytes 0..7 little-endian, k1 bytes 8..15. At any alignment ABSORB-WORD
+\ answers the same hash as eight ABSORB-BYTEs of its bytes, low byte first;
+\ FINISH answers BYTES's hash and spends the state.
 \ STORAGE CLASS. CALLER-OWNED: distinct `state` records serve concurrent Tasks.
 
 require src/lib/error.f
@@ -112,12 +113,12 @@ public
 
 : ABSORB-WORD ( ^state n -- )
    {: s:^ w:n :}
-   s STATE-LEN @ BLOCK-MASK and 0= if
-      s V@ w MIX s V!
-      s STATE-LEN @ BLOCK-BYTES + s STATE-LEN !
-      exit
-   then
-   BLOCK-BYTES 0 ?do s  w i 8 * rshift  ABSORB-BYTE loop ;
+   s STATE-LEN @ {: len:n :}
+   len BLOCK-MASK and 8 * {: shift:n :}
+   len BLOCK-BYTES + s STATE-LEN !
+   shift 0= if s V@ w MIX s V! exit then
+   s V@  w shift lshift  s STATE-TAIL @ or  MIX s V!
+   w 64 shift - rshift s STATE-TAIL ! ;
 
 
 : ABSORB$ ( ^state str -- )
