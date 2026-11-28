@@ -36,7 +36,8 @@ STRUCTURE cte DERIVE addr
    FIELD next ^cte
 ;STRUCTURE
 \ A rel's open text is len bytes from start in a chunk of its texts, none
-\ when len is 0.
+\ when len is 0. Its digest is 0 until taken; nothing appends to a rel
+\ once it is linked as a child or listed as a condition.
 STRUCTURE rel DERIVE addr
    FIELD with ^cte  \ NULL-PTR for no CTE
    FIELD recursive bool
@@ -46,6 +47,7 @@ STRUCTURE rel DERIVE addr
    FIELD len n
    FIELD texts ^texts
    FIELD copies n
+   FIELD digest n
 ;STRUCTURE
 \ A texts' chunk is size bytes from base, used of them written.
 STRUCTURE texts DERIVE addr
@@ -94,14 +96,15 @@ STRUCTURE ctes DERIVE addr
    last NULL-PTR = if c list CTES-FIRST ! else c last CTE-NEXT ! then
    c list CTES-LAST ! ;
 
-\ A rel of the texts with no CTE, no text and no copies, not recursive.
+\ A rel of the texts with no CTE, no text, no copies and no digest, not
+\ recursive.
 : NEW-REL ( ^texts -- ^rel )
    {: ts:^ :}
    ts TEXTS-AL @ [type] rel ALLOC:NEW {: r:^ :}
    NULL-PTR r REL-WITH ! false r REL-RECURSIVE !
    NULL-PTR r REL-FIRST ! NULL-PTR r REL-LAST !
    NULL-PTR r REL-START ! 0 r REL-LEN ! ts r REL-TEXTS !
-   0 r REL-COPIES ! r ;
+   0 r REL-COPIES ! 0 r REL-DIGEST ! r ;
 
 : OPEN? ( ^rel -- bool ) REL-LEN @ 0<> ;
 
@@ -191,17 +194,34 @@ STRUCTURE ctes DERIVE addr
 : LEAF? ( ^rel -- bool )
    {: r:^ :} r REL-FIRST @ NULL-PTR = r REL-WITH @ NULL-PTR = and ;
 
-\ Whether the rel's open text takes more bytes than two pieces, the most
-\ linking it as a text piece makes.
-: LONG? ( ^rel -- bool ) REL-LEN @ [type] piece width>n 2 * > ;
+\ The piece after p in the rel's text, NULL-PTR after its last, which a
+\ view's next may pass.
+: NEXT-PIECE ( ^rel ^piece -- ^piece )
+   {: r:^ p:^ :}
+   p r REL-LAST @ = if NULL-PTR else p PIECE-NEXT @ then ;
 
-\ Appends the child's text: a leaf's open text copied, or linked when LONG?,
-\ with its copies; any other rel as a piece nothing may append to afterwards.
+: LONG? ( ^rel -- bool )
+   {: r:^ :}
+   r REL-LEN @ r REL-FIRST @ begin dup NULL-PTR <> while
+      {: p:^ :} p PIECE-TEXT @ STR:LEN + r p NEXT-PIECE
+   repeat drop [type] piece width>n 2 * > ;
+
+: NESTED? ( ^rel -- bool )
+   {: r:^ :}
+   r REL-WITH @ NULL-PTR <> if true exit then
+   r REL-FIRST @ begin dup NULL-PTR <> while
+      {: p:^ :} p PIECE-REL @ NULL-PTR <> if true exit then r p NEXT-PIECE
+   repeat drop false ;
+
+\ Appends the child, linked as a piece when NESTED? or LONG?, else its
+\ text and copies copied in: equal children splice alike wherever chunks end.
 : +SPLICE ( ^rel ^rel -- )
    {: r:^ c:^ :}
-   c LEAF? 0= if r c +REL exit then
+   c NESTED? c LONG? or if r c +REL exit then
    c REL-COPIES @ r REL-COPIES +!
-   c LONG? if r c OPEN$ +TEXT exit then
+   c REL-FIRST @ begin dup NULL-PTR <> while
+      {: p:^ :} r p PIECE-TEXT @ +SQL c p NEXT-PIECE
+   repeat drop
    c OPEN? if r c OPEN$ +SQL then ;
 
 : EMPTY? ( ^rel -- bool )

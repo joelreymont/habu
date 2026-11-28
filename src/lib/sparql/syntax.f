@@ -605,11 +605,15 @@ STRUCTURE syntax DERIVE addr
    table index hasher execute index PLACE
    1 table INTERNS-COUNT +! ;
 
+\ The table's SipHash key, k0 then k1.
+: INTERNS-KEY ( ^interns -- n n )
+   {: table:^ :} table INTERNS-K0 @ table INTERNS-K1 @ ;
+
 \ The SipHash state, keyed for the table and reset.
 : INTERNS-HASH ( ^interns -- ^SIPHASH:state )
    {: table:^ :}
    table INTERNS-SIP {: sip :}
-   sip table INTERNS-K0 @ table INTERNS-K1 @ SIPHASH:INIT sip ;
+   sip table INTERNS-KEY SIPHASH:INIT sip ;
 
 \ An empty table whose slots the arena holds.
 : INTERNS-INIT ( ^interns ^ARENA:arena -- )

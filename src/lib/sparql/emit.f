@@ -546,14 +546,11 @@ defer EXISTS-SQL ( ^plan n -- )
    plan sql k NEW-COL {: r:^ :}
    c CLAUSE-READS @ r COL-NEXT ! r c CLAUSE-READS ! ;
 
-\ The digest of the bytes WRITE-REL writes of the rel, keyed as
-\ STRING-HASH keys it.
 : REL-HASH ( ^plan ^rel -- n )
    {: plan a:^ :}
    plan WORK-ARENA {: work:^ :} work ARENA:MARK {: mark:n :}
-   plan PLAN-STRINGS INTERNS-HASH {: sip :}
-   plan WORK-AL sip a ABSORB-REL work mark ARENA:CUT
-   sip SIPHASH:FINISH ;
+   plan WORK-AL plan PLAN-STRINGS INTERNS-KEY a DIGEST
+   work mark ARENA:CUT ;
 
 \ A ring of one condition, whose digest is h.
 : NEW-CONDITION ( ^plan ^rel n -- ^condition )

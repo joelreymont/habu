@@ -1,15 +1,19 @@
-\ write.f - a statement's text, written from its rel into a sink. A sink
-\ counts the bytes it is given and appends them to its vector, unless that
-\ is NULL-PTR, so one writing sizes the text and the next writes it; it
-\ absorbs them into its SipHash state, unless that is NULL-PTR.
-\ The writer takes no plan and cannot reject.
+\ write.f - a statement's text, written from its rel into a sink, and a
+\ rel's digest. A sink counts the bytes it is given and appends them to its
+\ vector, unless that is NULL-PTR, so one writing sizes the text and the
+\ next writes it. The writer takes no plan and cannot reject.
+\ A rel's digest is SipHash over the bytes the writer writes of it, each
+\ CTE body and child rel taken as that rel's own digest, one word, in place
+\ of its bytes, so each byte is hashed once however deeply rels nest. Rels
+\ of one text digest apart where their children split it differently, so
+\ a digest only filters what REL= decides.
 \ HEAD= reads two rels' texts at once, with a cursor each: a stack of
 \ frames, one per rel the cursor is inside, the innermost last, each the
 \ part of its rel reached and the bytes of it passed. It compares the
 \ shorter of the two strings the cursors stand in, at most the bytes left
 \ to compare, then moves both past it, so it reads each byte once.
-\ STORAGE CLASS. CALLER-OWNED: the sink, its vector, its state and HEAD='s
-\ cursors are the caller's.
+\ STORAGE CLASS. CALLER-OWNED: the sink, its vector, a digest's states and
+\ HEAD='s cursors are the caller's.
 
 require src/lib/allocator.f
 require src/lib/vector.f
@@ -22,19 +26,17 @@ private
 STRUCTURE sink DERIVE addr
    FIELD count n
    FIELD out ^VEC:vector<u8>
-   FIELD sip ^SIPHASH:state
 ;STRUCTURE
 
 : NEW-SINK ( ^ALLOC:allocator ^VEC:vector<u8> -- ^sink )
    {: al:^ out:^ :}
    al [type] sink ALLOC:NEW {: k:^ :}
-   0 k SINK-COUNT ! out k SINK-OUT ! NULL-PTR k SINK-SIP ! k ;
+   0 k SINK-COUNT ! out k SINK-OUT ! k ;
 
 : SINK+ ( ^sink str -- )
    {: k:^ s:str :}
    s STR:LEN k SINK-COUNT +!
-   k SINK-OUT @ NULL-PTR <> if s k SINK-OUT @ VEC:APPEND then
-   k SINK-SIP @ NULL-PTR <> if k SINK-SIP @ s SIPHASH:ABSORB$ then ;
+   k SINK-OUT @ NULL-PTR <> if s k SINK-OUT @ VEC:APPEND then ;
 
 \ `WITH ` or `WITH RECURSIVE ` before the rel's first CTE, a comma
 \ before any other.
@@ -46,12 +48,6 @@ STRUCTURE sink DERIVE addr
 \ The AS after the CTE's name, which its body follows.
 : CTE-AS$ ( ^cte -- str )
    CTE-MATERIALIZED @ if s"  AS MATERIALIZED " else s"  AS " then ;
-
-\ The piece after p in the rel's text, NULL-PTR after its last, which a
-\ view's next may pass.
-: NEXT-PIECE ( ^rel ^piece -- ^piece )
-   {: r:^ p:^ :}
-   p r REL-LAST @ = if NULL-PTR else p PIECE-NEXT @ then ;
 
 \ The rel's WITH and a space when it has CTEs, its pieces, each its text
 \ then its child, and its open text; CTE bodies and children nest either way.
@@ -69,11 +65,30 @@ STRUCTURE sink DERIVE addr
    repeat drop
    r OPEN? if k r OPEN$ SINK+ then ;
 
-\ Absorbs into the state the bytes WRITE-REL writes of the rel, in one
-\ stream however its text splits; only the sink is allocated.
-: ABSORB-REL ( ^ALLOC:allocator ^SIPHASH:state ^rel -- )
-   {: al:^ sip r:^ :}
-   al NULL-PTR NEW-SINK {: k:^ :} sip k SINK-SIP ! k r WRITE-REL ;
+\ Absorbs what WRITE-REL writes of the CTE before its body.
+: ABSORB-CTE ( ^SIPHASH:state ^rel ^cte -- )
+   {: sip:^ r:^ c:^ :}
+   sip r c CTE-SEP$ SIPHASH:ABSORB$ sip c CTE-NAME @ SIPHASH:ABSORB$
+   sip c CTE-AS$ SIPHASH:ABSORB$ ;
+
+\ The rel's digest, keyed by k0 k1, taken and kept unless it has one; each
+\ rel it takes one of gets a state from the allocator.
+: DIGEST ( ^ALLOC:allocator n n ^rel -- n )
+   {: al:^ k0:n k1:n r:^ :}
+   r REL-DIGEST @ 0<> if r REL-DIGEST @ exit then
+   al [type] SIPHASH:state ALLOC:NEW {: sip:^ :} sip k0 k1 SIPHASH:INIT
+   r REL-WITH @ begin dup NULL-PTR <> while
+      {: c:^ :} sip r c ABSORB-CTE
+      sip al k0 k1 c CTE-BODY @ RECURSE SIPHASH:ABSORB-WORD c CTE-NEXT @
+   repeat drop
+   r REL-WITH @ NULL-PTR <> if sip s"  " SIPHASH:ABSORB$ then
+   r REL-FIRST @ begin dup NULL-PTR <> while
+      {: p:^ :} sip p PIECE-TEXT @ SIPHASH:ABSORB$ p PIECE-REL @ {: ch:^ :}
+      ch NULL-PTR <> if sip al k0 k1 ch RECURSE SIPHASH:ABSORB-WORD then
+      r p NEXT-PIECE
+   repeat drop
+   r OPEN? if sip r OPEN$ SIPHASH:ABSORB$ then
+   sip SIPHASH:FINISH dup r REL-DIGEST ! ;
 
 \ The bytes WRITE-REL writes of the rel, counted without writing or
 \ allocating.
