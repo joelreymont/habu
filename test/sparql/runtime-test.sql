@@ -4,6 +4,7 @@ DO $$
 DECLARE
     x text := 'http://www.w3.org/2001/XMLSchema#';
     one jsonb := sparql.term('1','literal',x || 'integer');
+    max_bytes constant bigint := 1048576;
     decimal jsonb := sparql.term('1.0','literal',x || 'decimal');
     nan jsonb := sparql.term('NaN','literal',x || 'double');
     float_digits text := current_setting('extra_float_digits');
@@ -88,27 +89,27 @@ BEGIN
       WHERE sparql.regex(sparql.term(value),
           sparql.term(pattern),sparql.term(flags)) IS DISTINCT FROM expected)
       THEN RAISE EXCEPTION 'regex flags and character classes'; END IF;
-    IF sparql.replace(sparql.term('a.b'),sparql.term('.'),
+    IF sparql.replace(max_bytes,sparql.term('a.b'),sparql.term('.'),
             sparql.term(E'$1\\'),sparql.term('q'))->>'value' IS DISTINCT FROM E'a$1\\b'
        THEN RAISE EXCEPTION 'quoted replacement'; END IF;
     -- The test cluster's locale is C, whose classes and case are ASCII.
     IF sparql.regex(sparql.term('É'),sparql.term(E'^\\w$')) IS DISTINCT FROM true
        OR sparql.regex(sparql.term('É'),sparql.term('é'),sparql.term('i')) IS DISTINCT FROM true
-       OR sparql.replace(sparql.term('É'),sparql.term('é'),sparql.term('e'),sparql.term('i'))->>'value'
+       OR sparql.replace(max_bytes,sparql.term('É'),sparql.term('é'),sparql.term('e'),sparql.term('i'))->>'value'
           IS DISTINCT FROM 'e'
        THEN RAISE EXCEPTION 'regex classes and case are Unicode'; END IF;
     IF EXISTS (SELECT FROM (VALUES ('[$0]','L[a]the'),('<$2$1$3>','L<ta>he'),(E'\\$','L$the'),(E'\\$1','L$1the'),
             (E'\\\\',E'L\\the'),(E'\\\\$1',E'L\\athe'),('&','L&the'),('$x',NULL),('$',NULL),(E'\\1',NULL),(E'\\',NULL)
           ) t(replacement,expected)
-          WHERE sparql.replace(sparql.term('Lathe'),
+          WHERE sparql.replace(max_bytes,sparql.term('Lathe'),
               sparql.term(CASE WHEN replacement LIKE '%$2%' THEN '(a)(t)' ELSE '(a)' END),
               sparql.term(replacement))->>'value' IS DISTINCT FROM expected)
        THEN RAISE EXCEPTION 'replacement'; END IF;
     IF EXISTS (SELECT FROM unnest(ARRAY['''([^'']*)''','''([a-z]{2}.*?)''']) pattern
-          WHERE sparql.replace(sparql.term('say ''hi'' and ''bye'''),sparql.term(pattern),
+          WHERE sparql.replace(max_bytes,sparql.term('say ''hi'' and ''bye'''),sparql.term(pattern),
               sparql.term('<$1>'))->>'value' IS DISTINCT FROM 'say <hi> and <bye>')
        THEN RAISE EXCEPTION 'replacement by quantifiers of one kind'; END IF;
-    IF sparql.encode_for_uri(sparql.term('é /'))->>'value' IS DISTINCT FROM '%C3%A9%20%2F' THEN RAISE EXCEPTION 'URI UTF8'; END IF;
+    IF sparql.encode_for_uri(max_bytes,sparql.term('é /'))->>'value' IS DISTINCT FROM '%C3%A9%20%2F' THEN RAISE EXCEPTION 'URI UTF8'; END IF;
     IF sparql.timezone(sparql.term('2026-11-13T10:20:30+02:30','literal',x || 'dateTime'))->>'value' IS DISTINCT FROM 'PT2H30M' THEN RAISE EXCEPTION 'timezone'; END IF;
     IF sparql.sha256(sparql.term('abc'))->>'value' IS DISTINCT FROM 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad' THEN RAISE EXCEPTION 'SHA256'; END IF;
     IF sparql.year(sparql.term('2024-01-01T00:00:00Z')) IS NOT NULL
@@ -116,7 +117,7 @@ BEGIN
        OR sparql.substr(sparql.term('abcd'),one,sparql.term('invalid')) IS NOT NULL
        OR sparql.substr(sparql.term('abcd'),decimal) IS NOT NULL
        OR sparql.regex(sparql.term('a'),sparql.term('a'),one) IS NOT NULL
-       OR sparql.replace(sparql.term('a'),sparql.term(''),sparql.term('-')) IS NOT NULL
+       OR sparql.replace(max_bytes,sparql.term('a'),sparql.term(''),sparql.term('-')) IS NOT NULL
        OR sparql.sha256('{"type":"literal","value":"a","xml:lang":"en"}'::jsonb) IS NOT NULL
        THEN RAISE EXCEPTION 'function argument and pattern errors'; END IF;
     IF EXISTS (SELECT FROM (VALUES ('float'),('double')) d(kind)
@@ -215,9 +216,9 @@ BEGIN
        THEN RAISE EXCEPTION 'numbers cast to string follow XPath'; END IF;
     IF sparql.cast(x || 'string',sparql.term('urn:zen:1','uri')) IS DISTINCT FROM sparql.term('urn:zen:1')
        OR sparql.cast(x || 'dateTime',sparql.term('2026-11-13T10:20:30Z')) IS DISTINCT FROM sparql.term('2026-11-13T10:20:30Z','literal',x || 'dateTime') THEN RAISE EXCEPTION 'string datetime constructors'; END IF;
-    IF sparql.iri(sparql.term('bad space'),'http://a/b/c/d;p?q') IS NOT NULL
-       OR sparql.iri(sparql.term('bad%GG'),'http://a/b/c/d;p?q') IS NOT NULL
-       OR sparql.iri(sparql.term('relative'),NULL) IS NOT NULL THEN RAISE EXCEPTION 'invalid IRI'; END IF;
+    IF sparql.iri(max_bytes,sparql.term('bad space'),'http://a/b/c/d;p?q') IS NOT NULL
+       OR sparql.iri(max_bytes,sparql.term('bad%GG'),'http://a/b/c/d;p?q') IS NOT NULL
+       OR sparql.iri(max_bytes,sparql.term('relative'),NULL) IS NOT NULL THEN RAISE EXCEPTION 'invalid IRI'; END IF;
     -- RFC 3986 section 5.4 normal and abnormal resolution examples.
     IF EXISTS (SELECT FROM (VALUES
         ('eXAMPLE://a/./b/../b/%63/%7bfoo%7d#xyz','eXAMPLE://a/./b/../b/%63/%7bfoo%7d#xyz'),
@@ -234,7 +235,7 @@ BEGIN
         ('g?y/./x','http://a/b/c/g?y/./x'),('g?y/../x','http://a/b/c/g?y/../x'),
         ('g#s/./x','http://a/b/c/g#s/./x'),('g#s/../x','http://a/b/c/g#s/../x'),('http:g','http:g')
       ) t(reference,expected)
-       WHERE sparql.iri(sparql.term(reference),'http://a/b/c/d;p?q')->>'value' IS DISTINCT FROM expected)
+       WHERE sparql.iri(max_bytes,sparql.term(reference),'http://a/b/c/d;p?q')->>'value' IS DISTINCT FROM expected)
        THEN RAISE EXCEPTION 'IRI reference resolution'; END IF;
 END $$;
 DO $$
@@ -330,7 +331,7 @@ BEGIN
        THEN RAISE EXCEPTION 'MIN and MAX over a partly unbound operand'; END IF;
 END $$;
 DO $$
-DECLARE pattern text; replacement text; found text;
+DECLARE pattern text; replacement text; found text; max_bytes constant bigint := 1048576;
 BEGIN
     FOR pattern,replacement,found IN
         SELECT e,'',left(e,2) FROM unnest(string_to_array('\p{Lu} \P{L} \i \c \C \b \B \y \m \u0041 \x41 \0 \é',' ')) e
@@ -343,7 +344,7 @@ BEGIN
             ('(?i)a','','(?i'),('***=a','','*'),('[]a]','','[]a]'),('[^]a]','','[^]a]'),('[[=a=]]','','[[=a=]]'),
             ('[[:<:]]a','','[[:<:]]a') LOOP
         BEGIN
-            PERFORM sparql.replace(sparql.term('a'),sparql.term(pattern),sparql.term(replacement));
+            PERFORM sparql.replace(max_bytes,sparql.term('a'),sparql.term(pattern),sparql.term(replacement));
         EXCEPTION WHEN feature_not_supported THEN
             IF strpos(SQLERRM,'found `' || found || '`')=0
                THEN RAISE EXCEPTION 'regex message: %',SQLERRM; END IF;
@@ -357,6 +358,7 @@ DECLARE
     x constant text := 'http://www.w3.org/2001/XMLSchema#';
     one jsonb := sparql.term('1','literal',x || 'double');
     inf jsonb := sparql.term('INF','literal',x || 'double');
+    max_bytes constant bigint := 1048576;
 BEGIN
     -- The last two are doubles halfway between a float and INF or 0, whose even neighbour is
     -- INF and 0; the digits that spell them lie on the float's side.
@@ -419,11 +421,11 @@ BEGIN
        OR sparql.strdt(sparql.term('a'),sparql.term('urn:x','uri')) IS DISTINCT FROM sparql.term('a','literal','urn:x')
        THEN RAISE EXCEPTION 'STRDT makes no language-tagged string'; END IF;
     IF EXISTS (SELECT FROM (VALUES ('straße','STRASSE','straße'),('ÉI','ÉI','éi'),('ΑΣ','ΑΣ','ας')) v(value,upper,lower)
-        WHERE sparql.ucase(sparql.term(value)) IS DISTINCT FROM sparql.term(upper)
-           OR sparql.lcase(sparql.term(value)) IS DISTINCT FROM sparql.term(lower))
+        WHERE sparql.ucase(max_bytes,sparql.term(value)) IS DISTINCT FROM sparql.term(upper)
+           OR sparql.lcase(max_bytes,sparql.term(value)) IS DISTINCT FROM sparql.term(lower))
        THEN RAISE EXCEPTION 'full case mapping'; END IF;
-    IF sparql.encode_for_uri(sparql.term('')) IS DISTINCT FROM sparql.term('')
-       OR sparql.encode_for_uri(sparql.term(E'\u0001\u007F aZ09-._~!*()''@[`{/é𝄞')) IS DISTINCT FROM
+    IF sparql.encode_for_uri(max_bytes,sparql.term('')) IS DISTINCT FROM sparql.term('')
+       OR sparql.encode_for_uri(max_bytes,sparql.term(E'\u0001\u007F aZ09-._~!*()''@[`{/é𝄞')) IS DISTINCT FROM
           sparql.term('%01%7F%20aZ09-._~%21%2A%28%29%27%40%5B%60%7B%2F%C3%A9%F0%9D%84%9E')
        THEN RAISE EXCEPTION 'URI bytes'; END IF;
 END $$;

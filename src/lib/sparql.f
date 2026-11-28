@@ -8,8 +8,9 @@
 \ C, and the quotation is not run. A description not in the format throws
 \ JSON:E-MEMBER.
 \ CONTRACT. The statement takes its parameters as text and answers one row of
-\ one text, the SPARQL Results JSON document; once the document passes the
-\ description's `bytes` it raises SQLSTATE 54000. The host runs it in a
+\ one text, the SPARQL Results JSON document; once the document, or a value
+\ the statement builds, passes the description's `bytes` it raises SQLSTATE
+\ 54000. The host runs it in a
 \ transaction where the sources are scoped and schema sparql holds
 \ src/lib/sparql/runtime.sql from this tree. Each source row whose slot
 \ columns are non-null, for a `cols` slot the one holding its value, is one

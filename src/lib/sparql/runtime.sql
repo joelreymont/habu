@@ -487,12 +487,15 @@ EXCEPTION WHEN invalid_text_representation OR numeric_value_out_of_range THEN RE
 END $$;
 
 -- RFC 3986 section 5.2, including dot segments, query and fragment merging.
--- An existing IRI is unchanged; string arguments use the query's base.
-CREATE FUNCTION sparql.iri(term jsonb,base text) RETURNS jsonb
+-- An existing IRI is unchanged; string arguments use the query's base. A
+-- resolved IRI has at most the reference's and the base's bytes and one; it is
+-- built, then raises SQLSTATE 54000 once it passes the byte limit.
+CREATE FUNCTION sparql.iri(bytes bigint,term jsonb,base text) RETURNS jsonb
 LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE AS $$
 DECLARE a jsonb:=sparql.normalize(term); value text:=a->>'value'; r text[]; b text[];
     pattern constant text:='^(([^:/?#]+):)?(//([^/?#]*))?([^?#]*)(\?([^#]*))?(#(.*))?$';
     scheme text; authority text; path text; query text; parts text[]; part text; first integer:=1; depth integer:=0;
+    result text;
 BEGIN
     IF a->>'type'='uri' THEN RETURN a; END IF;
     IF a->>'type' IS DISTINCT FROM 'literal' OR a ? 'datatype' OR a ? 'xml:lang'
@@ -504,8 +507,11 @@ BEGIN
     authority:=r[3]; path:=r[5]; query:=r[6];
     IF r[1] IS NULL AND r[3] IS NULL THEN
         authority:=b[3];
-        IF path='' THEN RETURN sparql.term(scheme || coalesce(authority,'') || b[5]
-            || coalesce(query,b[6],'') || coalesce(r[8],''),'uri'); END IF;
+        IF path='' THEN
+            result:=scheme || coalesce(authority,'') || b[5] || coalesce(query,b[6],'') || coalesce(r[8],'');
+            PERFORM sparql.within(octet_length(result),bytes);
+            RETURN sparql.term(result,'uri');
+        END IF;
         IF left(path,1)<>'/' THEN path:=CASE WHEN authority IS NOT NULL AND b[5]='' THEN '/'
             ELSE regexp_replace(b[5],'[^/]*$','') END || path; END IF;
     END IF;
@@ -525,7 +531,9 @@ BEGIN
         depth:=depth+1; parts[depth]:=part;
     END LOOP;
     path:=array_to_string(parts[1:depth],'');
-    RETURN sparql.term(scheme || coalesce(authority,'') || path || coalesce(query,'') || coalesce(r[8],''),'uri');
+    result:=scheme || coalesce(authority,'') || path || coalesce(query,'') || coalesce(r[8],'');
+    PERFORM sparql.within(octet_length(result),bytes);
+    RETURN sparql.term(result,'uri');
 END $$;
 
 -- XPath's flags, and its syntax and escapes that PostgreSQL has; \w, \s and \d
@@ -846,29 +854,38 @@ BEGIN
     RETURN sparql.integer(length(sparql.string(term)));
 END $$;
 
-CREATE FUNCTION sparql.lcase(term jsonb) RETURNS jsonb
+-- LCASE and UCASE: full case mapping makes at most three times a string's
+-- bytes (U+0390 to U+0399 U+0308 U+0301), so the value is built, then raises
+-- SQLSTATE 54000 once it passes the byte limit.
+CREATE FUNCTION sparql.lcase(bytes bigint,term jsonb) RETURNS jsonb
 LANGUAGE plpgsql IMMUTABLE STRICT PARALLEL SAFE AS $$
 DECLARE value text := lower(sparql.string(term) COLLATE "pg_unicode_fast");
 BEGIN
+    PERFORM sparql.within(octet_length(value),bytes);
     RETURN sparql.tagged(value,term);
 END $$;
 
-CREATE FUNCTION sparql.ucase(term jsonb) RETURNS jsonb
+CREATE FUNCTION sparql.ucase(bytes bigint,term jsonb) RETURNS jsonb
 LANGUAGE plpgsql IMMUTABLE STRICT PARALLEL SAFE AS $$
 DECLARE value text := upper(sparql.string(term) COLLATE "pg_unicode_fast");
 BEGIN
+    PERFORM sparql.within(octet_length(value),bytes);
     RETURN sparql.tagged(value,term);
 END $$;
 
-CREATE FUNCTION sparql.concat(terms jsonb[]) RETURNS jsonb
+-- SQLSTATE 54000 before the join once the parts' bytes pass the byte limit.
+CREATE FUNCTION sparql.concat(bytes bigint,terms jsonb[]) RETURNS jsonb
 LANGUAGE plpgsql IMMUTABLE STRICT PARALLEL SAFE AS $$
-DECLARE term jsonb; parts text[] := '{}'; result text; tag text := lower((terms[1]->>'xml:lang') COLLATE "C");
+DECLARE term jsonb; parts text[] := '{}'; result text; total bigint := 0;
+    tag text := lower((terms[1]->>'xml:lang') COLLATE "C");
 BEGIN
     FOREACH term IN ARRAY terms LOOP
         parts := array_append(parts,sparql.string(term));
+        total := total+octet_length(parts[cardinality(parts)]);
         IF lower((term->>'xml:lang') COLLATE "C") IS DISTINCT FROM tag THEN tag := NULL; END IF;
     END LOOP;
     IF array_position(parts,NULL) IS NOT NULL THEN RETURN NULL; END IF;
+    PERFORM sparql.within(total,bytes);
     result := array_to_string(parts,'');
     RETURN CASE WHEN tag IS NULL THEN sparql.term(result) ELSE sparql.tagged(result,terms[1]) END;
 END $$;
@@ -1001,12 +1018,27 @@ BEGIN
     RETURN array_to_string(items,'');
 END $$;
 
-CREATE FUNCTION sparql.replaced(term jsonb,regex text,replacement text,flags text) RETURNS jsonb
+-- SQLSTATE 54000 before the replacement once its value's bytes pass the byte
+-- limit: the string's without its matches, plus the replacement's literal
+-- bytes once per match and, for each \& or \1 to \9 in it, that group's bytes
+-- in every match. Each count is the bytes of the string with every match
+-- replaced by '', by 'x' or by one group, none past twice its bytes and one.
+CREATE FUNCTION sparql.replaced(bytes bigint,term jsonb,regex text,replacement text,flags text) RETURNS jsonb
 LANGUAGE plpgsql IMMUTABLE STRICT PARALLEL SAFE AS $$
-DECLARE result text;
+DECLARE value text := sparql.string(term); result text; rest bigint; total bigint; literal bigint; ref text;
 BEGIN
-    IF regexp_like('',regex COLLATE "pg_unicode_fast",flags) THEN RETURN NULL; END IF;
-    result := regexp_replace(sparql.string(term),regex COLLATE "pg_unicode_fast",replacement,flags || 'g');
+    IF regexp_like('',regex COLLATE "pg_unicode_fast",flags) OR value IS NULL THEN RETURN NULL; END IF;
+    rest := octet_length(regexp_replace(value,regex COLLATE "pg_unicode_fast",'',flags || 'g'));
+    total := rest;
+    literal := octet_length(regexp_replace(replacement,'\\([&1-9])|\\(\\)','\2','g'));
+    IF literal>0 THEN
+        total := total+literal*(octet_length(regexp_replace(value,regex COLLATE "pg_unicode_fast",'x',flags || 'g'))-rest);
+    END IF;
+    FOR ref IN SELECT m[1] FROM regexp_matches(replacement,'\\([&1-9\\])','g') m WHERE m[1]<>E'\\' LOOP
+        total := total+octet_length(regexp_replace(value,regex COLLATE "pg_unicode_fast",E'\\' || ref,flags || 'g'))-rest;
+    END LOOP;
+    PERFORM sparql.within(total,bytes);
+    result := regexp_replace(value,regex COLLATE "pg_unicode_fast",replacement,flags || 'g');
     RETURN sparql.tagged(result,term);
 EXCEPTION WHEN invalid_regular_expression THEN
     PERFORM sparql.regex_limit(regex,SQLERRM);
@@ -1014,23 +1046,28 @@ EXCEPTION WHEN invalid_regular_expression THEN
 END $$;
 
 -- Inlined, as sparql.regex is.
-CREATE FUNCTION sparql.replace(term jsonb,pattern jsonb,replacement jsonb,
+CREATE FUNCTION sparql.replace(bytes bigint,term jsonb,pattern jsonb,replacement jsonb,
     flags jsonb DEFAULT '{"type":"literal","value":""}') RETURNS jsonb
 LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
-    SELECT sparql.replaced(term,sparql.regex_pattern(sparql.simple(pattern),sparql.simple(flags),true),
+    SELECT sparql.replaced(bytes,term,sparql.regex_pattern(sparql.simple(pattern),sparql.simple(flags),true),
                            sparql.replacement(sparql.simple(replacement),sparql.simple(flags)),
                            sparql.regex_flags(sparql.simple(flags)))
 $$;
 
-CREATE FUNCTION sparql.encode_for_uri(term jsonb) RETURNS jsonb
+-- Each UTF-8 byte of the string but an unreserved character's becomes three,
+-- so the value's bytes are known, and checked against the byte limit, before
+-- it is built.
+CREATE FUNCTION sparql.encode_for_uri(bytes bigint,term jsonb) RETURNS jsonb
 LANGUAGE plpgsql IMMUTABLE STRICT PARALLEL SAFE AS $$
-DECLARE bytes bytea := convert_to(sparql.string(term),'UTF8'); result text;
+DECLARE value text := sparql.string(term); octets bytea := convert_to(value,'UTF8'); result text;
 BEGIN
-    IF bytes IS NULL THEN RETURN NULL; END IF;
+    IF octets IS NULL THEN RETURN NULL; END IF;
+    PERFORM sparql.within(length(octets)
+        +2*octet_length(convert_to(regexp_replace(value COLLATE "C",'[-.0-9A-Z_a-z~]','','g'),'UTF8')),bytes);
     SELECT string_agg(CASE WHEN byte BETWEEN 65 AND 90 OR byte BETWEEN 97 AND 122 OR byte BETWEEN 48 AND 57
                                 OR byte IN (45,46,95,126) THEN chr(byte)
                            ELSE '%' || upper(lpad(to_hex(byte),2,'0')) END,'' ORDER BY pos) INTO result
-      FROM (SELECT pos,get_byte(bytes,pos) AS byte FROM generate_series(0,length(bytes)-1) pos) t;
+      FROM (SELECT pos,get_byte(octets,pos) AS byte FROM generate_series(0,length(octets)-1) pos) t;
     result := coalesce(result,'');
     RETURN sparql.term(result);
 END $$;

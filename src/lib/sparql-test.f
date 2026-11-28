@@ -1148,6 +1148,28 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    s\" 1:38: expected a variable not already in scope, found `?w`; use a new variable instead of ?w\n"
    REJECTS ;
 
+: GROWN-IN ( str n ^ARENA:arena -- )
+   {: q:str bytes:n a:^ :}
+   s" {'head':{},'boolean':true}" a UNQUOTE {: yes:^ :}
+   q bytes a ANSWER-WITHIN $ yes $ a false SAME? TTRUE
+   q bytes 1- a ANSWER-WITHIN $ s" 54000: " STR:STARTS-WITH? TTRUE ;
+
+\ The ASK query answers true on a limit of so many bytes, its longest
+\ value's, and fails on one a byte shorter.
+: GROWN ( str n -- ) [: GROWN-IN ;] ARENA:WITH ;
+
+\ A string function fails once the value it builds passes the byte limit,
+\ though the document would not; a short value of a long input does not.
+: GROWTHS ( -- )
+   s" ASK { BIND('xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' AS ?x) BIND(CONCAT(?x, ?x) AS ?v) FILTER(STRLEN(?v) > 0) }"
+   80 GROWN
+   s" ASK { BIND(REPLACE('xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', '(x)', '$1$1') AS ?v) FILTER(STRLEN(?v) > 0) }"
+   80 GROWN
+   s" SELECT ?v WHERE { BIND(REPLACE('xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', 'x+', 'y') AS ?v) }"
+   s" {'head':{'vars':['v']},'results':{'bindings':[{'v':{'type':'literal','value':'y'}}]}}"
+   EXPECT
+   s" SELECT ?v WHERE { BIND(REPLACE('xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', 'x+', 'y') AS ?v) }" LIMITED ;
+
 : +N ( ^VEC:vector<u8> str n -- )
    {: q:^ t:str n:n :} t q VEC:APPEND n FMT:INT$ q VEC:APPEND ;
 
@@ -2153,7 +2175,7 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    ONLY-COLUMNS NESTED-ONLY
    TYPED-FILTERS BRANCH-GROUPING ORDERS DISTINCTS STAR-COUNTS
    SUBQUERIES
-   BINDS CHAINS LEVELS UUIDS VOLATILE-BINDS FENCES DATA-BLOCKS PATHS
+   BINDS GROWTHS CHAINS LEVELS UUIDS VOLATILE-BINDS FENCES DATA-BLOCKS PATHS
    NODE-READS CTE-COLUMNS ;
 
 T-RESET

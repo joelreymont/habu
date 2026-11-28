@@ -8,6 +8,7 @@
 
 require src/lib/sparql/emit.f
 require src/lib/sparql/statement.f
+require src/lib/sparql/store.f
 require src/lib/sparql/write.f
 require src/lib/sparql/syntax.f
 require src/lib/sparql/iri.f
@@ -58,9 +59,16 @@ private
    plan s" coalesce(" SQL+
    plan plan TREE call NODE-A@ EXPRESSIONS+ plan s" )" SQL+ ;
 
+\ The store's byte limit and a comma: the first argument of a function
+\ whose value can be longer than any one of its arguments.
+: LIMIT+ ( ^plan -- )
+   {: plan :}
+   plan PLAN-OUT @ plan PLAN-STORE @ STORE-LIMIT @ +INT
+   plan s" ," SQL+ ;
+
 : IRI-FUNCTION+ ( ^plan n -- )
    {: plan call:n :} plan TREE {: state :}
-   plan s" sparql.iri(" SQL+
+   plan s" sparql.iri(" SQL+ plan LIMIT+
    plan state call 0 ARGUMENT@ SQL-EXPRESSION plan s" ," SQL+
    state SYNTAX-DECLARED-BASE @ {: base:n :}
    base 0= if plan s" NULL::text" SQL+
@@ -79,16 +87,24 @@ private
       dup i + c@ STR:ASCII-LOWER out +BYTE c!
    loop drop ;
 
+\ The names NAMED+ writes with LIMIT+ first; CONCAT+ and IRI-FUNCTION+
+\ write their own.
+: GROWS? ( ^syntax n -- bool )
+   s" REPLACE UCASE LCASE ENCODE_FOR_URI" CALL-IN? ;
+
 \ The built-in call as its SQL function's.
 : NAMED+ ( ^plan n -- )
    {: plan call:n :} plan TREE {: state :}
    plan s" sparql." SQL+ plan state call TEXT$ LOWER+
-   plan s" (" SQL+ plan state call NODE-A@ EXPRESSIONS+
+   plan s" (" SQL+
+   state call GROWS? if plan LIMIT+ then
+   plan state call NODE-A@ EXPRESSIONS+
    plan s" )" SQL+ ;
 
 : CONCAT+ ( ^plan n -- )
    {: plan call:n :}
-   plan s" sparql.concat(ARRAY[" SQL+
+   plan s" sparql.concat(" SQL+ plan LIMIT+
+   plan s" ARRAY[" SQL+
    plan plan TREE call NODE-A@ EXPRESSIONS+
    plan s" ]::jsonb[])" SQL+ ;
 
