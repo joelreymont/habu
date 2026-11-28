@@ -1704,24 +1704,27 @@ STRUCTURE pruning DERIVE addr
 \ the substitution's binding of var; one bound always keeps it out of occs.
 \ null: the slot's column may hold NULL. The occurrence is nullable unless
 \ the meeting is a strict `=` or it reads the substitution's column; one
-\ kept out of occs has its null test written to where at once.
+\ kept out of occs has its null test written to where at once. Answers
+\ sql after a strict `=`, else NULL-PTR.
 : OCCUR ( ^plan ^VEC:vector<binding> n n ^rel str ^spread bool ^rel
-      -- )
+      -- ^rel )
    {: plan occs:^ var:n shape:n sql:^ t:str sp:^ null:bool where:^ :}
    plan PLAN-OUTER @ var LOOKUP {: o:^ :}
    o NULL-PTR = if
       occs var shape sql t BIND sp occs LAST BINDING-SPREAD !
-      null occs LAST BINDING-NULLABLE ! exit
+      null occs LAST BINDING-NULLABLE ! NULL-PTR exit
    then
    o BINDING-ALWAYS @ if
       plan AL [type] binding ALLOC:NEW dup var shape sql t SET-BINDING
    else occs var shape sql t BIND occs LAST then {: b:^ :}
    sp b BINDING-SPREAD !
-   plan b o where +MEETS 0= null and
+   plan b o where +MEETS {: strict:bool :}
+   strict 0= null and
    plan PLAN-CURSORS @ sql o BINDING-SQL @ REL= 0= and
    {: open:bool :}
-   o BINDING-ALWAYS @ 0= if open b BINDING-NULLABLE ! exit then
-   open if where b +NULL-TEST then ;
+   o BINDING-ALWAYS @ 0= if open b BINDING-NULLABLE ! NULL-PTR exit then
+   open if where b +NULL-TEST then
+   strict if sql else NULL-PTR then ;
 
 \ Appends to where that b meets the substitution's binding of its variable.
 : +OUTER ( ^plan ^binding ^rel -- )
@@ -1780,7 +1783,8 @@ STRUCTURE pruning DERIVE addr
 
 \ A variable's occurrence of the slot under alias to occs; a constant a
 \ column holds, to where. covered: another part drops the column's NULL.
-: +SLOT ( ^plan n slot str ^VEC:vector<binding> ^rel bool -- )
+\ Answers what OCCUR answers, else NULL-PTR.
+: +SLOT ( ^plan n slot str ^VEC:vector<binding> ^rel bool -- ^rel )
    {: plan node:n sl alias:str occs:^ where:^ covered:bool :}
    sl SLOT-KIND {: shape:n t:str :}
    plan TREE node VARIABLE? if
@@ -1791,7 +1795,7 @@ STRUCTURE pruning DERIVE addr
    then
    shape -1 > if
       where s"  AND " +SEP plan node sl alias where +CONSTANT
-   then ;
+   then NULL-PTR ;
 
 : SLOT-COL ( slot -- str )
    MATCH slot
@@ -1924,12 +1928,13 @@ STRUCTURE pruning DERIVE addr
 
 \ Slot k over several columns: a variable binds their COALESCE, and one
 \ of them is not null or holds the constant. A spread keeps its own copy
-\ of recs, which may be in the work arena.
+\ of recs, which may be in the work arena. Answers what OCCUR answers,
+\ else NULL-PTR.
 : +COLUMNS ( ^plan n ^VEC:vector<n> n str ^VEC:vector<binding>
-      ^rel -- )
+      ^rel -- ^rel )
    {: plan node:n recs:^ k:n alias:str occs:^ where:^ :}
-   plan TREE node VARIABLE? if
-      plan recs k alias COALESCE-COLUMNS {: form:n sql:^ :}
+   NULL-PTR plan TREE node VARIABLE? if
+      drop plan recs k alias COALESCE-COLUMNS {: form:n sql:^ :}
       NULL-PTR form 0< if
          drop plan AL [type] spread ALLOC:NEW {: sp:^ :}
          plan recs KEEP-LIST sp SPREAD-RECS !
@@ -1955,19 +1960,27 @@ STRUCTURE pruning DERIVE addr
 
 \ The slots from the first of the records, of one description source,
 \ for the triple under the alias: one where they read one column or term
-\ there, else their several columns.
+\ there, else their several columns. An occurrence in occs on a column a
+\ slot's strict meeting reads is not nullable, a later slot's too.
 : SLOTS-SQL ( ^plan n ^VEC:vector<n> str ^VEC:vector<binding>
       ^rel n -- )
    {: plan triple:n recs:^ alias:str occs:^ where:^ first:n :}
    plan TREE {: state :}
+   \ One answer per slot rides below the loop, NULL-PTR for one before
+   \ first.
+   NULL-PTR NULL-PTR NULL-PTR
    3 first do
+      rot drop
       state triple i PART {: node:n :}
       plan recs i DISTINCT-AT {: cols:^ :}
       cols LEN 1 = if
          plan node plan cols 0 VEC:AT @ i RECORD-SLOT alias occs where
             plan triple recs first i COVERED? +SLOT
       else plan node cols i alias occs where +COLUMNS then
-   loop ;
+   loop {: a:^ b:^ c:^ :}
+   a NULL-PTR <> if plan occs a COLUMN-TESTED then
+   b NULL-PTR <> if plan occs b COLUMN-TESTED then
+   c NULL-PTR <> if plan occs c COLUMN-TESTED then ;
 
 : +FROM ( ^rel ^source str -- )
    {: from:^ src:^ alias:str :}

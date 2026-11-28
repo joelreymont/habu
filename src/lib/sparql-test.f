@@ -474,6 +474,16 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    s" SELECT ?s WHERE { ?s t:94 ?o FILTER(?o = t:601) FILTER EXISTS { ?y t:94 ?z FILTER(?z = t:602) } }"
    s" t2.id = sparql_test.id(" s" IS NOT NULL"
    s" {'head':{'vars':['s']},'results':{'bindings':[{'s':{'type':'uri','value':'urn:test:601'}}]}}"
+   SPELLED-ALONE
+   \ An outer variable's `=` drops a later slot's null test of its column.
+   s" SELECT ?s WHERE { ?s t:94 ?o FILTER(?o = t:601) FILTER EXISTS { ?s t:94 ?z } }"
+   s" t2.id = t1.id" s" IS NOT NULL"
+   s" {'head':{'vars':['s']},'results':{'bindings':[{'s':{'type':'uri','value':'urn:test:601'}}]}}"
+   SPELLED-ALONE
+   \ An outer variable's `=` drops an earlier slot's null test of its column.
+   s" SELECT ?s WHERE { ?s t:94 ?o FILTER(?o = t:601) FILTER EXISTS { ?z t:94 ?s } }"
+   s" t2.id = t1.id" s" IS NOT NULL"
+   s" {'head':{'vars':['s']},'results':{'bindings':[{'s':{'type':'uri','value':'urn:test:601'}}]}}"
    SPELLED-ALONE ;
 
 : SLOTS ( -- )
