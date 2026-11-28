@@ -1764,13 +1764,13 @@ STRUCTURE pruning DERIVE addr
    repeat drop where s" )) IS NOT TRUE" +SQL ;
 
 \ A variable's occurrence of the slot under alias to occs; a constant a
-\ column holds, to where.
-: +SLOT ( ^plan n slot str ^VEC:vector<binding> ^rel -- )
-   {: plan node:n sl alias:str occs:^ where:^ :}
+\ column holds, to where. covered: another part drops the column's NULL.
+: +SLOT ( ^plan n slot str ^VEC:vector<binding> ^rel bool -- )
+   {: plan node:n sl alias:str occs:^ where:^ covered:bool :}
    sl SLOT-KIND {: shape:n t:str :}
    plan TREE node VARIABLE? if
       plan sl alias SLOT-SQL {: sql:^ :}
-      shape -1 >  sl SLOT-NOTNULL? 0=  and {: null:bool :}
+      shape -1 >  sl SLOT-NOTNULL? 0=  and  covered 0=  and {: null:bool :}
       plan occs plan node VAR shape sql t NULL-PTR null where OCCUR
       exit
    then
@@ -1790,6 +1790,49 @@ STRUCTURE pruning DERIVE addr
    {: a b :}
    a SLOT-COL b SLOT-COL STR:=
    a SLOT-KIND drop b SLOT-KIND drop = and ;
+
+\ Whether every record but the first has sl at part other.
+: SLOT-SHARED? ( ^plan ^VEC:vector<n> n slot -- bool )
+   {: plan recs:^ other:n sl :}
+   recs LEN 1 ?do
+      plan recs i VEC:AT @ other RECORD-SLOT sl SAME-SLOT? 0= if
+         false unloop exit
+      then
+   loop true ;
+
+\ Whether an unbound variable before part this drops its slot's NULL.
+: VAR-COVERS? ( ^plan n slot n n -- bool )
+   {: plan node:n sl other:n this:n :}
+   other this <  sl SLOT-NOTNULL? 0=  and 0= if false exit then
+   plan PLAN-OUTER @ plan node VAR LOOKUP NULL-PTR = ;
+
+\ Whether part other, one slot across recs, reads col and drops its NULL.
+: PART-COVERS? ( ^plan n ^VEC:vector<n> str n n -- bool )
+   {: plan triple:n recs:^ col:str other:n this:n :}
+   plan recs 0 VEC:AT @ other RECORD-SLOT {: sl :}
+   other this =  sl SLOT-COL col STR:= 0=  or if false exit then
+   sl SLOT-KIND drop -1 > 0= if false exit then
+   plan recs other sl SLOT-SHARED? 0= if false exit then
+   plan TREE triple other PART {: node:n :}
+   plan TREE node VARIABLE? if
+      plan node sl other this VAR-COVERS? exit
+   then
+   sl SLOT-KEY MATCH nullable
+      none OF true ENDOF
+      some OF drop false ENDOF
+   ;MATCH ;
+
+\ Whether a part from first on drops the NULL of part this's column:
+\ a keyless constant, or an earlier unbound variable.
+: COVERED? ( ^plan n ^VEC:vector<n> n n -- bool )
+   {: plan triple:n recs:^ first:n this:n :}
+   plan recs 0 VEC:AT @ this RECORD-SLOT SLOT-COL {: col:str :}
+   col STR:LEN 0= if false exit then
+   3 first ?do
+      plan triple recs col i this PART-COVERS? if
+         true unloop exit
+      then
+   loop false ;
 
 \ Whether a record of the list has record r's slot k.
 : SLOT-LISTED? ( ^plan ^VEC:vector<n> n n -- bool )
@@ -1907,7 +1950,7 @@ STRUCTURE pruning DERIVE addr
       plan recs i DISTINCT-AT {: cols:^ :}
       cols LEN 1 = if
          plan node plan cols 0 VEC:AT @ i RECORD-SLOT alias occs where
-            +SLOT
+            plan triple recs first i COVERED? +SLOT
       else plan node cols i alias occs where +COLUMNS then
    loop ;
 
