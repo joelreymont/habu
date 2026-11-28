@@ -1042,7 +1042,9 @@ public
 
 private
 : BUILD-TEMP-TRY ( str str n n -- str ) {: base:str prefix:str seed attempt :}
-   base STR:LEN prefix STR:LEN TEMP-DIR-BASE-MAX > if E-FS-CAPACITY throw then
+   base STR:LEN prefix STR:LEN TEMP-DIR-BASE-MAX > if
+      CAUSE-CLEAR E-FS-CAPACITY throw
+   then
    TMP-PATH-BUF {: dst :}
    base dst SPAN:COPY
    base JOIN-SEPARATED? if base STR:LEN else
@@ -1058,11 +1060,15 @@ private
 : TMP-COLLISION? ( str -- bool ) {: s:str :}
    s PATH-COLLISION? ;
 
+\ Whether mkdir made the candidate: false when the name is taken, a dangling
+\ link included, so the next name is tried. Only EEXIST can mean a taken name,
+\ so only it is probed; any other failure throws E-FS-IO at once with mkdir's
+\ cause, and an EEXIST the probe finds no entry for throws with EEXIST.
 : MKDIR-CANDIDATE? ( str -- bool ) {: s:str :}
-   s >PATHZ MODE-PRIVATE-DIR mkdir {: rc :}
-   rc 0= if 0 0= exit then
+   s >PATHZ MODE-PRIVATE-DIR mkdir 0= if 0 0= exit then
+   ERRNO EEXIST <> if E-FS-IO throw then
    s TMP-COLLISION? if 0 0= 0= exit then
-   E-FS-IO throw ;
+   E-FS-IO EEXIST CAUSE-FAIL ;
 
 : MKTEMP-DIR-SEED ( str str n -- str ) {: base:str prefix:str seed :}
    0 begin dup TMP-RETRIES < while
@@ -1071,7 +1077,7 @@ private
       dup MKDIR-CANDIDATE? if nip exit then
       drop 1+
    repeat drop
-   E-FS-IO throw ;
+   E-FS-IO EEXIST CAUSE-FAIL ;
 
 : MKTEMP-SEED ( str str n -- str n )
    {: base:str prefix:str seed :}
@@ -1082,13 +1088,15 @@ private
       fd 0 >= if nip fd exit then
       drop 1+
    repeat drop
-   E-FS-IO throw ;
+   E-FS-IO EEXIST CAUSE-FAIL ;
 
 public
 \ FS:MKTEMP-DIR-IN makes the directory under the base as given, and the answer
 \ keeps the caller's spelling: a relative base gives a relative answer. The
 \ answer stays this task's until its next FS:MKTEMP, FS:MKTEMP-DIR or
-\ FS:MKTEMP-DIR-IN: a caller that makes two copies the first.
+\ FS:MKTEMP-DIR-IN: a caller that makes two copies the first. A throw sets
+\ FS:ERRNO: E-FS-IO carries mkdir's cause, EEXIST when every name it tried was
+\ taken, and E-FS-CAPACITY for a base too long for a temp carries none.
 : MKTEMP-DIR-IN ( str str -- str )
    mono-ns MKTEMP-DIR-SEED ;
 

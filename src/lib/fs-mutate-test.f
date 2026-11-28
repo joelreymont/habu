@@ -444,8 +444,10 @@ public
 
 
 \ A base one byte past the longest FS:MKTEMP-DIR-IN builds in for its prefix,
-\ whatever seed it would draw.
+\ whatever seed it would draw. A stale cause is left first: the rejection
+\ is semantic, so it must clear FS:ERRNO.
 : FMT-TEMP-BASE-NO-ROOM ( -- )
+   FS:ENOENT FS:CAUSE!
    FMT-LONG-BUF s" nr" STR:LEN FS:TEMP-DIR-BASE-MAX 1+ >str s" nr" FS:MKTEMP-DIR-IN drop ;
 
 : FMT-SUFFIX-NO-ROOM ( -- )
@@ -1054,6 +1056,20 @@ public
    code E-FS-IO T=
    cause FMT-EACCES T=
    FMT-NEST-C FS:DIR? TFALSE ;
+
+\ FS:MKTEMP-DIR-IN under a base it cannot write fails with mkdir's own
+\ FS:ERRNO, EACCES, which the collision probe and the mode restored after it do
+\ not replace. The call is caught so the mode comes back before an assert.
+\ FMT-TEST-DIRS-DENIED left FMT-NEST-B for the base.
+: FMT-TEST-TEMP-DENIED ( -- )
+   FMT-NEST-B FMT-MODE-0555 FS:CHMOD-MODE
+   [: FMT-NEST-B s" denied" FS:MKTEMP-DIR-IN drop ;] catch FS:ERRNO
+   {: code:n cause:n :}
+   FMT-NEST-B FMT-MODE-0755 FS:CHMOD-MODE
+   s" FS:MKTEMP-DIR-IN under an unwritable base keeps mkdir's cause" T-LABEL
+   code E-FS-IO T=
+   cause FMT-EACCES T=
+   T-LABEL-CLEAR ;
 
 package FS-TEST
 create NAMED-BUF PATH-CAP allot
@@ -2170,6 +2186,7 @@ public
    FMT-TEST-STAGED-PRIMARY
    FMT-TEST-DIRS
    FMT-TEST-DIRS-DENIED
+   FMT-TEST-TEMP-DENIED
    FS-TEST:DIRS-NAME-TOO-LONG
    250 FS-TEST:ATOMIC-NAMED
    255 FS-TEST:ATOMIC-NAMED
@@ -2201,6 +2218,8 @@ public
    [: FMT-SUFFIX-NO-ROOM ;] E-FS-CAPACITY TTHROWSQ
    s" a temp base with no room for the name is E-FS-CAPACITY" T-LABEL
    [: FMT-TEMP-BASE-NO-ROOM ;] E-FS-CAPACITY TTHROWSQ
+   s" ... and leaves no cause in FS:ERRNO" T-LABEL
+   FS:ERRNO 0 T=
    s" removing a tree at an empty path is E-FS-PATH" T-LABEL
    [: FMT-REMOVE-TREE-EMPTY ;] E-FS-PATH TTHROWSQ
    T-LABEL-CLEAR
