@@ -9,12 +9,18 @@
 \ JSON:E-MEMBER.
 \ CONTRACT. The statement takes its parameters as text and answers one row of
 \ one text, the SPARQL Results JSON document; once the document passes the
-\ description's `bytes`, or a value the statement builds passes its share of
-\ them (BUILT-LIMITS), it raises SQLSTATE 54000. The host runs it in a
-\ transaction where the sources are scoped and schema sparql holds
-\ src/lib/sparql/runtime.sql from this tree. Each source row whose slot
-\ columns are non-null, for a `cols` slot the one holding its value, is one
-\ triple of its graph, none twice within a graph. A shape's `in` is strict
+\ description's `bytes` it raises SQLSTATE 54000, and so does a value the
+\ statement builds once it passes its share of them: all of them in a query
+\ with at most 16 calls of CONCAT, REPLACE, UCASE, LCASE, ENCODE_FOR_URI,
+\ IRI, URI and GROUP_CONCAT, else 16 times them over the calls, rounded
+\ down. The host runs it on PostgreSQL 18 or later, in a transaction where
+\ the sources are scoped, schema sparql holds src/lib/sparql/runtime.sql
+\ from this tree and enable_hashagg is off: HashAggregate checks work_mem
+\ only when it makes a group, so the GROUP_CONCAT texts of many groups grow
+\ together unchecked. Each source row whose slot columns are non-null, for a
+\ `cols` slot the one holding its value, is one triple of its graph, none
+\ twice within a graph.
+\ A shape's `in` is strict
 \ and immutable, NULL for every term outside its `holds`, its `out`
 \ canonical, the two inverse, native `=` term identity; a shape `within`
 \ another is a part of it, and different shapes hold disjoint terms unless

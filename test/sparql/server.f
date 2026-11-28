@@ -51,7 +51,8 @@ TYPED-VARIABLE CONN PG:connection
    ;MATCH CONN ! ;
 
 : SERVE ( [ -- ] -- )
-   CONNECT execute CONN @ PG:CLOSE ;
+   CONNECT CONN @ s" SET enable_hashagg = off" [: SCRIPT-OK ;] PG:WITH-SCRIPT
+   execute CONN @ PG:CLOSE ;
 
 public
 
