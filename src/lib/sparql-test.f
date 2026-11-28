@@ -467,6 +467,28 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    s" SELECT ?g ?o WHERE { GRAPH ?g { t:1 t:92 ?o } }"
    s" {'head':{'vars':['g','o']},'results':{'bindings':[{'g':{'type':'uri','value':'urn:test:o\u0027k'},'o':{'type':'literal','value':'it\u0027s \\ here'}}]}}"
    SPELLED
+   \ An OPTIONAL group joined as it is puts its WHERE in the ON unwrapped,
+   \ less the null test of the column the ON's `=` reads.
+   s" SELECT * WHERE { ?s rdfs:label 'Lathe' OPTIONAL { ?s a ?k OPTIONAL { ?k rdfs:label ?m } } }"
+   s" = t2.id AND t2.kind IS NOT NULL WHERE" 1
+   s" {'head':{'vars':['s','k','m']},'results':{'bindings':[{'s':{'type':'uri','value':'urn:test:1'},'k':{'type':'uri','value':'urn:test:10'},'m':{'type':'literal','value':'Machine'}}]}}"
+   ON-NODES
+   \ A met branch drops the null test of the column the meet's `=` reads;
+   \ the one left is the outer triple's edge branch.
+   s" SELECT ?s ?w WHERE { ?s a t:10 OPTIONAL { ?s t:30 ?w } }"
+   s" u.s IS NOT NULL" 1
+   s" {'head':{'vars':['s','w']},'results':{'bindings':[{'s':{'type':'uri','value':'urn:test:1'},'w':{'type':'literal','value':'1200','datatype':'http://www.w3.org/2001/XMLSchema#integer'}},{'s':{'type':'uri','value':'urn:test:2'},'w':{'type':'literal','value':'950.5','datatype':'http://www.w3.org/2001/XMLSchema#decimal'}}]}}"
+   TIMES
+   \ A constant two triples hold on one kept row is one condition.
+   s" SELECT ?s WHERE { ?s rdfs:label 'Lathe' . ?s rdfs:label 'Lathe' }"
+   s" .label = sparql_test.string(" 1
+   s" {'head':{'vars':['s']},'results':{'bindings':[{'s':{'type':'uri','value':'urn:test:1'}}]}}"
+   TIMES
+   \ A negated predicate's null test comes after the WHERE's conditions.
+   s" SELECT ?o WHERE { t:1 !t:21 ?o }"
+   s" IS NOT TRUE AND u.p IS NOT NULL" s" u.p IS NOT NULL AND (u.p IN"
+   s" {'head':{'vars':['o']},'results':{'bindings':[{'o':{'type':'literal','value':'Lathe'}},{'o':{'type':'uri','value':'urn:test:10'}},{'o':{'type':'literal','value':'1200','datatype':'http://www.w3.org/2001/XMLSchema#integer'}},{'o':{'type':'literal','value':'2','datatype':'http://www.w3.org/2001/XMLSchema#integer'}}]}}"
+   ALONE
    \ A variable needs no null test of a column never NULL, nor of one a
    \ FILTER's `=` reads.
    s" SELECT ?s ?l WHERE { ?s rdfs:label ?l FILTER(?l = 'Lathe') }"
@@ -501,7 +523,39 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    s" SELECT ?s WHERE { ?s t:94 ?o FILTER(?o = t:601) FILTER EXISTS { ?z t:94 ?s } }"
    s" t2.id = t1.id" s" IS NOT NULL"
    s" {'head':{'vars':['s']},'results':{'bindings':[{'s':{'type':'uri','value':'urn:test:601'}}]}}"
-   SPELLED-ALONE ;
+   SPELLED-ALONE
+   \ An EXISTS's `=` with the outer row drops a kept row's earlier null
+   \ test of its column.
+   s" SELECT ?s WHERE { ?s rdfs:label ?l FILTER EXISTS { ?x a ?m . ?x a ?s } }"
+   s" kind IS NOT NULL" 0
+   s" {'head':{'vars':['s']},'results':{'bindings':[{'s':{'type':'uri','value':'urn:test:10'}},{'s':{'type':'uri','value':'urn:test:11'}}]}}"
+   ON-NODES
+   \ A kept row read twice tests its column once, and not its subject a
+   \ join's `=` reads.
+   s" SELECT ?y WHERE { ?x a ?y . ?y rdfs:label ?z . ?y rdfs:label ?w }"
+   s" IS NOT NULL" 2
+   s" {'head':{'vars':['y']},'results':{'bindings':[{'y':{'type':'uri','value':'urn:test:10'}},{'y':{'type':'uri','value':'urn:test:10'}},{'y':{'type':'uri','value':'urn:test:11'}},{'y':{'type':'uri','value':'urn:test:11'}},{'y':{'type':'uri','value':'urn:test:11'}}]}}"
+   ON-NODES
+   \ An EXISTS reading a maybe bound outer variable tests its column once.
+   s" SELECT ?s ?o WHERE { ?s rdfs:label ?l OPTIONAL { ?s t:94 ?o } FILTER EXISTS { ?o t:94 ?z } }"
+   s" t4.id IS NOT NULL" 1
+   s" {'head':{'vars':['s','o']},'results':{'bindings':[{'s':{'type':'uri','value':'urn:test:1'}},{'s':{'type':'uri','value':'urn:test:2'}},{'s':{'type':'uri','value':'urn:test:3'}},{'s':{'type':'uri','value':'urn:test:4'}},{'s':{'type':'uri','value':'urn:test:10'}},{'s':{'type':'uri','value':'urn:test:11'}},{'s':{'type':'uri','value':'urn:test:20'}},{'s':{'type':'uri','value':'urn:test:30'}},{'s':{'type':'uri','value':'urn:test:40'}},{'s':{'type':'uri','value':'urn:test:41'}},{'s':{'type':'uri','value':'urn:test:42'}},{'s':{'type':'uri','value':'urn:test:43'}}]}}"
+   SPELLED-TIMES
+   \ An outer variable in two slots on one column meets it once.
+   s" SELECT ?s WHERE { ?s t:94 ?o FILTER EXISTS { ?s t:94 ?s } }"
+   s" t2.id = t1.id" 1
+   s" {'head':{'vars':['s']},'results':{'bindings':[{'s':{'type':'uri','value':'urn:test:601'}},{'s':{'type':'uri','value':'urn:test:602'}}]}}"
+   SPELLED-TIMES
+   \ A FILTER written twice is one condition.
+   s" SELECT ?s ?w WHERE { ?s t:30 ?w FILTER(?w > 100) FILTER(?w > 100) }"
+   s" sparql.relation('>'," 1
+   s" {'head':{'vars':['s','w']},'results':{'bindings':[{'s':{'type':'uri','value':'urn:test:1'},'w':{'type':'literal','value':'1200','datatype':'http://www.w3.org/2001/XMLSchema#integer'}},{'s':{'type':'uri','value':'urn:test:2'},'w':{'type':'literal','value':'950.5','datatype':'http://www.w3.org/2001/XMLSchema#decimal'}}]}}"
+   TIMES
+   \ A volatile condition is written at each writing.
+   s" SELECT ?s WHERE { ?s t:30 ?w FILTER(RAND() < 2) FILTER(RAND() < 2) }"
+   s" sparql.rand(" 2
+   s" {'head':{'vars':['s']},'results':{'bindings':[{'s':{'type':'uri','value':'urn:test:1'}},{'s':{'type':'uri','value':'urn:test:2'}},{'s':{'type':'uri','value':'urn:test:3'}},{'s':{'type':'uri','value':'urn:test:4'}}]}}"
+   TIMES ;
 
 : SLOTS ( -- )
    s" SELECT ?l WHERE { t:1 rdfs:label ?l }"

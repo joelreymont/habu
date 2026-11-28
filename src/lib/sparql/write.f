@@ -1,18 +1,21 @@
 \ write.f - a statement's text, written from its rel into a sink. A sink
 \ counts the bytes it is given and appends them to its vector, unless that
-\ is NULL-PTR, so one writing sizes the text and the next writes it.
+\ is NULL-PTR, so one writing sizes the text and the next writes it; it
+\ absorbs them into its SipHash state, unless that is NULL-PTR.
 \ The writer takes no plan and cannot reject.
-\ REL= reads two rels' texts at once, with a cursor each: a stack of
+\ HEAD= reads two rels' texts at once, with a cursor each: a stack of
 \ frames, one per rel the cursor is inside, the innermost last, each the
 \ part of its rel reached and the bytes of it passed. It compares the
-\ shorter of the two strings the cursors stand in, then moves both past
-\ it, so it reads each byte once.
-\ STORAGE CLASS. CALLER-OWNED: the sink, its vector and REL='s cursors
-\ are the caller's.
+\ shorter of the two strings the cursors stand in, at most the bytes left
+\ to compare, then moves both past it, so it reads each byte once.
+\ STORAGE CLASS. CALLER-OWNED: the sink, its vector, its state and HEAD='s
+\ cursors are the caller's.
 
 require src/lib/allocator.f
 require src/lib/vector.f
+require src/lib/siphash.f
 require src/lib/sparql/statement.f
+require src/lib/sparql/terms.f
 
 package SPARQL
 private
@@ -20,17 +23,19 @@ private
 STRUCTURE sink DERIVE addr
    FIELD count n
    FIELD out ^VEC:vector<u8>
+   FIELD sip ^SIPHASH:state
 ;STRUCTURE
 
 : NEW-SINK ( ^ALLOC:allocator ^VEC:vector<u8> -- ^sink )
    {: al:^ out:^ :}
    al [type] sink ALLOC:NEW {: k:^ :}
-   0 k SINK-COUNT ! out k SINK-OUT ! k ;
+   0 k SINK-COUNT ! out k SINK-OUT ! NULL-PTR k SINK-SIP ! k ;
 
 : SINK+ ( ^sink str -- )
    {: k:^ s:str :}
    s STR:LEN k SINK-COUNT +!
-   k SINK-OUT @ NULL-PTR <> if s k SINK-OUT @ VEC:APPEND then ;
+   k SINK-OUT @ NULL-PTR <> if s k SINK-OUT @ VEC:APPEND then
+   k SINK-SIP @ NULL-PTR <> if k SINK-SIP @ s ABSORB$ then ;
 
 \ `WITH ` or `WITH RECURSIVE ` before the rel's first CTE, a comma
 \ before any other.
@@ -64,6 +69,12 @@ STRUCTURE sink DERIVE addr
       r p NEXT-PIECE
    repeat drop
    r OPEN? if k r OPEN$ SINK+ then ;
+
+\ Absorbs into the state the bytes WRITE-REL writes of the rel, in one
+\ stream however its text splits; only the sink is allocated.
+: ABSORB-REL ( ^ALLOC:allocator ^SIPHASH:state ^rel -- )
+   {: al:^ sip r:^ :}
+   al NULL-PTR NEW-SINK {: k:^ :} sip k SINK-SIP ! k r WRITE-REL ;
 
 \ The bytes WRITE-REL writes of the rel, counted without writing or
 \ allocating.
@@ -128,7 +139,7 @@ STRUCTURE frame DERIVE addr
    FIELD off n
 ;STRUCTURE
 
-\ REL='s two cursors, emptied at each call.
+\ HEAD='s two cursors, emptied at each call.
 STRUCTURE cursors DERIVE addr
    FIELD a ^VEC:vector<frame>
    FIELD b ^VEC:vector<frame>
@@ -213,28 +224,35 @@ STRUCTURE cursors DERIVE addr
 : PASS ( ^VEC:vector<frame> n -- )
    {: v:^ k:n :} k v INNER FRAME-OFF +! ;
 
-\ The bytes both cursors stand before in one string each, whether they
-\ are the same, and the cursors moved past them; 0 past either's end.
-: SAME-STRETCH ( ^VEC:vector<frame> ^VEC:vector<frame> -- n bool )
-   {: x:^ y:^ :}
+\ The bytes both cursors stand before in one string each, at most cap,
+\ whether they are the same, and the cursors moved past them; 0 past
+\ either's end, then the same only at cap 0.
+: SAME-STRETCH ( ^VEC:vector<frame> ^VEC:vector<frame> n -- n bool )
+   {: x:^ y:^ cap:n :}
    x LEFT$ y LEFT$ {: s:str t:str :}
-   s STR:LEN t STR:LEN min {: m:n :}
-   m 0= if 0 s STR:LEN t STR:LEN = exit then
+   s STR:LEN t STR:LEN min cap min {: m:n :}
+   m 0= if 0 cap 0= exit then
    x m PASS y m PASS
    m s m STR-TAKE t m STR-TAKE STR:= ;
+
+\ Whether b, n bytes long, writes the first n bytes of a.
+: HEAD= ( ^cursors ^rel n ^rel -- bool )
+   {: cs:^ a:^ k:n b:^ :}
+   cs CURSORS-A @ {: x:^ :} cs CURSORS-B @ {: y:^ :}
+   x 0 VEC:RESIZE x a ENTER-REL
+   y 0 VEC:RESIZE y b ENTER-REL
+   k begin dup 0<> while
+      {: left:n :} x y left SAME-STRETCH {: m:n same:bool :}
+      same 0= if false exit then
+      left m -
+   repeat drop true ;
 
 \ Whether the rels write one text.
 : REL= ( ^cursors ^rel ^rel -- bool )
    {: cs:^ a:^ b:^ :}
    a b = if true exit then
-   a SQL-LEN b SQL-LEN <> if false exit then
-   cs CURSORS-A @ {: x:^ :} cs CURSORS-B @ {: y:^ :}
-   x 0 VEC:RESIZE x a ENTER-REL
-   y 0 VEC:RESIZE y b ENTER-REL
-   begin
-      x y SAME-STRETCH {: m:n same:bool :}
-      same 0= if false exit then
-      m 0=
-   until true ;
+   a SQL-LEN {: k:n :}
+   k b SQL-LEN <> if false exit then
+   cs a k b HEAD= ;
 
 ;package
