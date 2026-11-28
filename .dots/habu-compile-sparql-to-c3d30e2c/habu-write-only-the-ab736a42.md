@@ -6,4 +6,4 @@ issue-type: task
 created-at: "2026-11-26T23:27:29.333731+01:00"
 ---
 
-Problem: every derived table, UNION ALL branch and CTE body of a compiled statement carries every bound variable's columns, read or not, so PostgreSQL materializes wider rows (design /tmp/carl-sparql/design-tree.md, READS). Acceptance: a column no reachable expression reads is not written, except under DISTINCT, UNION, GROUP BY or a read with *; every SPARQL test answers as before; EXPLAIN of the seq-16 shape shows narrower CTE rows. Depends: none.
+Problem: a CTE PostgreSQL materializes (one read twice, a BY-BRANCH CTE, a walk's recursive CTE) carries every bound variable's columns, read or not, so PostgreSQL computes and stores values no reader reads: a walk's rest CTE carries `v0 = t1.s` unread. Acceptance: such a CTE writes no column its readers do not read; every SPARQL test answers as before; EXPLAIN (VERBOSE) of a walk query shows no CTE Scan or WorkTable Scan output that no parent reads. Depends: none.

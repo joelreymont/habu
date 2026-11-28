@@ -6,4 +6,4 @@ issue-type: task
 created-at: "2026-11-26T23:27:29.321492+01:00"
 ---
 
-Problem: the compiled statement keeps conditions the compiler already knows: a boolean identity with a static operand, a comparison of two known untyped terms, a WHERE that is statically false, a duplicate conjunct, and in a walk's node test a disjunct another EXISTS over the same source implies. They cost statement bytes, compile memory and PostgreSQL's planning (design /tmp/carl-sparql/design-tree.md, FOLD). Acceptance: each listed condition is folded where the tree is built; every SPARQL test answers as before; no measured shape's statement grows. Depends: none.
+Problem: a walk's node test (NEW-NODE-TEST, src/lib/sparql/emit.f) writes two EXISTS per source of the active graph, and an EXISTS whose conditions another EXISTS of the test implies adds only planning: on store-a 21 of the node test's 70. Acceptance: a node test holds no EXISTS another of its EXISTS implies; every SPARQL test answers as before; no measured shape's statement grows. Depends: none.
