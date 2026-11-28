@@ -158,6 +158,12 @@
 \ first step an with the seed when the seeds' form is of that root, or
 \ with the root's `in` of a given term only those columns may hold.
 \
+\ A materialized CTE, a walk's rest, those of a union joined branch by
+\ branch and an evaluated BIND's or SELECT expression's, writes only the
+\ bindings read after it, decided from the items built and the syntax
+\ still ahead; an evaluated variable nothing reads and no substitution
+\ meets has no CTE.
+\
 \ A query that GROUP BY or an aggregate groups reads its groups, a derived
 \ table grouped on its keys' anchors, native where native, whose columns
 \ hold the aggregates and whose HAVING holds its conditions. SUM, AVG,
@@ -309,6 +315,35 @@ STRUCTURE item DERIVE addr
    \ An OPTIONAL's or MINUS's group's WHERE when the group joins as it is,
    \ else NULL-PTR.
    FIELD where ^rel
+   FIELD folded bool  \ its step has joined it to the group's relation
+;STRUCTURE
+
+\ What a level stands for: a group, or a marker around the compile of a
+\ MINUS's group, an EXISTS's, a walk's steps or a query's solutions.
+ENUM edge group minus exists steps select ;ENUM
+
+\ A pattern enclosing the one compiling. A marker's items and filters
+\ are NULL-PTR.
+STRUCTURE level DERIVE addr
+   FIELD kind edge
+   \ The group; a marker's MINUS, EXISTS call, steps' triple or query.
+   FIELD node n
+   \ The group's list cell ITEMS compiles, a query's projection cell
+   \ EXTEND compiles, else 0.
+   FIELD cell n
+   FIELD object n  \ the object OBJECTS-ITEMS compiles, else 0
+   \ A joined nested group's are its enclosing group's.
+   FIELD items ^VEC:vector<item>
+   FIELD filters ^VEC:vector<n>
+;STRUCTURE
+
+\ What a CTE point reads after it: by syntax number the depth of the
+\ frame reading a name, 0 for none; by variable whether a `_:` name is.
+STRUCTURE marks DERIVE addr
+   FIELD names ^u8
+   FIELD blanks ^u8
+   FIELD depth n  \ the frame NEEDED marks; at the end, the CTE point's
+   FIELD all bool  \ that frame reads every variable
 ;STRUCTURE
 
 \ An IRI a joined triple puts in the row `row` reads by a unique
@@ -372,6 +407,10 @@ STRUCTURE walk DERIVE addr
    FIELD operand n
    FIELD name str
    FIELD pairs ^rel  \ the steps' table
+   FIELD steps ^relation  \ the steps' relation, NULL-PTR when empty
+   FIELD a n  \ the variable of the steps' first end
+   FIELD b n  \ the variable of the steps' second end
+   FIELD body ^rel  \ the steps' query, which pairs reads or names
    FIELD once bool  \ pairs is a CTE
    FIELD start n  \ the form of the steps' first end
    FIELD end n  \ the form of the steps' second end
@@ -420,6 +459,9 @@ STRUCTURE plan DERIVE addr
    FIELD column ^binding
    FIELD fresh ^VEC:vector<n>  \ the variables EXPAND joins `x/y` on
    FIELD cursors ^cursors
+   \ The patterns enclosing the one compiling, outermost first.
+   FIELD levels ^VEC:vector<level>
+   FIELD marks ^marks  \ in the work arena until the CTE point cuts it
 ;STRUCTURE
 
 defer SQL-EXPRESSION ( ^plan n -- )
@@ -438,6 +480,20 @@ defer EXISTS-SQL ( ^plan n -- )
 : AL ( ^plan -- ^ALLOC:allocator ) TREE SYNTAX-ARENA @ ARENA:ALLOCATOR ;
 
 : WORK-ARENA ( ^plan -- ^ARENA:arena ) TREE SYNTAX-WORK @ ;
+
+\ A pushed level stays until the word that pushed it pops it.
+: PUSH-LEVEL ( ^plan edge n ^VEC:vector<item> ^VEC:vector<n> -- )
+   {: plan kind:edge node:n items:^ filters:^ :}
+   plan PLAN-LEVELS @ VEC:PUSH {: l:^ :}
+   kind l LEVEL-KIND ! node l LEVEL-NODE !
+   items l LEVEL-ITEMS ! filters l LEVEL-FILTERS ! ;
+
+: POP-LEVEL ( ^plan -- )
+   PLAN-LEVELS @ dup VEC:COUNT 1- VEC:RESIZE ;
+
+\ Valid until the next push.
+: TOP-LEVEL ( ^plan -- ^level )
+   PLAN-LEVELS @ dup VEC:COUNT 1- VEC:AT ;
 
 \ A record made here is read only until the word that asked for it
 \ returns; that word, or one around it, cuts the work arena back.
@@ -3383,7 +3439,9 @@ STRUCTURE pruning DERIVE addr
 
 : MINUS-ITEM ( ^plan ^VEC:vector<item> n -- )
    {: plan items:^ node:n :}
+   plan EDGE-MINUS node NULL-PTR NULL-PTR PUSH-LEVEL
    plan plan TREE node NODE-A@ items CLOSED {: r:^ :}
+   plan POP-LEVEL
    r RELATION-EMPTY @ if exit then
    plan items r N-MINUS AS-IS-ITEM drop ;
 
@@ -3561,9 +3619,12 @@ STRUCTURE pruning DERIVE addr
    {: plan items:^ run:n :}
    plan TREE {: state :}
    state run NODE-A@ state run NODE-B@ {: s:n p:n :}
-   plan items plan run s p state run NODE-C@ TRIPLE-NODE PATTERN-ITEM
+   state run NODE-C@ {: first:n :}
+   first plan TOP-LEVEL LEVEL-OBJECT !
+   plan items plan run s p first TRIPLE-NODE PATTERN-ITEM
    state run NODE-D@ begin dup 0<> while
       {: cell:n :} state cell NODE-A@ {: o:n :}
+      o plan TOP-LEVEL LEVEL-OBJECT !
       plan items plan cell s p o TRIPLE-NODE PATTERN-ITEM
       state cell NODE-B@
    repeat drop ;
@@ -3622,12 +3683,16 @@ STRUCTURE pruning DERIVE addr
    plan PLAN-GRAPH @ {: outer:str :}
    state group NODE-A@ begin dup 0<> while
       {: list:n :} state list NODE-A@ {: node:n :}
+      list plan TOP-LEVEL LEVEL-CELL !
       state node NODE-K case
          N-TRIPLE of plan items node PATTERN-ITEM endof
          N-OBJECTS of plan items node OBJECTS-ITEMS endof
          N-COLLECTION of plan items node COLLECTION-ITEMS endof
          N-GROUP of
-            state node JOINED? if plan node items filters RECURSE
+            state node JOINED? if
+               plan EDGE-GROUP node items filters PUSH-LEVEL
+               plan node items filters RECURSE
+               plan POP-LEVEL
             else plan items plan node items CLOSED GROUP-ITEM then
          endof
          N-UNION of plan items node UNION-ITEM endof
@@ -3637,7 +3702,10 @@ STRUCTURE pruning DERIVE addr
             plan node JOINED-GRAPH {: k:n :}
             k 0< if plan items node GRAPH-ITEM else
                plan k SOURCE@ SOURCE-GRAPH @ plan PLAN-GRAPH !
-               plan state node NODE-B@ items filters RECURSE
+               state node NODE-B@ {: inner:n :}
+               plan EDGE-GROUP inner items filters PUSH-LEVEL
+               plan inner items filters RECURSE
+               plan POP-LEVEL
                outer plan PLAN-GRAPH !
             then
          endof
@@ -3690,6 +3758,431 @@ STRUCTURE pruning DERIVE addr
    filters VEC:COUNT 0 ?do
       plan scope filters i VEC:AT @ where false +FILTER
    loop ;
+
+\ Node n's children, 0 for none: three walked on their own, then the one the
+\ walk goes on to: a list's tail, else a chain's long side, child a.
+: NODE-PARTS ( ^syntax n -- n n n n )
+   {: state node:n :}
+   state node NODE-K {: kind:n :}
+   kind N-IRI >= kind N-UNDEF <= and if 0 0 0 0 exit then
+   state node NODE-A@ state node NODE-B@ {: a:n b:n :}
+   state node NODE-C@ state node NODE-D@ {: c:n d:n :}
+   kind N-LIST = if a c d b exit then
+   kind N-SELECT = if b state node QUERY-VALUES@ d a exit then
+   b c d a ;
+
+\ Marks for a CTE point in the work arena, the outermost frame depth 1.
+: NEW-MARKS ( ^plan -- )
+   {: plan :}
+   plan WORK-AL {: al:^ :}
+   al [type] marks ALLOC:NEW {: m:^ :}
+   al plan TREE VAR-COUNT 1+ ALLOC:BYTES drop m MARKS-NAMES !
+   al plan PLAN-VARIABLES @ VEC:COUNT ALLOC:BYTES drop m MARKS-BLANKS !
+   1 m MARKS-DEPTH ! false m MARKS-ALL !
+   m plan PLAN-MARKS ! ;
+
+: +NUMBER-READ ( ^plan n -- )
+   {: plan k:n :}
+   plan PLAN-MARKS @ {: m:^ :}
+   m MARKS-DEPTH @ m MARKS-NAMES @ k + c! ;
+
+: +BLANK-READ ( ^plan n -- )
+   {: plan var:n :} 1 plan PLAN-MARKS @ MARKS-BLANKS @ var + c! ;
+
+: BLANK-VAR? ( ^plan n -- bool )
+   {: plan var:n :}
+   plan PLAN-VARIABLES @ var VEC:AT NAME-TEXT @ s" _:" STR:STARTS-WITH? ;
+
+\ The syntax number of a variable's name.
+: NAME-NUMBER ( ^plan n -- n )
+   {: plan var:n :}
+   plan PLAN-VARIABLES @ var VEC:AT NAME-TEXT @ {: text:str :}
+   plan TREE dup N-VAR text FIRST-NAME NODE-VALUE@ ;
+
+: +VAR-READ ( ^plan n -- )
+   {: plan var:n :}
+   plan var BLANK-VAR? if plan var +BLANK-READ exit then
+   plan plan var NAME-NUMBER +NUMBER-READ ;
+
+\ Whether the name is the blank node's as VAR-NAME writes it, which
+\ copies it into the syntax arena.
+: BLANK-NAME? ( ^syntax n str -- bool )
+   {: state node:n name:str :}
+   state node NODE-FLAGS@ F-GENERATED and 0<> if
+      s" _:#" state node NODE-VALUE@ FMT:INT$
+   else s" _:" state node TEXT$ then {: head:str tail:str :}
+   name STR:LEN head STR:LEN tail STR:LEN + =
+   name head STR:STARTS-WITH? and name tail STR:ENDS-WITH? and ;
+
+\ The variable of the blank node in the frame compiling, or -1.
+: FIND-BLANK ( ^plan n -- n )
+   {: plan node:n :}
+   plan PLAN-VARIABLES @ {: vars:^ :}
+   vars VEC:COUNT 0 ?do
+      vars i VEC:AT {: v:^ :}
+      v NAME-FRAME @ plan PLAN-FRAME @ = if
+         plan TREE node v NAME-TEXT @ BLANK-NAME? if i unloop exit then
+      then
+   loop -1 ;
+
+\ Marks a variable or blank node read; another term reads nothing.
+: +TERM-READ ( ^plan n -- )
+   {: plan node:n :}
+   plan TREE node NODE-K {: kind:n :}
+   kind N-VAR = if plan plan TREE node NODE-VALUE@ +NUMBER-READ exit then
+   kind N-BNODE <> if exit then
+   plan node FIND-BLANK {: var:n :}
+   var -1 > if plan var +BLANK-READ then ;
+
+\ Whether node n is COUNT(DISTINCT *), which reads every variable.
+: ALL-COUNTED? ( ^syntax n -- bool )
+   {: state node:n :}
+   state node NODE-K N-CALL <> if false exit then
+   state node NODE-FLAGS@ {: flags:n :}
+   flags F-STAR and 0<> flags F-DISTINCT and 0<> and ;
+
+: +NAMES-READ ( ^plan n -- )
+   {: plan query:n :}
+   plan TREE {: state :}
+   state query QUERY-NAMES begin dup 0<> while
+      {: list:n :} plan state list NODE-A@ +TERM-READ
+      state list NODE-B@
+   repeat drop ;
+
+\ Marks each variable at or below node n read, an EXISTS's group's too,
+\ but of a subquery only its names and of an alias only its expression.
+: +NODE-READS ( ^plan n -- )
+   {: plan top:n :}
+   plan TREE {: state :}
+   top begin dup 0<> while
+      {: node:n :}
+      plan node +TERM-READ
+      state node ALL-COUNTED? if true plan PLAN-MARKS @ MARKS-ALL ! then
+      state node NODE-K {: kind:n :}
+      kind N-SELECT = if plan node +NAMES-READ then
+      state node NODE-PARTS {: one:n two:n three:n next:n :}
+      kind N-SELECT = if 0 else
+         kind N-ALIAS <> if plan one RECURSE then
+         plan two RECURSE plan three RECURSE next
+      then
+   repeat drop ;
+
+\ Marks the variables pattern n binds that the bindings around it meet;
+\ MINUS and FILTER bind none.
+: +SCOPE-READS ( ^plan n -- )
+   {: plan part:n :}
+   plan TREE {: state :}
+   state part NODE-K case
+      N-GROUP of
+         state part NODE-A@ begin dup 0<> while
+            {: list:n :} plan state list NODE-A@ RECURSE
+            state list NODE-B@
+         repeat drop
+      endof
+      N-UNION of
+         plan state part NODE-A@ RECURSE plan state part NODE-B@ RECURSE
+      endof
+      N-OPTIONAL of plan state part NODE-A@ RECURSE endof
+      N-GRAPH of
+         plan state part NODE-A@ +TERM-READ
+         plan state part NODE-B@ RECURSE
+      endof
+      N-BIND of plan state part NODE-B@ +TERM-READ endof
+      N-SELECT of plan part +NAMES-READ endof
+      N-MINUS of endof
+      N-FILTER of endof
+      \ A triple, an object list, a collection or a VALUES.
+      plan part +NODE-READS
+   endcase ;
+
+: +GROUP-FILTER-READS ( ^plan n -- )
+   {: plan group:n :}
+   plan TREE {: state :}
+   state group NODE-A@ begin dup 0<> while
+      {: list:n :} state list NODE-A@ {: part:n :}
+      state part NODE-K N-FILTER = if plan part +NODE-READS then
+      state list NODE-B@
+   repeat drop ;
+
+\ Marks what a part after the one compiling reads of it.
+: +PART-READS ( ^plan n -- )
+   {: plan part:n :}
+   plan TREE {: state :}
+   state part NODE-K case
+      N-OPTIONAL of
+         plan part +SCOPE-READS
+         plan state part NODE-A@ +GROUP-FILTER-READS
+      endof
+      N-MINUS of plan state part NODE-A@ +SCOPE-READS endof
+      N-BIND of plan state part NODE-A@ +NODE-READS endof
+      N-FILTER of plan part +NODE-READS endof
+      plan part +SCOPE-READS
+   endcase ;
+
+: +FILTER-READS ( ^plan ^VEC:vector<n> -- )
+   {: plan fs:^ :}
+   fs LEN 0 ?do plan fs i VEC:AT @ +NODE-READS loop ;
+
+: +COLUMN-READS ( ^plan ^VEC:vector<binding> -- )
+   {: plan cols:^ :}
+   cols LEN 0 ?do plan cols i VEC:AT BINDING-VAR @ +VAR-READ loop ;
+
+: +ENDS-READ ( ^plan n -- )
+   {: plan triple:n :}
+   plan TREE {: state :}
+   plan state triple NODE-A@ +TERM-READ
+   plan state triple NODE-C@ +TERM-READ ;
+
+\ Marks what the item reads as it folds: a walk's ends, a BIND's
+\ expression, else its columns and an OPTIONAL's FILTERs.
+: +ITEM-READS ( ^plan ^item -- )
+   {: plan it:^ :}
+   it ITEM-MODE @ {: mode:n :}
+   mode N-PATH = if plan it ITEM-NODE @ +ENDS-READ exit then
+   mode N-BIND = if
+      plan plan TREE it ITEM-NODE @ NODE-A@ +NODE-READS exit
+   then
+   plan it ITEM-COLUMNS @ +COLUMN-READS
+   mode N-OPTIONAL = if plan it ITEM-FILTERS @ +FILTER-READS then ;
+
+\ Marks what an item built around the pattern compiling reads of it: an
+\ OPTIONAL's columns, a BIND's variable, a MINUS nothing, else as folding.
+: +BUILT-READS ( ^plan ^item -- )
+   {: plan it:^ :}
+   it ITEM-MODE @ {: mode:n :}
+   mode N-MINUS = if exit then
+   mode N-BIND = if
+      plan plan TREE it ITEM-NODE @ NODE-B@ +TERM-READ exit
+   then
+   mode N-OPTIONAL = if plan it ITEM-COLUMNS @ +COLUMN-READS exit then
+   plan it +ITEM-READS ;
+
+: +ITEMS-BUILT ( ^plan ^level -- )
+   {: plan l:^ :}
+   l LEVEL-ITEMS @ {: items:^ :}
+   items LEN 0 ?do plan items i VEC:AT +BUILT-READS loop ;
+
+\ Whether nodes s and o are one variable.
+: SAME-ENDS? ( ^plan n n -- bool )
+   {: plan s:n o:n :}
+   plan TREE {: state :}
+   state s NODE-K state o NODE-K <> if false exit then
+   state o NODE-K N-VAR = if
+      state s NODE-VALUE@ state o NODE-VALUE@ = exit
+   then
+   state o NODE-K N-BNODE <> if false exit then
+   plan s FIND-BLANK {: k:n :}
+   k -1 > k plan o FIND-BLANK = and ;
+
+\ Marks object o of a path triple or object list when it is the subject.
+: +PATH-AHEAD ( ^plan n n -- )
+   {: plan part:n o:n :}
+   plan TREE {: state :}
+   state state part NODE-B@ NODE-K N-PATH <> if exit then
+   plan state part NODE-A@ o SAME-ENDS? if plan o +TERM-READ then ;
+
+\ Marks the subject and the objects after object o of an object list,
+\ which its later triples read, while one remains.
+: +OBJECTS-AHEAD ( ^plan n n -- )
+   {: plan run:n object:n :}
+   plan TREE {: state :}
+   state run NODE-A@ {: s:n :}
+   state run NODE-C@ object =
+   state run NODE-D@ begin dup 0<> while
+      {: seen:bool cell:n :} state cell NODE-A@ {: o:n :}
+      seen if plan o +TERM-READ plan s +TERM-READ then
+      seen o object = or state cell NODE-B@
+   repeat 2drop ;
+
+\ Marks the later reads of the part a level compiles: an object list's,
+\ a path triple's object that is its subject, a GRAPH's g.
+: +PART-AHEAD ( ^plan ^level -- )
+   {: plan l:^ :}
+   plan TREE {: state :}
+   state l LEVEL-CELL @ NODE-A@ {: part:n :}
+   state part NODE-K {: kind:n :}
+   kind N-GRAPH = if plan state part NODE-A@ +TERM-READ exit then
+   kind N-TRIPLE = if plan part state part NODE-C@ +PATH-AHEAD exit then
+   kind N-OBJECTS <> if exit then
+   l LEVEL-OBJECT @ {: o:n :}
+   plan part o +OBJECTS-AHEAD plan part o +PATH-AHEAD ;
+
+: +PARTS-AFTER ( ^plan ^level -- )
+   {: plan l:^ :}
+   plan TREE {: state :}
+   state l LEVEL-CELL @ NODE-B@ begin dup 0<> while
+      {: list:n :} plan state list NODE-A@ +PART-READS
+      state list NODE-B@
+   repeat drop ;
+
+\ Marks what a group around the pattern compiling reads of it.
+: +AROUND-READS ( ^plan ^level -- )
+   {: plan l:^ :}
+   plan l +ITEMS-BUILT
+   plan l LEVEL-FILTERS @ +FILTER-READS
+   plan l +PARTS-AFTER plan l +PART-AHEAD ;
+
+\ Marks what the folding group reads after item it: its items neither
+\ folded nor it, and its pending FILTERs.
+: +FOLD-READS ( ^plan ^level ^item -- )
+   {: plan l:^ it:^ :}
+   l LEVEL-ITEMS @ {: items:^ :}
+   items VEC:COUNT 0 ?do
+      items i VEC:AT {: x:^ :}
+      x ITEM-FOLDED @ 0= x it <> and if plan x +ITEM-READS then
+   loop
+   plan l LEVEL-FILTERS @ +FILTER-READS ;
+
+: +PROJECTION-READS ( ^plan n -- )
+   {: plan list:n :}
+   plan TREE {: state :}
+   list begin dup 0<> while
+      {: cell:n :} state cell NODE-A@ {: e:n :}
+      state e NODE-K N-ALIAS = if plan e +NODE-READS then
+      state cell NODE-B@
+   repeat drop ;
+
+\ Marks what the query's modifiers read: ORDER BY's, and unless only
+\ that, GROUP BY's and HAVING's.
+: +MODIFIER-READS ( ^plan n bool -- )
+   {: plan query:n every:bool :}
+   plan TREE {: state :}
+   state query NODE-D@ begin dup 0<> while
+      {: list:n :} state list NODE-A@ {: m:n :}
+      state m NODE-K {: k:n :}
+      k N-GROUPBY = k N-HAVING = or {: grouping:bool :}
+      k N-LIMIT = k N-OFFSET = or {: slice:bool :}
+      grouping every and grouping slice or 0= or if
+         plan m +NODE-READS
+      then state list NODE-B@
+   repeat drop ;
+
+\ Marks what a query reads after the pattern compiling: its expressions,
+\ modifiers and trailing VALUES, or at a projection the later ones and ORDER BY.
+: +QUERY-READS ( ^plan ^level -- )
+   {: plan l:^ :}
+   plan TREE {: state :}
+   l LEVEL-NODE @ {: query:n :}
+   l LEVEL-CELL @ {: cell:n :}
+   cell 0= if
+      plan state query NODE-A@ +PROJECTION-READS
+      plan query true +MODIFIER-READS
+      plan state query QUERY-VALUES@ +NODE-READS exit
+   then
+   plan state cell NODE-B@ +PROJECTION-READS
+   plan query false +MODIFIER-READS ;
+
+\ Enters a subquery's frame: each projected name read outside is read
+\ inside, every one with DISTINCT; then the query's own reads.
+: +SUBQUERY-READS ( ^plan ^level -- )
+   {: plan l:^ :}
+   plan TREE {: state :}
+   plan PLAN-MARKS @ {: m:^ :}
+   l LEVEL-NODE @ {: query:n :}
+   m MARKS-DEPTH @ {: d:n :} m MARKS-ALL @ {: all:bool :}
+   d 1+ m MARKS-DEPTH ! false m MARKS-ALL !
+   state query QUERY-NAMES begin dup 0<> while
+      {: list:n :} state state list NODE-A@ NODE-VALUE@ {: k:n :}
+      m MARKS-NAMES @ k + c@ d = all or if plan k +NUMBER-READ then
+      state list NODE-B@
+   repeat drop
+   state query NODE-FLAGS@ F-DISTINCT and 0<> if
+      plan query +NAMES-READ
+   then plan l +QUERY-READS ;
+
+\ Whether the reads of a level of the kind stop the scan for those
+\ around it: a marker of what a CTE point there has already met.
+: STOP? ( edge -- bool )
+   MATCH edge
+      group OF false ENDOF
+      minus OF true ENDOF
+      exists OF true ENDOF
+      steps OF true ENDOF
+      select OF false ENDOF
+   ;MATCH ;
+
+\ The level the scan stops at: the innermost STOP? one, else the
+\ outermost.
+: STOP-LEVEL ( ^plan -- n )
+   PLAN-LEVELS @ {: ls:^ :}
+   ls VEC:COUNT 1- begin
+      dup 0 > if dup ls swap VEC:AT LEVEL-KIND @ STOP? 0= else false then
+   while 1- repeat ;
+
+\ Marks what the scan's last level reads: a walk's steps their ends, a
+\ MINUS the items built before it, the statement its query's reads.
+: +LOW-READS ( ^plan n -- )
+   {: plan low:n :}
+   plan PLAN-LEVELS @ {: ls:^ :}
+   ls low VEC:AT {: l:^ :}
+   l LEVEL-KIND @ MATCH edge
+      group OF ENDOF
+      minus OF plan ls low 1- VEC:AT +ITEMS-BUILT ENDOF
+      exists OF ENDOF
+      steps OF plan l LEVEL-NODE @ +ENDS-READ ENDOF
+      select OF
+         plan l LEVEL-NODE @ +NAMES-READ plan l +QUERY-READS
+      ENDOF
+   ;MATCH ;
+
+\ Marks what a level above the scan's last reads, the innermost folding.
+: +LEVEL-READS ( ^plan ^level bool ^item -- )
+   {: plan l:^ inner:bool it:^ :}
+   l LEVEL-KIND @ MATCH edge
+      group OF
+         inner if plan l it +FOLD-READS else plan l +AROUND-READS then
+      ENDOF
+      minus OF ENDOF
+      exists OF ENDOF
+      steps OF ENDOF
+      select OF plan l +SUBQUERY-READS ENDOF
+   ;MATCH ;
+
+\ Marks what is read once the item, NULL-PTR for an Extend step, has
+\ folded: the levels down to the scan's last, outermost first.
+: NEEDED ( ^plan ^item -- )
+   {: plan it:^ :}
+   plan NEW-MARKS
+   plan STOP-LEVEL {: low:n :}
+   plan PLAN-LEVELS @ {: ls:^ :}
+   ls VEC:COUNT 1- {: top:n :}
+   plan low +LOW-READS
+   top 1+ low 1+ ?do plan ls i VEC:AT i top = it +LEVEL-READS loop ;
+
+\ Whether the variable is read after the CTE point NEEDED marked; a
+\ fresh one is until SETTLED drops it.
+: LIVE? ( ^plan n -- bool )
+   {: plan var:n :}
+   plan PLAN-FRESH @ var INDEXED? if true exit then
+   plan PLAN-MARKS @ {: m:^ :}
+   plan var BLANK-VAR? if m MARKS-BLANKS @ var + c@ 0<> exit then
+   m MARKS-ALL @ if true exit then
+   m MARKS-NAMES @ plan var NAME-NUMBER + c@ m MARKS-DEPTH @ = ;
+
+: DROP-DEAD ( ^plan ^relation -- )
+   {: plan r:^ :}
+   r RELATION-BINDINGS @ {: bs:^ :}
+   INDEXES bs VEC:COUNT 0 ?do
+      bs i VEC:AT BINDING-VAR @ {: var:n :}
+      plan var LIVE? 0= if plan swap var +WORK-INDEX then
+   loop r swap FORGET-ALL ;
+
+\ r drops the bindings unread once item it, which reads them, has folded.
+: DROP-BEFORE ( ^plan ^item ^relation -- )
+   {: plan it:^ r:^ :}
+   plan WORK-ARENA {: work:^ :}
+   work ARENA:MARK {: mark:n :}
+   plan it NEEDED plan it +ITEM-READS plan r DROP-DEAD
+   work mark ARENA:CUT ;
+
+\ Each relation drops the bindings unread once item it has folded.
+: DROP-AFTER ( ^plan ^item ^VEC:vector<relation> -- )
+   {: plan it:^ rs:^ :}
+   plan WORK-ARENA {: work:^ :}
+   work ARENA:MARK {: mark:n :}
+   plan it NEEDED
+   rs VEC:COUNT 0 ?do plan rs i VEC:AT DROP-DEAD loop
+   work mark ARENA:CUT ;
 
 \ Whether the scope binds always a variable branch b binds always.
 : ANCHORED? ( ^VEC:vector<binding> ^relation -- bool )
@@ -3757,6 +4250,7 @@ STRUCTURE pruning DERIVE addr
 \ into it.
 : BY-BRANCH ( ^plan ^item ^relation -- )
    {: plan it:^ r:^ :}
+   plan it r DROP-BEFORE
    plan NEW-SQL {: t:^ :}
    t s" (" +TEXT plan t r s" row_number() OVER ()" +NUMBERED t s" )" +TEXT
    r RELATION-BINDINGS @ {: cols:^ :}
@@ -3771,6 +4265,7 @@ STRUCTURE pruning DERIVE addr
    loop
    plan name met cols UNMET {: un:^ :}
    plan arms un +RELATION
+   plan it arms DROP-AFTER
    plan arms COLUMNS {: ucols:^ :}
    plan NEW-SQL {: mb:^ :}
    mb s" (" +TEXT
@@ -3992,18 +4487,6 @@ STRUCTURE pruning DERIVE addr
    v s" (" +SQL v x +REL v s" )" +SQL
    r RELATION-BINDINGS @ var GENERIC v s" " BIND ;
 
-\ Node n's children, 0 for none: three walked on their own, then the one the
-\ walk goes on to: a list's tail, else a chain's long side, child a.
-: NODE-PARTS ( ^syntax n -- n n n n )
-   {: state node:n :}
-   state node NODE-K {: kind:n :}
-   kind N-IRI >= kind N-UNDEF <= and if 0 0 0 0 exit then
-   state node NODE-A@ state node NODE-B@ {: a:n b:n :}
-   state node NODE-C@ state node NODE-D@ {: c:n d:n :}
-   kind N-LIST = if a c d b exit then
-   kind N-SELECT = if b state node QUERY-VALUES@ d a exit then
-   b c d a ;
-
 \ Whether node n or a node below it, an EXISTS's group's included, calls
 \ RAND, UUID or STRUUID, which give a new value at each call.
 : VOLATILE? ( ^syntax n -- bool )
@@ -4033,6 +4516,19 @@ STRUCTURE pruning DERIVE addr
    bs VEC:COUNT 0 ?do 0 bs i VEC:AT BINDING-SQL @ REL-COPIES ! loop
    from plan NEW-SQL bs r INIT-RELATION ;
 
+\ +EVALUATED of r's bindings read after item it (NULL-PTR: an Extend step);
+\ false, binding nothing, when neither a later reader nor the substitution does.
+: +LIVE-EVALUATED ( ^plan ^item ^relation n ^rel -- bool )
+   {: plan it:^ r:^ var:n x:^ :}
+   plan WORK-ARENA {: work:^ :}
+   work ARENA:MARK {: mark:n :}
+   plan it NEEDED
+   plan var LIVE? plan PLAN-OUTER @ var LOOKUP NULL-PTR <> or
+   {: kept:bool :}
+   kept if plan r DROP-DEAD then
+   work mark ARENA:CUT
+   kept if plan r var x +EVALUATED then kept ;
+
 \ Whether each variable at or below node n is one r binds always.
 : ALL-BOUND? ( ^plan ^relation n -- bool )
    {: plan r:^ top:n :}
@@ -4060,16 +4556,17 @@ STRUCTURE pruning DERIVE addr
       else f over filters swap VEC:AT ! 1+ then
    loop filters swap VEC:RESIZE ;
 
-\ Binds ?x of `(e AS ?x)` or BIND(e AS ?x) in r, applying the group's
-\ filters it can before an evaluated one.
-: +ALIAS ( ^plan ^relation n ^VEC:vector<n> -- )
-   {: plan r:^ e:n filters:^ :}
+\ Binds ?x of `(e AS ?x)` or BIND(e AS ?x), item it, in r, applying the
+\ group's filters it can before an evaluated one.
+: +ALIAS ( ^plan ^item ^relation n ^VEC:vector<n> -- )
+   {: plan it:^ r:^ e:n filters:^ :}
    plan TREE {: state :}
    plan state e NODE-B@ VAR {: var:n :}
    state e NODE-A@ {: value:n :}
    plan r value EXPRESSION-SQL {: x:^ :}
    state value VOLATILE? x SQL-LEN x COPIES + MOST-COPIED > or if
-      plan r filters +EARLY-FILTERS plan r var x +EVALUATED
+      plan r filters +EARLY-FILTERS
+      plan it r var x +LIVE-EVALUATED 0= if exit then
    else plan r var x +COPIED then
    r RELATION-BINDINGS @ LAST {: b:^ :}
    plan r value SURE? b BINDING-ALWAYS !
@@ -4081,7 +4578,7 @@ STRUCTURE pruning DERIVE addr
    mode N-OPTIONAL = if plan it r OPTIONAL-STEP exit then
    mode N-MINUS = if plan it r MINUS-STEP exit then
    mode N-BIND = if
-      plan r it ITEM-NODE @ filters +ALIAS
+      plan it r it ITEM-NODE @ filters +ALIAS
       true r RELATION-BIND ! exit
    then
    plan it r JOIN-STEP ;
@@ -4272,30 +4769,21 @@ STRUCTURE pruning DERIVE addr
    g BINDING-SHAPE @ KNOWN <> if exit then
    plan end var g BINDING-TERM @ r ALL-HELD? w WALK-HELD ! ;
 
-\ Appends `SELECT a, b[, an]` and r's FROM and WHERE: r's steps from
-\ variable x to y.
-: +PAIRS ( ^plan ^walk ^rel ^relation n n -- )
-   {: plan w:^ v:^ r:^ x:n y:n :}
-   r RELATION-BINDINGS @ {: bs:^ :}
-   v s" SELECT " +SQL plan v bs x w WALK-START @ s" a," +PAIR
-   plan v bs y w WALK-END @ s" b" +PAIR
-   w WALK-ROOTED @ if
-      v s" ," +SQL v plan w WALK-END @ x r REL-AN +REL
-      v s"  AS an" +SQL
-   then v r +FROM-WHERE ;
-
-\ The walk's steps `(SELECT a, b[, an] ...)`, fresh a to b, b to a when
-\ inverse; an is a's columns of native b's root, each union branch its own.
+\ The walk's steps, fresh a to b, b to a when inverse: their relation,
+\ their ends' forms and whether they hold an; WRITE-STEPS writes them.
 : STEPS ( ^plan ^walk -- )
    {: plan w:^ :}
    plan TREE {: state :}
    state ANONYMOUS {: a:n :} state ANONYMOUS {: b:n :}
    w WALK-INVERSE @ if b a else a b then {: x:n y:n :}
-   plan plan w WALK-NODE @ x w WALK-OPERAND @ y TRIPLE-NODE GROUP-NODE
-      {: g:n :}
+   plan w WALK-NODE @ x w WALK-OPERAND @ y TRIPLE-NODE {: t:n :}
+   plan t GROUP-NODE {: g:n :}
+   plan EDGE-STEPS t NULL-PTR NULL-PTR PUSH-LEVEL
    plan g NULL-PTR CLOSED {: rp:^ :}
+   plan POP-LEVEL
    rp RELATION-EMPTY @ if
       GENERIC w WALK-START ! GENERIC w WALK-END !
+      NULL-PTR w WALK-STEPS !
       plan w
          plan TEXTS s" (SELECT NULL::jsonb AS a,NULL::jsonb AS b WHERE false)"
          TEXT-REL PAIRS! exit
@@ -4304,19 +4792,14 @@ STRUCTURE pruning DERIVE addr
    plan a VAR {: av:n :} plan b VAR {: bv:n :}
    bs av SHAPE-OF w WALK-START ! bs bv SHAPE-OF w WALK-END !
    plan w rp av ROOTS!
-   plan NEW-SQL {: v:^ :} v s" (" +SQL
-   w WALK-ROOTED @ 0= rp RELATION-BRANCHES @ NULL-PTR = or if
-      plan w v rp av bv +PAIRS
-   else
-      rp STEP-COUNT 0 ?do
-         i 0<> if v s"  UNION ALL " +SQL then
-         plan w v rp i STEP-REL av bv +PAIRS
-      loop
-   then v s" )" +TEXT plan w v PAIRS! ;
+   rp w WALK-STEPS ! av w WALK-A ! bv w WALK-B !
+   plan NEW-SQL {: v:^ :} v w WALK-BODY ! plan w v PAIRS! ;
 
-\ r's solutions become CTE nameR, which r then reads.
-: REST ( ^plan ^walk ^relation -- )
-   {: plan w:^ r:^ :}
+\ r's solutions, less the bindings unread once the walk item folds,
+\ become CTE nameR, which r then reads.
+: REST ( ^plan ^item ^walk ^relation -- )
+   {: plan it:^ w:^ r:^ :}
+   plan it r DROP-BEFORE
    plan r SUBSELECT {: t:^ cols:^ :}
    plan w s" r" WALK-CTE-NAME {: n:str :}
    plan AL w WALK-CTES @ n false t +CTE
@@ -4332,6 +4815,13 @@ STRUCTURE pruning DERIVE addr
    b BINDING-SHAPE @ dup 0< if drop GENERIC then {: kind:n :}
    kind w WALK-KIND !
    plan v b kind +VALUE v s"  AS k" +SQL ;
+
+\ Whether SEEDS takes the seeds from the steps' first ends: `+` from no
+\ given end and no end the solutions so far bind always.
+: PAIR-SEEDED? ( ^plan ^walk -- bool )
+   {: plan w:^ :}
+   w PLUS? w WALK-REST @ 0= and
+   plan w WALK-SEED @ GIVEN? 0= and ;
 
 : PAIR-SEEDS ( ^walk ^rel -- )
    {: w:^ out:^ :}
@@ -4584,8 +5074,8 @@ STRUCTURE pruning DERIVE addr
    {: plan items:^ at:n to:n w:^ r:^ :}
    plan TEXTS s" (SELECT DISTINCT " TEXT-REL {: body:^ :}
    plan w WALK-SEED @ GIVEN? if plan w body GIVEN-SEEDS
+   else plan w PAIR-SEEDED? if w body PAIR-SEEDS
    else w WALK-REST @ if plan items at to w r body REST-SEEDS
-   else w PLUS? if w body PAIR-SEEDS
    else plan w body NODE-SEEDS then then then
    body s" )" +TEXT
    plan w s" s" WALK-CTE-NAME {: n:str :}
@@ -4616,13 +5106,18 @@ STRUCTURE pruning DERIVE addr
    else v plan start SHAPE@ SHAPE-IN @ s" p.b" +CALL then
    v s"  AS n" +SQL ;
 
+\ Whether a step from at reads p.an: the steps hold an and at's shape is
+\ of the end's root.
+: AN-AT? ( ^plan ^walk ^binding -- bool )
+   {: plan w:^ at:^ :}
+   w WALK-ROOTED @ plan at BINDING-SHAPE @ w WALK-END @ ONE-ROOT? and ;
+
 \ A step's pairs p start at at: `p.an = at`, which an index serves, where
-\ the steps hold an and at's shape is of the end's root, else p.a meets at.
+\ AN-AT? holds, else p.a meets at.
 : STEP-FROM ( ^plan ^walk ^binding -- ^rel )
    {: plan w:^ at:^ :}
-   w WALK-END @ {: end:n :}
-   w WALK-ROOTED @ plan at BINDING-SHAPE @ end ONE-ROOT? and if
-      plan plan plan end ROOT s" p.an" VALUE at SAME-SQL exit
+   plan w at AN-AT? if
+      plan plan plan w WALK-END @ ROOT s" p.an" VALUE at SAME-SQL exit
    then
    plan plan w WALK-START @ s" p.a" VALUE at SAME-SQL ;
 
@@ -4637,26 +5132,89 @@ STRUCTURE pruning DERIVE addr
    plan AL [type] binding ALLOC:NEW {: b:^ :}
    b -1 root v s" " SET-BINDING b ;
 
-\ Adds to the walk's CTEs nameW(k, e[, n]): each seed k and the ends e of
-\ its steps, for `?` one step, else UNION (distinct) each further step.
+\ Whether the walk steps more than once: it is not `?`.
+: MORE? ( ^walk -- bool ) WALK-OP @ s" ?" STR:= 0= ;
+
+\ Whether a further step starts from n, the end in the start form: one of
+\ the steps' forms is a term and they hold no an.
+: KEY? ( ^walk -- bool )
+   {: w:^ :}
+   w WALK-START @ 0< w WALK-END @ 0< xor
+   w MORE? and w WALK-ROOTED @ 0= and ;
+
+\ The end a further step starts from: w.n where KEY?, else w.e.
+: NEXT-AT ( ^plan ^walk -- ^binding )
+   {: plan w:^ :}
+   w KEY? if plan w WALK-START @ s" w.n" VALUE exit then
+   plan w WALK-END @ s" w.e" VALUE ;
+
+\ Whether a step reads p.an: the first or a further one.
+: AN-READ? ( ^plan ^walk -- bool )
+   {: plan w:^ :}
+   plan w plan w SEED-AT AN-AT? if true exit then
+   w MORE? 0= if false exit then
+   plan w plan w NEXT-AT AN-AT? ;
+
+\ Whether PAIR-SEEDS or a step reads p.a.
+: A-READ? ( ^plan ^walk -- bool )
+   {: plan w:^ :}
+   plan w PAIR-SEEDED? if true exit then
+   plan w plan w SEED-AT AN-AT? 0= if true exit then
+   w MORE? 0= if false exit then
+   plan w plan w NEXT-AT AN-AT? 0= ;
+
+\ Appends `SELECT [a,]b[,an]`, the columns a reader reads, and r's FROM
+\ and WHERE: r's steps from variable x to y.
+: +PAIRS ( ^plan ^walk ^rel ^relation n n -- )
+   {: plan w:^ v:^ r:^ x:n y:n :}
+   r RELATION-BINDINGS @ {: bs:^ :}
+   v s" SELECT " +SQL
+   plan w A-READ? if plan v bs x w WALK-START @ s" a," +PAIR then
+   plan v bs y w WALK-END @ s" b" +PAIR
+   plan w AN-READ? if
+      v s" ," +SQL v plan w WALK-END @ x r REL-AN +REL
+      v s"  AS an" +SQL
+   then v r +FROM-WHERE ;
+
+\ Writes the steps `(SELECT [a,]b[,an] ...)` into the walk's body, a union
+\ branch each where they hold an; after SEEDS, whose form SEED-AT reads.
+: WRITE-STEPS ( ^plan ^walk -- )
+   {: plan w:^ :}
+   w WALK-STEPS @ {: rp:^ :}
+   rp NULL-PTR = if exit then
+   w WALK-BODY @ {: v:^ :}
+   w WALK-A @ {: av:n :} w WALK-B @ {: bv:n :}
+   v s" (" +SQL
+   w WALK-ROOTED @ 0= rp RELATION-BRANCHES @ NULL-PTR = or if
+      plan w v rp av bv +PAIRS
+   else
+      rp STEP-COUNT 0 ?do
+         i 0<> if v s"  UNION ALL " +SQL then
+         plan w v rp i STEP-REL av bv +PAIRS
+      loop
+   then v s" )" +TEXT ;
+
+\ Whether nameW carries the seed k, which a part reads: it is not given.
+: SEED-READ? ( ^plan ^walk -- bool )
+   {: plan w:^ :} plan w WALK-SEED @ GIVEN? 0= ;
+
+\ Adds nameW([k,]e[, n]) to the walk's CTEs: the seed k where SEED-READ?, and
+\ the ends e of one step for `?`, else of each further step, UNION (distinct).
 : WALK-CTE ( ^plan ^walk -- )
    {: plan w:^ :}
-   w WALK-OP @ s" ?" STR:= 0= {: more:bool :}
-   w WALK-START @ {: start:n :} w WALK-END @ {: end:n :}
-   more start 0< end 0< xor and w WALK-ROOTED @ 0= and {: key:bool :}
+   plan w SEED-READ? {: k:bool :}
    plan w s" s" WALK-CTE-NAME {: s:str :}
    plan w s" w" WALK-CTE-NAME {: n:str :}
    plan NEW-SQL {: v:^ :}
-   v s" (SELECT s.k AS k,p.b AS e" +SQL
-   key if plan v w +KEY then
+   v s" (SELECT " +SQL k if v s" s.k AS k," +SQL then
+   v s" p.b AS e" +SQL w KEY? if plan v w +KEY then
    v s"  FROM " +SQL v s +SQL v s"  AS s" +SQL
    v w plan w plan w SEED-AT STEP-FROM +STEP
-   more if
-      v s"  UNION SELECT w.k,p.b" +SQL key if plan v w +KEY then
+   w MORE? if
+      v s"  UNION SELECT " +SQL k if v s" w.k," +SQL then
+      v s" p.b" +SQL w KEY? if plan v w +KEY then
       v s"  FROM " +SQL v n +SQL v s"  AS w" +SQL
-      key if plan start s" w.n" VALUE else plan end s" w.e" VALUE then
-         {: at:^ :}
-      v w plan w at STEP-FROM +STEP
+      v w plan w plan w NEXT-AT STEP-FROM +STEP
    then v s" )" +TEXT
    plan AL w WALK-CTES @ n false v +CTE ;
 
@@ -4683,7 +5241,7 @@ STRUCTURE pruning DERIVE addr
    {: plan w:^ t:str k:^ e:^ form:n v:^ :}
    plan 0 NEW-BINDINGS {: seen:^ :} plan 0 NEW-BINDINGS {: cols:^ :}
    plan NEW-SQL {: list:^ :} plan NEW-SQL {: cond:^ :}
-   plan w WALK-SEED @ GIVEN? 0= if
+   plan w SEED-READ? if
       plan w WALK-SEED @ k w WALK-KIND @ seen cols list cond +END
    then
    plan w WALK-FAR @ e form seen cols list cond +END
@@ -4782,15 +5340,17 @@ STRUCTURE pruning DERIVE addr
 \ its ends meeting the substitution; r then drops the variables SETTLED by it.
 : WALK-STEP ( ^plan ^VEC:vector<item> n n ^relation -- )
    {: plan items:^ at:n to:n r:^ :}
-   plan items at VEC:AT ITEM-NODE @ r NEW-WALK {: w:^ :}
+   items at VEC:AT {: it:^ :}
+   plan it ITEM-NODE @ r NEW-WALK {: w:^ :}
    plan w SHAREABLE? w WALK-SHARED !
    w WALK-SHARED @ if plan PLAN-CTES @ else plan AL NEW-CTES then
       w WALK-CTES !
    w WALK-SHARED @ if plan w SHARE else false then 0= if
       plan w STEPS
       plan w PAIRS-CTE
-      w WALK-REST @ if plan w r REST then
+      w WALK-REST @ if plan it w r REST then
       plan items at to w r SEEDS
+      plan w WRITE-STEPS
       plan w WALK-CTE
       w WALK-SHARED @ if w plan PLAN-WALKS @ VEC:PUSH ! then
    then
@@ -4809,30 +5369,28 @@ STRUCTURE pruning DERIVE addr
    plan r state triple NODE-A@ BOUND?
    plan r state triple NODE-C@ BOUND? or ;
 
-\ Whether the item is a walk done does not hold and, unless all, one
-\ with an end r binds always.
-: DUE? ( ^plan ^item n ^VEC:vector<n> bool ^relation -- bool )
-   {: plan it:^ at:n done:^ all:bool r:^ :}
+\ Whether the item is a walk not folded and, unless all, one with an end
+\ r binds always.
+: DUE? ( ^plan ^item bool ^relation -- bool )
+   {: plan it:^ all:bool r:^ :}
    it ITEM-MODE @ N-PATH <> if false exit then
-   done at INDEXED? if false exit then
+   it ITEM-FOLDED @ if false exit then
    all if true exit then
    plan it r BOUND-END? ;
 
 \ Folds each walk among items from..to that DUE? takes, under its
-\ item's graph; answers done with their indexes added.
-: WALKS ( ^plan ^VEC:vector<item> n n ^VEC:vector<n> bool ^relation
-      -- ^VEC:vector<n> )
-   {: plan items:^ from:n to:n done:^ all:bool r:^ :}
+\ item's graph.
+: WALKS ( ^plan ^VEC:vector<item> n n bool ^relation -- )
+   {: plan items:^ from:n to:n all:bool r:^ :}
    plan PLAN-GRAPH @ {: outer:str :}
-   done to from ?do
-      {: now:^ :}
+   to from ?do
       items i VEC:AT {: it:^ :}
-      plan it i now all r DUE? if
+      plan it all r DUE? if
          it ITEM-GRAPH @ plan PLAN-GRAPH !
          plan items i to r WALK-STEP
          outer plan PLAN-GRAPH !
-         plan now i +INDEX
-      else now then
+         true it ITEM-FOLDED !
+      then
    loop ;
 
 \ Whether the item is a joined triple whose live choices come from
@@ -5043,9 +5601,9 @@ STRUCTURE pruning DERIVE addr
    plan it keys r UNION-SQL
    work mark ARENA:CUT ;
 
-\ Folds the unions among items from..to, then the walks done does not hold.
-: LATE ( ^plan ^VEC:vector<item> n n ^VEC:vector<n> ^relation -- )
-   {: plan items:^ from:n to:n done:^ r:^ :}
+\ Folds the unions among items from..to, then the walks not folded.
+: LATE ( ^plan ^VEC:vector<item> n n ^relation -- )
+   {: plan items:^ from:n to:n r:^ :}
    to from ?do
       items i VEC:AT {: it:^ :}
       it ITEM-UNION @ if plan it BRANCHES then
@@ -5053,9 +5611,11 @@ STRUCTURE pruning DERIVE addr
    plan items from to RUN-KEYS {: keys:^ :}
    to from ?do
       items i VEC:AT {: it:^ :}
-      it ITEM-UNION @ if plan it keys r UNION-STEP then
+      it ITEM-UNION @ if
+         plan it keys r UNION-STEP true it ITEM-FOLDED !
+      then
    loop
-   plan items from to done true r WALKS drop ;
+   plan items from to true r WALKS ;
 
 \ Marks each variable the list binds always.
 : +ALWAYS ( ^VEC:vector<binding> ^VEC:vector<bool> -- )
@@ -5166,17 +5726,15 @@ STRUCTURE pruning DERIVE addr
 : RUN ( ^plan ^VEC:vector<item> n n ^relation -- )
    {: plan items:^ from:n to:n r:^ :}
    plan items from to r CONNECT
-   INDEXES to from ?do
-      {: done:^ :}
+   to from ?do
       items i VEC:AT {: it:^ :}
       it DRIVER? if
-         plan it r UNLINKED? if
-            plan items from to done false r WALKS
-         else done then
+         plan it r UNLINKED? if plan items from to false r WALKS then
          plan it r JOIN-STEP
-      else done then
-   loop {: folded:^ :}
-   plan items from to folded r LATE ;
+         true it ITEM-FOLDED !
+      then
+   loop
+   plan items from to r LATE ;
 
 \ Folds the items run by run: joins commute; a left join, a minus and an
 \ Extend read the solutions so far, so each ends a run.
@@ -5188,7 +5746,8 @@ STRUCTURE pruning DERIVE addr
       plan it UNION? it ITEM-UNION !
       it ITEM-MODE @ {: mode:n :}
       mode 0<> mode N-PATH <> and if
-         plan items rot i r RUN plan it r filters FOLD i 1+
+         plan items rot i r RUN
+         plan it r filters FOLD true it ITEM-FOLDED ! i 1+
       then
    loop
    plan items rot items VEC:COUNT r RUN ;
@@ -5206,13 +5765,15 @@ STRUCTURE pruning DERIVE addr
    {: plan group:n given:^ :}
    plan AL 0 [type] item VEC:NEW {: items:^ :}
    plan AL 0 [type] n VEC:NEW {: filters:^ :}
+   plan EDGE-GROUP group items filters PUSH-LEVEL
    plan group items filters ITEMS
    plan items given NARROW
    plan NEW-RELATION {: r:^ :}
    items DEAD? r RELATION-EMPTY !
    r RELATION-EMPTY @ 0= if
       plan items r filters FOLD-ALL items r KEEP-BRANCHES
-   then r filters ;
+   then
+   plan POP-LEVEL r filters ;
 
 \ [NOT] EXISTS (SELECT 1 ...): the call's group with the scope as its
 \ substitution.
@@ -5222,7 +5783,9 @@ STRUCTURE pruning DERIVE addr
    plan PLAN-OUTER @ {: outer:^ :}
    plan PLAN-SCOPE @ plan PLAN-OUTER !
    plan TREE call s" NOT EXISTS" CALL-IS? {: negated:bool :}
+   plan EDGE-EXISTS call NULL-PTR NULL-PTR PUSH-LEVEL
    plan plan TREE call NODE-A@ NULL-PTR CLOSED {: r:^ :}
+   plan POP-LEVEL
    outer plan PLAN-OUTER !
    r RELATION-EMPTY @ if
       negated if out s" true" +SQL else out s" false" +SQL then exit
@@ -5805,7 +6368,10 @@ STRUCTURE pruning DERIVE addr
    plan AL 0 [type] n VEC:NEW {: filters:^ :}
    state query NODE-A@ begin dup 0<> while
       {: list:n :} state list NODE-A@ {: e:n :}
-      state e NODE-K N-ALIAS = if plan r e filters +ALIAS then
+      list plan TOP-LEVEL LEVEL-CELL !
+      state e NODE-K N-ALIAS = if
+         plan NULL-PTR r e filters +ALIAS
+      then
       state list NODE-B@
    repeat drop ;
 
@@ -6032,8 +6598,10 @@ STRUCTURE pruning DERIVE addr
    plan PLAN-OUT @ {: out:^ :}
    plan PLAN-AGGREGATES @ {: as:^ :}
    1 plan PLAN-SERIAL +! plan PLAN-SERIAL @ plan PLAN-FRAME !
+   plan EDGE-SELECT query NULL-PTR NULL-PTR PUSH-LEVEL
    plan query plan query SOLUTIONS outer SELECTED drop
       {: t:^ cols:^ :}
+   plan POP-LEVEL
    outer plan PLAN-FRAME ! scope plan PLAN-SCOPE !
    out plan PLAN-OUT ! as plan PLAN-AGGREGATES !
    plan items plan t cols SUBSTITUTED cols false CHILD-ITEM ;
@@ -6062,9 +6630,11 @@ STRUCTURE pruning DERIVE addr
    plan TREE {: state :}
    state SYNTAX-ROOT @ {: query:n :}
    state query NODE-K {: kind:n :}
+   plan EDGE-SELECT query NULL-PTR NULL-PTR PUSH-LEVEL
    plan query SOLUTIONS {: r:^ :}
    kind N-SELECT = if plan query r SELECT-SQL
    else plan query r ASK-SQL then {: t:^ :}
+   plan POP-LEVEL
    plan +TYPES {: t0:^ :}
    plan PLAN-CTES @ CTES-FIRST @ t0 CTE-NEXT !
    plan PLAN-WALKS @ VEC:COUNT 0<> if true t REL-RECURSIVE ! then
@@ -6095,6 +6665,7 @@ STRUCTURE pruning DERIVE addr
    al 0 [type] bool VEC:NEW plan PLAN-BOUND !
    INDEXES plan PLAN-FRESH !
    al NEW-CURSORS plan PLAN-CURSORS !
+   al 0 [type] level VEC:NEW plan PLAN-LEVELS !
    plan STATEMENT {: r:^ :}
    al NULL-PTR NEW-SINK {: count:^ :}
    count r WRITE-REL

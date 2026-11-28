@@ -1192,15 +1192,18 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
       some OF IDX>N ENDOF
    ;MATCH ;
 
-\ `?s t:30 ?w`, a long BIND and the filters: `?w < 100` is tested inside
-\ the BIND's CTE alone; answers the statement, the document, the CTE's end.
+\ `?s t:30 ?w`, a long BIND and the filters, ordered by ?x so the BIND has
+\ a CTE: `?w < 100` is tested inside the BIND's CTE alone; answers the
+\ statement, the document, the CTE's end.
 : FENCED ( str ^ARENA:arena -- ^VEC:vector<u8> ^VEC:vector<u8> n )
    {: filters:str a:^ :}
    a TEXT-VEC {: q:^ :}
    s" SELECT ?s WHERE { ?s t:30 ?w" q VEC:APPEND
-   q +LONG-BIND filters q VEC:APPEND s"  }" q VEC:APPEND
+   q +LONG-BIND filters q VEC:APPEND
+   s"  } ORDER BY ?x" q VEC:APPEND
    q $ s" 1048576" a ANSWER {: sql:^ doc:^ :}
    sql $ s"  SELECT * FROM c)" 0 OFFSET {: end:n :}
+   end sql $ STR:LEN < TTRUE
    s" sparql.relation('<'," {: test:str :}
    sql $ test 0 OFFSET end < TTRUE
    sql $ test end OFFSET sql $ STR:LEN T=
@@ -1969,6 +1972,121 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    s" {'head':{'vars':['n']},'results':{'bindings':[{'n':{'type':'literal','value':'31','datatype':'http://www.w3.org/2001/XMLSchema#integer'}}]}}"
    SPELLED-TIMES ;
 
+\ A materialized CTE writes only the columns read after it.
+: CTE-COLUMNS ( -- )
+   \ A rest walk's CTE drops ?z, which nothing after the walk reads, and
+   \ keeps ?l, which a later FILTER reads.
+   s" SELECT ?o WHERE { ?s a ?z ; rdfs:label ?l . ?s t:21+ ?o . ?o rdfs:label ?m FILTER(?l < ?m) }"
+   s" t4r AS (SELECT t1.v0 AS v0, t2.v2 AS v2," s" t1.v1 AS v1"
+   s" {'head':{'vars':['o']},'results':{'bindings':[{'o':{'type':'uri','value':'urn:test:2'}}]}}"
+   ALONE
+   \ A walk from a given seed writes no k into W.
+   s" SELECT ?x WHERE { t:60 t:26+ ?x }"
+   s" t1w AS (SELECT p.b AS e," s" s.k AS k"
+   s" {'head':{'vars':['x']},'results':{'bindings':[{'x':{'type':'uri','value':'urn:test:61'}},{'x':{'type':'uri','value':'urn:test:62'}}]}}"
+   ALONE
+   \ A rooted `?` over an operand holding a walk steps once from a seed of
+   \ the end's root: its P writes an but no a.
+   s" SELECT ?x WHERE { ?x (t:70/t:71*/t:80)? t:1 }"
+   s" t1p AS MATERIALIZED (SELECT t7.v1 AS b,COALESCE(t8.o_id,t8.o_kind) AS an FROM"
+   s" AS a,t7.v1 AS b"
+   s" {'head':{'vars':['x']},'results':{'bindings':[{'x':{'type':'uri','value':'urn:test:1'}},{'x':{'type':'uri','value':'urn:test:42'}}]}}"
+   FACT-TYPED-ALONE
+   \ SELECT * reads every variable.
+   s" SELECT * WHERE { ?s a ?k . ?s t:21+ ?o }"
+   s" t2r AS (SELECT t1.v0 AS v0, t1.v1 AS v1 FROM"
+   s" {'head':{'vars':['s','k','o']},'results':{'bindings':[{'s':{'type':'uri','value':'urn:test:1'},'k':{'type':'uri','value':'urn:test:10'},'o':{'type':'uri','value':'urn:test:2'}}]}}"
+   HOLDS
+   \ So does COUNT(DISTINCT *).
+   s" SELECT (COUNT(DISTINCT *) AS ?n) WHERE { ?s a ?k . ?s t:21+ ?o }"
+   s" t2r AS (SELECT t1.v0 AS v0, t1.v1 AS v1 FROM"
+   s" {'head':{'vars':['n']},'results':{'bindings':[{'n':{'type':'literal','value':'1','datatype':'http://www.w3.org/2001/XMLSchema#integer'}}]}}"
+   HOLDS
+   \ ASK reads only its GROUP BY, HAVING and trailing VALUES.
+   s" ASK { ?s a ?k . ?s t:21+ ?o }"
+   s" t2r AS (SELECT t1.v0 AS v0 FROM" s" t1.v1 AS v1"
+   s" {'head':{},'boolean':true}"
+   ALONE
+   s" ASK { ?s a ?k . ?s t:21+ ?o } VALUES ?k { t:11 }"
+   s" t2r AS (SELECT t1.v0 AS v0, t1.v1 AS v1 FROM"
+   s" {'head':{},'boolean':false}"
+   HOLDS
+   \ A subquery's ?k, which it does not project, is not the outer ?k.
+   s" SELECT ?s ?k WHERE { ?s a ?k { SELECT ?s WHERE { ?s a ?k . ?s t:21+ ?o } } }"
+   s" t3r AS (SELECT t2.v2 AS v2 FROM" s" t2.v3 AS v3"
+   s" {'head':{'vars':['s','k']},'results':{'bindings':[{'s':{'type':'uri','value':'urn:test:1'},'k':{'type':'uri','value':'urn:test:10'}}]}}"
+   ALONE
+   \ A DISTINCT subquery reads every name it projects.
+   s" SELECT ?s WHERE { { SELECT DISTINCT ?s ?k WHERE { ?s a ?k . ?s t:21+ ?o } } }"
+   s" t3r AS (SELECT t2.v0 AS v0, t2.v1 AS v1 FROM"
+   s" {'head':{'vars':['s']},'results':{'bindings':[{'s':{'type':'uri','value':'urn:test:1'}}]}}"
+   HOLDS
+   \ A MINUS after the walk reads the variables it shares.
+   s" SELECT ?o WHERE { ?s a ?k . ?s t:21+ ?o MINUS { ?k rdfs:label 'Machine' } }"
+   s" t3r AS (SELECT t2.v0 AS v0, t2.v1 AS v1 FROM"
+   s" {'head':{'vars':['o']},'results':{'bindings':[]}}"
+   HOLDS
+   \ One before it reads nothing after it.
+   s" SELECT ?o WHERE { ?s a ?k MINUS { ?k rdfs:label 'Part' } ?s t:21+ ?o }"
+   s" t4r AS (SELECT t2.v0 AS v0 FROM" s" t2.v1 AS v1"
+   s" {'head':{'vars':['o']},'results':{'bindings':[{'o':{'type':'uri','value':'urn:test:2'}}]}}"
+   ALONE
+   \ A later group's FILTER reads its own ?k, not the outer one.
+   s" SELECT ?o WHERE { { ?s a ?k . ?s t:21+ ?o FILTER(true) } { ?o rdfs:label ?m FILTER(!BOUND(?k)) } }"
+   s" t2r AS (SELECT t1.v0 AS v0 FROM" s" t1.v1 AS v1"
+   s" {'head':{'vars':['o']},'results':{'bindings':[{'o':{'type':'uri','value':'urn:test:2'}}]}}"
+   ALONE
+   \ A later OPTIONAL's FILTER reads the outer ?k.
+   s" SELECT ?o ?m WHERE { { ?s a ?k . ?s t:21+ ?o FILTER(true) } OPTIONAL { ?o rdfs:label ?m FILTER(?k = t:10) } }"
+   s" t2r AS (SELECT t1.v0 AS v0, t1.v1 AS v1 FROM"
+   s" {'head':{'vars':['o','m']},'results':{'bindings':[{'o':{'type':'uri','value':'urn:test:2'},'m':{'type':'literal','value':'Mill'}}]}}"
+   HOLDS
+   \ A path union's branch walks after a step: it keeps the step's fresh
+   \ `/` variable and drops ?s, which nothing reads.
+   s" SELECT ?o WHERE { ?s (t:22|t:20/t:21+) ?o }"
+   s" t3r AS (SELECT t2.v2 AS v2 FROM" s" t2.v0 AS v0"
+   s" {'head':{'vars':['o']},'results':{'bindings':[{'o':{'type':'uri','value':'urn:test:4'}},{'o':{'type':'uri','value':'urn:test:2'}},{'o':{'type':'uri','value':'urn:test:2'}}]}}"
+   ALONE
+   \ GRAPH ?g reads the ?g its group binds.
+   s" SELECT ?x ?y WHERE { GRAPH ?g { ?x t:23 ?g . ?x t:23+ ?y } }"
+   s" t2r AS (SELECT t1.s AS v0, t1.o AS v1 FROM"
+   s" {'head':{'vars':['x','y']},'results':{'bindings':[{'x':{'type':'uri','value':'urn:test:1'},'y':{'type':'uri','value':'urn:test:7'}}]}}"
+   HOLDS
+   \ A union joined branch by branch: c keeps ?c, which only a branch's
+   \ meeting reads, and m drops it.
+   s" SELECT ?s ?w ?l WHERE { ?s t:20 ?c OPTIONAL { { ?s t:30 ?w } UNION { ?c rdfs:label ?l } } }"
+   s" t5 AS MATERIALIZED (SELECT t4.v0 AS v0, t4.v1 AS v1, row_number() OVER () AS rn FROM"
+   s" t7.v1 AS v1"
+   s" {'head':{'vars':['s','w','l']},'results':{'bindings':[{'s':{'type':'uri','value':'urn:test:3'},'w':{'type':'literal','value':'12','datatype':'http://www.w3.org/2001/XMLSchema#integer'}},{'s':{'type':'uri','value':'urn:test:3'},'l':{'type':'literal','value':'Lathe'}},{'s':{'type':'uri','value':'urn:test:4'},'w':{'type':'literal','value':'0.25','datatype':'http://www.w3.org/2001/XMLSchema#decimal'}},{'s':{'type':'uri','value':'urn:test:4'},'l':{'type':'literal','value':'Mill'}},{'s':{'type':'uri','value':'urn:test:5'},'l':{'type':'literal','value':'Lathe'}}]}}"
+   ALONE
+   \ An evaluated BIND's CTE drops ?o, which nothing after it reads.
+   s" SELECT ?s ?r WHERE { ?s t:20 ?o BIND(IF(RAND() < 2, 1, 0) AS ?r) }"
+   s" WITH c AS MATERIALIZED (SELECT t1.v0 AS v0, (CASE" s" t1.v1 AS v1"
+   s" {'head':{'vars':['s','r']},'results':{'bindings':[{'s':{'type':'uri','value':'urn:test:3'},'r':{'type':'literal','value':'1','datatype':'http://www.w3.org/2001/XMLSchema#integer'}},{'s':{'type':'uri','value':'urn:test:4'},'r':{'type':'literal','value':'1','datatype':'http://www.w3.org/2001/XMLSchema#integer'}},{'s':{'type':'uri','value':'urn:test:5'},'r':{'type':'literal','value':'1','datatype':'http://www.w3.org/2001/XMLSchema#integer'}}]}}"
+   ALONE
+   \ One whose variable nothing reads writes no CTE.
+   s" SELECT ?s WHERE { ?s t:20 ?o BIND(RAND() AS ?r) }"
+   s" MATERIALIZED"
+   s" {'head':{'vars':['s']},'results':{'bindings':[{'s':{'type':'uri','value':'urn:test:3'}},{'s':{'type':'uri','value':'urn:test:4'}},{'s':{'type':'uri','value':'urn:test:5'}}]}}"
+   WITHOUT
+   \ Inside an EXISTS, the outer ?w meets the BIND's: its CTE keeps ?w
+   \ alone.
+   s" SELECT ?s WHERE { ?s t:30 ?w FILTER EXISTS { ?s a ?k BIND(IF(RAND() < 2, 12, 0) AS ?w) } }"
+   s" WITH c AS MATERIALIZED (SELECT (CASE" s" t2.v2 AS v2"
+   s" {'head':{'vars':['s']},'results':{'bindings':[{'s':{'type':'uri','value':'urn:test:3'}}]}}"
+   ALONE
+   \ A union's first branch drops ?z, which nothing after it reads; the
+   \ second, whose FILTER reads it, keeps it.
+   s" SELECT ?o WHERE { { ?s a ?z . ?s t:21+ ?o } UNION { ?s a ?z . ?s t:21+ ?o FILTER(?z = t:10) } }"
+   s" t8r AS (SELECT t7.v0 AS v0, t7.v1 AS v1 FROM" s" t1.v1 AS v1"
+   s" {'head':{'vars':['o']},'results':{'bindings':[{'o':{'type':'uri','value':'urn:test:2'}},{'o':{'type':'uri','value':'urn:test:2'}}]}}"
+   ALONE
+   \ A SELECT expression's CTE drops ?o, which nothing after it reads.
+   s" SELECT ?s (IF(RAND() < 2, 1, 0) AS ?r) WHERE { ?s t:20 ?o }"
+   s" WITH c AS MATERIALIZED (SELECT t1.v0 AS v0, (CASE" s" t1.v1 AS v1"
+   s" {'head':{'vars':['s','r']},'results':{'bindings':[{'s':{'type':'uri','value':'urn:test:3'},'r':{'type':'literal','value':'1','datatype':'http://www.w3.org/2001/XMLSchema#integer'}},{'s':{'type':'uri','value':'urn:test:4'},'r':{'type':'literal','value':'1','datatype':'http://www.w3.org/2001/XMLSchema#integer'}},{'s':{'type':'uri','value':'urn:test:5'},'r':{'type':'literal','value':'1','datatype':'http://www.w3.org/2001/XMLSchema#integer'}}]}}"
+   ALONE ;
+
 : SESSION ( -- )
    s" src/lib/sparql/runtime.sql" RUN-SQL
    s" test/sparql/host.sql" RUN-SQL
@@ -1982,7 +2100,7 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    TYPED-FILTERS BRANCH-GROUPING ORDERS DISTINCTS STAR-COUNTS
    SUBQUERIES
    BINDS CHAINS LEVELS UUIDS VOLATILE-BINDS FENCES DATA-BLOCKS PATHS
-   NODE-READS ;
+   NODE-READS CTE-COLUMNS ;
 
 T-RESET
 s" sparql-test" ' SESSION MAIN
