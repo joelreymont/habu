@@ -357,6 +357,14 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
 : SPELLED-SHARED ( -- str )
    s" {'from':'(SELECT * FROM (VALUES (601::bigint),(602),(NULL)) t(id))','graph':null,'s':{'col':'id','shape':'id'},'p':{'term':{'type':'uri','value':'urn:test:94'}},'o':{'col':'id','shape':'id'}}" ;
 
+\ The node table again, its triple reading no column that may hold NULL.
+: SPELLED-IDS ( -- str )
+   s" {'from':'\'sparql_test\'.node','graph':null,'s':{'col':'id','shape':'id','notnull':true},'p':{'term':{'type':'uri','value':'urn:test:95'}},'o':{'col':'id','shape':'id','notnull':true}}" ;
+
+\ One column read as part `class` and as its root `id`.
+: SPELLED-ROOTED ( -- str )
+   s" {'from':'(SELECT 7::bigint AS id)','graph':null,'s':{'col':'id','shape':'class'},'p':{'term':{'type':'uri','value':'urn:test:96'}},'o':{'term':{'type':'uri','value':'urn:test:1'}}},{'from':'(SELECT 7::bigint AS id)','graph':null,'s':{'col':'id','shape':'id'},'p':{'term':{'type':'uri','value':'urn:test:97'}},'o':{'term':{'type':'uri','value':'urn:test:1'}}}" ;
+
 : SPELLED-STORE ( ^ARENA:arena -- ^VEC:vector<u8> )
    {: a:^ :}
    a TEXT-VEC {: out:^ :}
@@ -369,7 +377,9 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    SPELLED-CONSTANT out VEC:APPEND s" ," out VEC:APPEND
    SPELLED-QUOTED out VEC:APPEND s" ," out VEC:APPEND
    SPELLED-CALL out VEC:APPEND s" ," out VEC:APPEND
-   SPELLED-SHARED out VEC:APPEND s" ]}" out VEC:APPEND
+   SPELLED-SHARED out VEC:APPEND s" ," out VEC:APPEND
+   SPELLED-IDS out VEC:APPEND s" ," out VEC:APPEND
+   SPELLED-ROOTED out VEC:APPEND s" ]}" out VEC:APPEND
    out $ a UNQUOTE ;
 
 : SPELLED-IN ( str str ^ARENA:arena -- )
@@ -391,6 +401,13 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
 \ On SPELLED-STORE the query answers the expected document and its
 \ statement names keep but never gone.
 : SPELLED-ALONE ( str str str str -- ) [: SPELLED-ALONE-IN ;] ARENA:WITH ;
+
+: SPELLED-TIMES-IN ( str str n str ^ARENA:arena -- )
+   {: a:^ :} a SPELLED-STORE a TIMES-ON ;
+
+\ On SPELLED-STORE the query answers the expected document and its
+\ statement names t n times.
+: SPELLED-TIMES ( str str n str -- ) [: SPELLED-TIMES-IN ;] ARENA:WITH ;
 
 \ The query's document on a limit of so many bytes.
 : ANSWER-WITHIN ( str n ^ARENA:arena -- ^VEC:vector<u8> )
@@ -1885,6 +1902,39 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    s" {'head':{'vars':['x']},'results':{'bindings':[{'x':{'type':'uri','value':'urn:test:40'}},{'x':{'type':'uri','value':'urn:test:42'}},{'x':{'type':'uri','value':'urn:test:43'}}]}}"
    FACT-TYPED-ALONE ;
 
+\ A walk's node test and node table leave out a read implying another.
+: NODE-READS ( -- )
+   \ Equal subject reads of two sources: one EXISTS.
+   s" SELECT ?v WHERE { VALUES ?v { t:1 t:999 } ?v t:91? ?v }"
+   s" 1::bigint AS id) AS u WHERE u.id = " 1
+   s" {'head':{'vars':['v']},'results':{'bindings':[{'v':{'type':'uri','value':'urn:test:1'}}]}}"
+   SPELLED-TIMES
+   \ A subject and object on one column: one EXISTS.
+   s" SELECT ?v WHERE { VALUES ?v { t:601 t:603 } ?v t:91? ?v }"
+   s" t(id)) AS u WHERE u.id = " 1
+   s" {'head':{'vars':['v']},'results':{'bindings':[{'v':{'type':'uri','value':'urn:test:601'}}]}}"
+   SPELLED-TIMES
+   \ A node read testing no column absorbs the label read.
+   s" SELECT ?v WHERE { VALUES ?v { t:1 t:5 t:999 } ?v t:91? ?v }"
+   s" node AS u WHERE u.id = " s" .label IS NOT NULL"
+   s" {'head':{'vars':['v']},'results':{'bindings':[{'v':{'type':'uri','value':'urn:test:1'}},{'v':{'type':'uri','value':'urn:test:5'}}]}}"
+   SPELLED-ALONE
+   \ One column under a part and under its root: one EXISTS.
+   s" SELECT ?v WHERE { VALUES ?v { t:7 t:999 } ?v t:91? ?v }"
+   s" 7::bigint AS id) AS u WHERE u.id = " 1
+   s" {'head':{'vars':['v']},'results':{'bindings':[{'v':{'type':'uri','value':'urn:test:7'}}]}}"
+   SPELLED-TIMES
+   \ An equal read of another graph absorbs none of o'k's: t:1 stays.
+   s" SELECT ?v WHERE { VALUES ?v { t:1 t:999 } GRAPH <urn:test:o'k> { ?v t:91? ?v } }"
+   s" 1::bigint AS id) AS u WHERE u.id = " 1
+   s" {'head':{'vars':['v']},'results':{'bindings':[{'v':{'type':'uri','value':'urn:test:1'}}]}}"
+   SPELLED-TIMES
+   \ The node table: 30 nodes, one t:91 step; 18 branches for 24 reads.
+   s" SELECT (COUNT(*) AS ?n) WHERE { ?x t:91* ?y }"
+   s"  UNION ALL " 17
+   s" {'head':{'vars':['n']},'results':{'bindings':[{'n':{'type':'literal','value':'31','datatype':'http://www.w3.org/2001/XMLSchema#integer'}}]}}"
+   SPELLED-TIMES ;
+
 : SESSION ( -- )
    s" src/lib/sparql/runtime.sql" RUN-SQL
    s" test/sparql/host.sql" RUN-SQL
@@ -1897,7 +1947,8 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    ONLY-COLUMNS
    TYPED-FILTERS BRANCH-GROUPING ORDERS DISTINCTS STAR-COUNTS
    SUBQUERIES
-   BINDS CHAINS LEVELS UUIDS VOLATILE-BINDS FENCES DATA-BLOCKS PATHS ;
+   BINDS CHAINS LEVELS UUIDS VOLATILE-BINDS FENCES DATA-BLOCKS PATHS
+   NODE-READS ;
 
 T-RESET
 s" sparql-test" ' SESSION MAIN

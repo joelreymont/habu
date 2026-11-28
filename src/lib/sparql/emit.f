@@ -143,14 +143,17 @@
 \ own end. A walk's steps, when its operand has a walk in it, are a CTE
 \ at the statement's WITH, which reads no scope, so a nested path writes
 \ each walk once; the active graph's subjects and objects are one CTE
-\ there, which the seeds of every walk from every node read. Where one of
-\ the steps' start and end forms is a term, the CTE carries n, the end in
-\ the start form, converted once per end so that a step compares columns,
-\ not a term the host parses per pair scanned; where the steps hold an,
-\ the start's columns of the end's root, each branch's when they are a
-\ union, a further step compares an with the end instead, and the first
-\ step an with the seed when the seeds' form is of that root, or with the
-\ root's `in` of a given term only those columns may hold.
+\ there, which the seeds of every walk from every node read. The node test
+\ and the node CTE leave out a read that implies another (one FROM item,
+\ one column under shapes of one root or one term, every column the
+\ other tests non-null tested too), the first of equal ones kept. Where
+\ one of the steps' start and end forms is a term, the CTE carries n, the
+\ end in the start form, converted once per end so that a step compares
+\ columns, not a term the host parses per pair scanned; where the steps
+\ hold an, the start's columns of the end's root, each branch's when they
+\ are a union, a further step compares an with the end instead, and the
+\ first step an with the seed when the seeds' form is of that root, or
+\ with the root's `in` of a given term only those columns may hold.
 \
 \ A query that GROUP BY or an aggregate groups reads its groups, a derived
 \ table grouped on its keys' anchors, native where native, whose columns
@@ -4290,17 +4293,96 @@ STRUCTURE pruning DERIVE addr
    plan w WALK-NODE @ n q x TRIPLE-NODE
    plan w WALK-NODE @ x q n TRIPLE-NODE plan n VAR ;
 
-\ Every subject and object in the active graph: a UNION ALL's branches
-\ binding only a fresh variable to each, and that variable.
+\ Whether slots a and b of one FROM item read one value: one column
+\ under shapes of one root, or one term.
+: ONE-VALUE? ( ^plan slot slot -- bool )
+   {: plan a b :}
+   a SLOT-KIND {: x:n s:str :} b SLOT-KIND {: y:n t:str :}
+   x KNOWN = y KNOWN = and if s t STR:= exit then
+   a SLOT-COL b SLOT-COL STR:= plan x y ONE-ROOT? and ;
+
+\ Whether the slot is column c and may hold NULL.
+: NULLABLE-ON? ( slot str -- bool )
+   {: sl c:str :}
+   sl MATCH slot
+      column OF {: col:str shape:n k o u:bool nn:bool :}
+         col c STR:= nn 0= and
+      ENDOF
+      term OF drop false ENDOF
+   ;MATCH ;
+
+\ Whether read (r, e) tests column c IS NOT NULL: another slot of record
+\ r may hold NULL there, and the end's `=` does not read c.
+: NEEDS? ( ^plan n n str -- bool )
+   {: plan r:n e:n c:str :}
+   plan r e RECORD-SLOT SLOT-COL c STR:= if false exit then
+   3 0 do
+      plan r i RECORD-SLOT c NULLABLE-ON? if true unloop exit then
+   loop false ;
+
+\ Whether read (r, e) tests IS NOT NULL every column read (j, f) tests.
+: TESTS-WITHIN? ( ^plan n n n n -- bool )
+   {: plan r:n e:n j:n f:n :}
+   3 0 do
+      plan j i RECORD-SLOT SLOT-COL {: c:str :}
+      plan j f c NEEDS? plan r e c NEEDS? 0= and
+      if false unloop exit then
+   loop true ;
+
+\ Whether every row giving read (r, e) its triple gives read (j, f) its
+\ own with the same end value.
+: IMPLIES? ( ^plan n n n n -- bool )
+   {: plan r:n e:n j:n f:n :}
+   plan r SOURCE@ SOURCE-FROM @ plan j SOURCE@ SOURCE-FROM @ STR:=
+   plan plan r e RECORD-SLOT plan j f RECORD-SLOT ONE-VALUE? and
+   0= if false exit then
+   plan r e j f TESTS-WITHIN? ;
+
+\ Whether read (r, e) is in the active graph and its end can hold a
+\ value of the kind.
+: NODE-SLOT? ( ^plan n n n -- bool )
+   {: plan r:n e:n kind:n :}
+   plan plan r SOURCE@ GRAPH-FITS? 0= if false exit then
+   plan r e RECORD-SLOT SLOT-KIND {: x:n s:str :}
+   plan x s kind s" " KINDS-COMPATIBLE? ;
+
+\ Whether read (r, e) implies read (j, f) of the active graph that is
+\ earlier or does not imply (r, e).
+: ABSORBED? ( ^plan n n n n -- bool )
+   {: plan r:n e:n j:n f:n :}
+   plan r e j f IMPLIES? 0= if false exit then
+   plan plan j SOURCE@ GRAPH-FITS? 0= if false exit then
+   j r < j r = f e < and or if true exit then
+   plan j f r e IMPLIES? 0= ;
+
+\ Whether read (r, e) implies another read of the active graph, the
+\ first of equal ones kept.
+: REDUNDANT? ( ^plan n n -- bool )
+   {: plan r:n e:n :}
+   plan PLAN-STORE @ STORE-SOURCES @ VEC:COUNT 0 ?do
+      plan r e i 0 ABSORBED? if true unloop exit then
+      plan r e i 2 ABSORBED? if true unloop exit then
+   loop false ;
+
+\ Whether the node test and the node CTE write read (r, e) for the kind.
+: NODE-READ? ( ^plan n n n -- bool )
+   {: plan r:n e:n kind:n :}
+   plan r e kind NODE-SLOT? 0= if false exit then
+   plan r e REDUNDANT? 0= ;
+
+\ Every subject and object in the active graph: a UNION ALL of one branch
+\ per read NODE-READ? keeps, binding only a fresh variable, and that
+\ variable.
 : NODE-BRANCHES ( ^plan ^walk -- ^VEC:vector<relation> n )
    {: plan w:^ :}
    plan w NODE-TRIPLES {: down:n up:n var:n :}
    plan INDEXES var +INDEX {: kept:^ :}
    plan AL 0 [type] relation VEC:NEW {: branches:^ :}
    plan PLAN-STORE @ STORE-SOURCES @ VEC:COUNT 0 ?do
-      plan i SOURCE@ {: src:^ :}
-      plan src GRAPH-FITS? if
+      plan i 0 GENERIC NODE-READ? if
          plan down plan i RECORD branches VEC:PUSH SOURCE-BRANCH
+      then
+      plan i 2 GENERIC NODE-READ? if
          plan up plan i RECORD branches VEC:PUSH SOURCE-BRANCH
       then
    loop
@@ -4347,7 +4429,6 @@ STRUCTURE pruning DERIVE addr
    plan triple plan rec RECORD r SOURCE-BRANCH
    r RELATION-BINDINGS @ {: bs:^ :}
    bs bs var FIND-VAR VEC:AT {: b:^ :}
-   plan b k COMPATIBLE? 0= if exit then
    plan b k SAME-SQL {: same:^ :}
    same EMPTY? 0= if plan bs b BINDING-SQL @ COLUMN-TESTED then
    r RELATION-WHERE @ same +CONDITION
@@ -4355,18 +4436,16 @@ STRUCTURE pruning DERIVE addr
    out r +FROM-WHERE out s" )" +TEXT ;
 
 \ The condition that `x.k` of the walk's kind is a node of the active
-\ graph: two EXISTS per source in the graph, `false` when none is added.
+\ graph: one EXISTS per read NODE-READ? keeps, `false` when none is.
 : NEW-NODE-TEST ( ^plan ^walk -- ^rel )
    {: plan w:^ :}
-   plan w WALK-KIND @ s" x.k" VALUE {: k:^ :}
+   w WALK-KIND @ {: kind:n :}
+   plan kind s" x.k" VALUE {: k:^ :}
    plan w NODE-TRIPLES {: down:n up:n var:n :}
    plan NEW-SQL {: t:^ :}
    plan PLAN-STORE @ STORE-SOURCES @ VEC:COUNT 0 ?do
-      plan i SOURCE@ {: src:^ :}
-      plan src GRAPH-FITS? if
-         plan down i var k t +EXISTS
-         plan up i var k t +EXISTS
-      then
+      plan i 0 kind NODE-READ? if plan down i var k t +EXISTS then
+      plan i 2 kind NODE-READ? if plan up i var k t +EXISTS then
    loop
    t EMPTY? if t s" false" +TEXT then t ;
 
