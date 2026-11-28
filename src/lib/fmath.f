@@ -27,7 +27,7 @@ public
 \ Underflow may return zero.
 -9020 s" an invalid root or logarithm input, an FPOW base that is not positive and finite, zero to the zero included, or an exponent that is not finite, an ACOS input outside [-1, 1], a SIN or COS argument of magnitude 1647100 or more, a negative absolute error given to a *-BOUND word, a zero FMOD divisor, or a nonfinite input to a word other than FINITE? and the IEEE wrappers ADD..FMIN"
    ERROR:CODE E-DOMAIN
--9021 s" an overflowing power, a nonfinite intermediate exponent product or an out-of-range FROUND"
+-9021 s" an overflowing power, a nonfinite intermediate exponent product or an out-of-range FROUND, FFLOOR or FCEIL"
    ERROR:CODE E-OUTPUT
 
 \ Whether r is finite: a finite r times zero is zero, while an infinity or a
@@ -312,6 +312,22 @@ public
    value whole s>f f- {: fraction:r :}
    fraction 0.5 f>= if whole 1+ exit then
    fraction -0.5 f<= if whole 1- exit then
+   whole ;
+
+\ The largest integer not above r; f>s truncates toward zero, so a value below
+\ its truncation steps down one. A binary64 at or above 2^52 in magnitude is
+\ integral, so the step never leaves the cell.
+: FFLOOR ( r -- n ) {: value:r :}
+   value ROUND-DOMAIN
+   value f>s {: whole:n :}
+   whole s>f value f> if whole 1- exit then
+   whole ;
+
+\ The smallest integer not below r, as FFLOOR with the step up.
+: FCEIL ( r -- n ) {: value:r :}
+   value ROUND-DOMAIN
+   value f>s {: whole:n :}
+   whole s>f value f< if whole 1+ exit then
    whole ;
 
 \ x - n*y for n = trunc(x/y), exact, with x's sign: a zero keeps its sign.
