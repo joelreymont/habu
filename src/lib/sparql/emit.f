@@ -4378,7 +4378,7 @@ STRUCTURE pruning DERIVE addr
    plan outs plan mf plan NEW-CLAUSE mcols RELATION-OF +RELATION
    plan outs un +RELATION
    plan AL NEW-CTES {: ws:^ :}
-   plan AL ws name true t +CTE plan AL ws met true mb +CTE
+   plan AL ws name true false t +CTE plan AL ws met true false mb +CTE
    plan NEW-SQL {: u:^ :}
    ws CTES-FIRST @ u REL-WITH !
    plan u outs ucols +UNION-ALL
@@ -4761,7 +4761,7 @@ STRUCTURE pruning DERIVE addr
    {: plan w:^ :}
    w WALK-ONCE @ 0= if exit then
    plan w s" p" WALK-CTE-NAME {: n:str :}
-   plan AL plan PLAN-CTES @ n true w WALK-PAIRS @ +CTE
+   plan AL plan PLAN-CTES @ n true false w WALK-PAIRS @ +CTE
    plan TEXTS n TEXT-REL w WALK-PAIRS ! ;
 
 \ The columns of the end's root that b, a binding of the steps' start,
@@ -4878,7 +4878,7 @@ STRUCTURE pruning DERIVE addr
    plan it r DROP-BEFORE
    plan r SUBSELECT {: t:^ cols:^ :}
    plan w s" r" WALK-CTE-NAME {: n:str :}
-   plan AL w WALK-CTES @ n false t +CTE
+   plan AL w WALK-CTES @ n false false t +CTE
    plan NEW-SQL {: from:^ :}
    from plan NEW-CLAUSE plan plan TEXTS n TEXT-REL cols from +TABLE
    r INIT-RELATION ;
@@ -5024,7 +5024,7 @@ STRUCTURE pruning DERIVE addr
    plan TEXTS s" (SELECT " TEXT-REL {: body:^ :}
    body s" n" var +NAME-OF body s"  AS k FROM " +TEXT
    body t +REL body s"  AS n)" +TEXT
-   plan AL plan PLAN-CTES @ name false body +CTE
+   plan AL plan PLAN-CTES @ name false false body +CTE
    name cols var SHAPE-OF ;
 
 \ The active graph's node CTE and k's form, written by the first walk
@@ -5154,7 +5154,7 @@ STRUCTURE pruning DERIVE addr
    else plan w body NODE-SEEDS then then then
    body s" )" +TEXT
    plan w s" s" WALK-CTE-NAME {: n:str :}
-   plan AL w WALK-CTES @ n false body +CTE ;
+   plan AL w WALK-CTES @ n false false body +CTE ;
 
 \ Appends to the rel the join to the walk's pairs p on the condition,
 \ `true` when empty: ` JOIN nameP AS p ON` it, else ` CROSS JOIN LATERAL
@@ -5291,7 +5291,7 @@ STRUCTURE pruning DERIVE addr
       v s"  FROM " +SQL v n +SQL v s"  AS w" +SQL
       v w plan w plan w NEXT-AT STEP-FROM +STEP
    then v s" )" +TEXT
-   plan AL w WALK-CTES @ n false v +CTE ;
+   plan AL w WALK-CTES @ n false true v +CTE ;
 
 \ An end of the walk whose value in a part is b: a constant meets b; a
 \ variable's first end is a column of the form, a later one meets it.
@@ -5327,11 +5327,11 @@ STRUCTURE pruning DERIVE addr
    v s" SELECT " +SQL v list +REL v s"  FROM " +SQL v t +SQL
    plan v cond +WHERE cols ;
 
-\ Gives the rel the walk's CTE list as its WITH RECURSIVE; the final write
-\ writes the list as it then stands.
-: RECURSIVE! ( ^walk ^rel -- )
+\ Gives the rel the walk's CTE list as its WITH; the final write writes
+\ the list as it then stands.
+: WALK-WITH! ( ^walk ^rel -- )
    {: w:^ r:^ :}
-   w WALK-CTES @ CTES-FIRST @ r REL-WITH ! true r REL-RECURSIVE ! ;
+   w WALK-CTES @ CTES-FIRST @ r REL-WITH ! ;
 
 : PARENS ( ^plan ^rel -- ^rel )
    {: plan r:^ :}
@@ -5353,7 +5353,7 @@ STRUCTURE pruning DERIVE addr
       plan w plan w s" s" WALK-CTE-NAME plan kind s" k" VALUE
          plan kind s" k" VALUE form v +PART drop
    then
-   w WALK-REST @ w WALK-SHARED @ or 0= if w v RECURSIVE! then
+   w WALK-REST @ w WALK-SHARED @ or 0= if w v WALK-WITH! then
    plan v PARENS cols ;
 
 \ r, reading nameR joined with the walk, becomes one derived table under
@@ -5361,7 +5361,7 @@ STRUCTURE pruning DERIVE addr
 : WRAP ( ^plan ^walk ^relation -- )
    {: plan w:^ r:^ :}
    plan NEW-SQL {: c:^ :}
-   w c RECURSIVE! plan c r +SELECT
+   w c WALK-WITH! plan c r +SELECT
    plan c PARENS {: out:^ :}
    r RELATION-BINDINGS @ {: cols:^ :}
    plan NEW-SQL {: from:^ :}
@@ -5544,7 +5544,7 @@ STRUCTURE pruning DERIVE addr
    plan NEXT-ALIAS {: name:str :}
    plan NEW-SQL {: out:^ :}
    out s" (" +TEXT plan out r +SELECT out s" )" +TEXT
-   plan AL plan PLAN-CTES @ name true out +CTE
+   plan AL plan PLAN-CTES @ name true false out +CTE
    plan NEW-SQL plan NEW-CLAUSE plan 0 NEW-BINDINGS r INIT-RELATION
    r RELATION-FROM @ name +TEXT
    cols VEC:COUNT 0 ?do
@@ -5565,7 +5565,7 @@ STRUCTURE pruning DERIVE addr
    plan v bs bs var FIND-VAR VEC:AT form +VALUE
    v s"  AS k" +SQL
    plan v r +FROM-WHERE v s" )" +TEXT
-   plan AL plan PLAN-CTES @ name true v +CTE
+   plan AL plan PLAN-CTES @ name true false v +CTE
    keys var form key s" " BIND ;
 
 \ Adds the keys of the listed variables that the component's drivers r
@@ -6703,10 +6703,9 @@ STRUCTURE pruning DERIVE addr
       plan i 1+ PARAMETER-NODE 0<> if v s" ::jsonb" +SQL then
       v s" ::text)" +SQL
    loop v s" )" +SQL
-   plan AL s" t0" false v NEW-CTE ;
+   plan AL s" t0" false false v NEW-CTE ;
 
-\ The statement: t0 and the plan's CTEs, then the query's text; its WITH
-\ is recursive when a shared walk wrote CTEs there.
+\ The statement: t0 and the plan's CTEs, then the query's text.
 : STATEMENT ( ^plan -- ^rel )
    {: plan :}
    plan TREE {: state :}
@@ -6719,7 +6718,6 @@ STRUCTURE pruning DERIVE addr
    plan POP-LEVEL
    plan +TYPES {: t0:^ :}
    plan PLAN-CTES @ CTES-FIRST @ t0 CTE-NEXT !
-   plan PLAN-WALKS @ VEC:COUNT 0<> if true t REL-RECURSIVE ! then
    t0 t REL-WITH ! t ;
 
 \ Appends the query's statement to the vector, counted first so the arena

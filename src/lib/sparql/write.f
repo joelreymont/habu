@@ -38,12 +38,18 @@ STRUCTURE sink DERIVE addr
    s STR:LEN k SINK-COUNT +!
    k SINK-OUT @ NULL-PTR <> if s k SINK-OUT @ VEC:APPEND then ;
 
+\ Whether a CTE from c on is recursive.
+: RECURSIVE? ( ^cte -- bool )
+   begin dup NULL-PTR <> while
+      dup CTE-RECURSIVE @ if drop true exit then CTE-NEXT @
+   repeat drop false ;
+
 \ `WITH ` or `WITH RECURSIVE ` before the rel's first CTE, a comma
 \ before any other.
 : CTE-SEP$ ( ^rel ^cte -- str )
    {: r:^ c:^ :}
    c r REL-WITH @ <> if s" ," exit then
-   r REL-RECURSIVE @ if s" WITH RECURSIVE " else s" WITH " then ;
+   c RECURSIVE? if s" WITH RECURSIVE " else s" WITH " then ;
 
 \ The AS after the CTE's name, which its body follows.
 : CTE-AS$ ( ^cte -- str )

@@ -5,10 +5,10 @@
 \ text is the bytes copied in since the last piece, which the next piece
 \ takes as its string; a cte is one WITH entry, its name and body, a rel
 \ that reads only the CTEs before it in the list; a ctes is a list of CTEs
-\ in written order. A recursive rel's WITH is WITH RECURSIVE. A rel's
-\ copies are the hidden bytes behind the text copied into it, open or since
-\ turned into pieces: those of the expressions PostgreSQL copies in for the
-\ derived tables' columns that text reads.
+\ in written order. A WITH is WITH RECURSIVE when one of its CTEs is
+\ recursive. A rel's copies are the hidden bytes behind the text copied
+\ into it, open or since turned into pieces: those of the expressions
+\ PostgreSQL copies in for the derived tables' columns that text reads.
 \ A statement's texts hold every rel's copied bytes: a rel's open text is
 \ a range of a chunk, which grows in place while it ends at the chunk's
 \ used end and fits, else goes on at the used end: copied there when no
@@ -32,6 +32,7 @@ STRUCTURE piece DERIVE addr
 STRUCTURE cte DERIVE addr
    FIELD name str
    FIELD materialized bool
+   FIELD recursive bool
    FIELD body ^rel
    FIELD next ^cte
 ;STRUCTURE
@@ -40,7 +41,6 @@ STRUCTURE cte DERIVE addr
 \ once it is linked as a child or listed as a condition.
 STRUCTURE rel DERIVE addr
    FIELD with ^cte  \ NULL-PTR for no CTE
-   FIELD recursive bool
    FIELD first ^piece  \ NULL-PTR for no piece, as last is
    FIELD last ^piece
    FIELD start ^u8
@@ -77,10 +77,10 @@ STRUCTURE ctes DERIVE addr
    0 ts TEXTS-SIZE ! NULL-PTR ts TEXTS-LAST ! ts ;
 
 \ A CTE that is the last of its list.
-: NEW-CTE ( ^ALLOC:allocator str bool ^rel -- ^cte )
-   {: al:^ name:str mat:bool body:^ :}
+: NEW-CTE ( ^ALLOC:allocator str bool bool ^rel -- ^cte )
+   {: al:^ name:str mat:bool rec:bool body:^ :}
    al [type] cte ALLOC:NEW {: c:^ :}
-   name c CTE-NAME ! mat c CTE-MATERIALIZED !
+   name c CTE-NAME ! mat c CTE-MATERIALIZED ! rec c CTE-RECURSIVE !
    body c CTE-BODY ! NULL-PTR c CTE-NEXT ! c ;
 
 : NEW-CTES ( ^ALLOC:allocator -- ^ctes )
@@ -88,20 +88,20 @@ STRUCTURE ctes DERIVE addr
    al [type] ctes ALLOC:NEW {: list:^ :}
    NULL-PTR list CTES-FIRST ! NULL-PTR list CTES-LAST ! list ;
 
-\ Appends a CTE of the name, materialized flag and body to the list.
-: +CTE ( ^ALLOC:allocator ^ctes str bool ^rel -- )
-   {: al:^ list:^ name:str mat:bool body:^ :}
-   al name mat body NEW-CTE {: c:^ :}
+\ Appends a CTE of the name, materialized and recursive flags and body to
+\ the list.
+: +CTE ( ^ALLOC:allocator ^ctes str bool bool ^rel -- )
+   {: al:^ list:^ name:str mat:bool rec:bool body:^ :}
+   al name mat rec body NEW-CTE {: c:^ :}
    list CTES-LAST @ {: last:^ :}
    last NULL-PTR = if c list CTES-FIRST ! else c last CTE-NEXT ! then
    c list CTES-LAST ! ;
 
-\ A rel of the texts with no CTE, no text, no copies and no digest, not
-\ recursive.
+\ A rel of the texts with no CTE, no text, no copies and no digest.
 : NEW-REL ( ^texts -- ^rel )
    {: ts:^ :}
    ts TEXTS-AL @ [type] rel ALLOC:NEW {: r:^ :}
-   NULL-PTR r REL-WITH ! false r REL-RECURSIVE !
+   NULL-PTR r REL-WITH !
    NULL-PTR r REL-FIRST ! NULL-PTR r REL-LAST !
    NULL-PTR r REL-START ! 0 r REL-LEN ! ts r REL-TEXTS !
    0 r REL-COPIES ! 0 r REL-DIGEST ! r ;
