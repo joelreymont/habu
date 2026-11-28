@@ -1,7 +1,10 @@
 \ os-cpu-test.f - the processor facts against the host's own report.
 \ Run: bin/hb --load src/lib/os-cpu-test.f
 \ Failure modes: a sysconf name wrong for the target, so ONLINE answers another
-\ limit or throws on -1, or disagrees with getconf _NPROCESSORS_ONLN; a getloadavg
+\ limit or throws on -1, or disagrees with getconf _NPROCESSORS_ONLN; an affinity
+\ binding that reads the wrong mask size or counts its bits wrong, so ALLOWED
+\ disagrees with nproc (run with OpenMP's limits unset, which nproc obeys), or
+\ on macOS answers other than ONLINE; a getloadavg
 \ binding that reads the wrong bytes or type, so LOAD1 is garbage, nonfinite or
 \ negative, or disagrees with the host's one-minute average (sysctl, /proc/loadavg).
 
@@ -38,6 +41,13 @@ create ERR OUT-CAP allot
    s" _NPROCESSORS_ONLN" PROC-ARGV+
    s" /usr/bin/getconf" CAPTURE$ ;
 
+\ nproc's count of this process's affinity mask, which the child inherits.
+: NPROC$ ( -- str )
+   PROC-ARGV-RESET
+   s" -u" PROC-ARGV+  s" OMP_NUM_THREADS" PROC-ARGV+
+   s" -u" PROC-ARGV+  s" OMP_THREAD_LIMIT" PROC-ARGV+
+   s" /usr/bin/nproc" PROC-ARGV+
+   s" /usr/bin/env" CAPTURE$ ;
 
 \ macOS prints `{ 1.23 1.10 0.98 }`, Linux `1.23 1.10 0.98 2/345 6789`.
 : HOST-LOAD$ ( -- str )
@@ -68,6 +78,14 @@ create ERR OUT-CAP allot
       none OF 1 0 T= ENDOF
    ;MATCH ;
 
+\ macOS has no affinity mask, so ALLOWED is ONLINE there.
+: MATCHES-NPROC ( -- )
+   OS-CPU:ALLOWED {: count:n :}
+   HB-TARGET-MACOS? if count OS-CPU:ONLINE T= exit then
+   NPROC$ STR:>NUMBER? MATCH option
+      some OF count T= ENDOF
+      none OF 1 0 T= ENDOF
+   ;MATCH ;
 
 \ The kernel updates the average every few seconds, so it can step between the
 \ three reads; the reads before and after bracket that step. The host prints
@@ -85,6 +103,7 @@ create ERR OUT-CAP allot
 : RUN ( -- )
    T-RESET
    MATCHES-GETCONF
+   MATCHES-NPROC
    MATCHES-HOST-LOAD
    T-REPORT ;
 
