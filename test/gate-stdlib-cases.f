@@ -1278,6 +1278,12 @@ SUITE process-tree
    src/lib/process-tree-test.f
 ;SUITE
 
+\ One process's own CPU time rises with a spinning child within the wall time,
+\ agrees with the kernel's report, and throws for a reaped pid.
+SUITE process-cpu
+   src/lib/process-cpu-test.f
+;SUITE
+
 SUITE hb-open-failure
    tools/hb-open-failure-test.f
 ;SUITE
