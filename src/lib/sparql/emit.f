@@ -4246,7 +4246,8 @@ STRUCTURE pruning DERIVE addr
 \ Appends `EXISTS (SELECT 1 ...)` to out, after ` OR ` unless out is
 \ empty: the triple over record rec with its variable's slot meeting k
 \ inside the record's own condition, where an index on the slot's column
-\ serves it. Nothing when they cannot meet.
+\ serves it; that strict `=` leaves every binding on the slot's column
+\ not nullable. Nothing when they cannot meet.
 : +EXISTS ( ^plan n n n ^binding ^rel -- )
    {: plan triple:n rec:n var:n k:^ out:^ :}
    plan AL [type] relation ALLOC:NEW {: r:^ :}
@@ -4254,7 +4255,14 @@ STRUCTURE pruning DERIVE addr
    r RELATION-BINDINGS @ {: bs:^ :}
    bs bs var FIND-VAR VEC:AT {: b:^ :}
    plan b k COMPATIBLE? 0= if exit then
-   r RELATION-WHERE @ plan b k SAME-SQL +CONDITION
+   plan b k SAME-SQL {: same:^ :}
+   same EMPTY? 0= if
+      bs VEC:COUNT 0 ?do
+         plan PLAN-CURSORS @ bs i VEC:AT BINDING-SQL @ b BINDING-SQL @ REL=
+         if false bs i VEC:AT BINDING-NULLABLE ! then
+      loop
+   then
+   r RELATION-WHERE @ same +CONDITION
    out s"  OR " +SEP out s" EXISTS (SELECT 1" +TEXT
    out r +FROM-WHERE out s" )" +TEXT ;
 
