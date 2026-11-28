@@ -417,15 +417,19 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    q text $ a ANSWER {: sql:^ doc:^ :}
    doc ;
 
+\ The query answers the document on a limit of so many bytes and fails on
+\ one a byte shorter.
+: ANSWERS-AT ( str str n ^ARENA:arena -- )
+   {: q:str doc:str bytes:n a:^ :}
+   q bytes a ANSWER-WITHIN $ doc a false SAME? TTRUE
+   q bytes 1- a ANSWER-WITHIN $ s" 54000: " STR:STARTS-WITH? TTRUE ;
+
 : LIMITED-IN ( str ^ARENA:arena -- )
    {: q:str a:^ :}
    q 1048576 a ANSWER-WITHIN {: doc:^ :}
-   doc VEC:COUNT {: len:n :}
-   q len a ANSWER-WITHIN $ doc $ a false SAME? TTRUE
-   q len 1- a ANSWER-WITHIN $ s" 54000: " STR:STARTS-WITH? TTRUE ;
+   q doc $ doc VEC:COUNT a ANSWERS-AT ;
 
-\ The query answers on a limit of its document's length and fails on one a
-\ byte shorter.
+\ The query answers on a limit of its document's length.
 : LIMITED ( str -- ) [: LIMITED-IN ;] ARENA:WITH ;
 
 : FAIL-IN ( str str ^ARENA:arena -- )
@@ -1150,12 +1154,10 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
 
 : GROWN-IN ( str n ^ARENA:arena -- )
    {: q:str bytes:n a:^ :}
-   s" {'head':{},'boolean':true}" a UNQUOTE {: yes:^ :}
-   q bytes a ANSWER-WITHIN $ yes $ a false SAME? TTRUE
-   q bytes 1- a ANSWER-WITHIN $ s" 54000: " STR:STARTS-WITH? TTRUE ;
+   q s" {'head':{},'boolean':true}" a UNQUOTE $ bytes a ANSWERS-AT ;
 
 \ The ASK query answers true on a limit of so many bytes, its longest
-\ value's, and fails on one a byte shorter.
+\ value's.
 : GROWN ( str n -- ) [: GROWN-IN ;] ARENA:WITH ;
 
 \ A string function fails once the value it builds passes the byte limit,
@@ -1163,8 +1165,12 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
 : GROWTHS ( -- )
    s" ASK { BIND('xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' AS ?x) BIND(CONCAT(?x, ?x) AS ?v) FILTER(STRLEN(?v) > 0) }"
    80 GROWN
-   s" ASK { BIND(REPLACE('xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', '(x)', '$1$1') AS ?v) FILTER(STRLEN(?v) > 0) }"
-   80 GROWN
+   s" ASK { BIND(REPLACE('abababababababababab', 'b', 'xyz') AS ?v) FILTER(STRLEN(?v) > 0) }"
+   40 GROWN
+   s" ASK { BIND(REPLACE('éyéyéyéyéyéyéyéyéyéy', '(é)(y)', '$1$2$1') AS ?v) FILTER(STRLEN(?v) > 0) }"
+   50 GROWN
+   s" ASK { BIND(ENCODE_FOR_URI('Größe & Maß / ü?') AS ?v) FILTER(STRLEN(?v) > 0) }"
+   50 GROWN
    s" SELECT ?v WHERE { BIND(REPLACE('xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', 'x+', 'y') AS ?v) }"
    s" {'head':{'vars':['v']},'results':{'bindings':[{'v':{'type':'literal','value':'y'}}]}}"
    EXPECT

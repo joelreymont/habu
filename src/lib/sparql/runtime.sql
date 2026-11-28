@@ -1040,25 +1040,34 @@ BEGIN
 END $$;
 
 -- SQLSTATE 54000 before the replacement once its value's bytes pass its share
--- of the byte limit: the string's without its matches, plus the replacement's
--- literal bytes once per match and, for each \& or \1 to \9 in it, that group's
--- bytes in every match. Each count is the bytes of the string with every match
--- replaced by '', by 'x' or by one group, none past twice its bytes and one.
+-- of the byte limit. A pattern that matches empty anywhere matches '', so every
+-- match is a character at least: the value is at most the string's bytes, plus
+-- the replacement's literal bytes per character, plus the string's bytes per \&
+-- or \1 to \9 in it. Past that bound it counts exactly: the string's bytes
+-- without its matches, the literal bytes per match and, for each distinct
+-- reference, its group's bytes in every match times its occurrences. Each count
+-- replaces every match by '', 'x' or one group, none longer than the string.
 CREATE FUNCTION sparql.replaced(bytes bigint,term jsonb,regex text,replacement text,flags text) RETURNS jsonb
 LANGUAGE plpgsql IMMUTABLE STRICT PARALLEL SAFE AS $$
-DECLARE value text := sparql.string(term); result text; rest bigint; total bigint; literal bigint; ref text;
+DECLARE value text := sparql.string(term); result text; size bigint; rest bigint; total bigint;
+        literal bigint; refs bigint; ref text; times bigint;
 BEGIN
     IF regexp_like('',regex COLLATE "pg_unicode_fast",flags) OR value IS NULL THEN RETURN NULL; END IF;
-    rest := octet_length(regexp_replace(value,regex COLLATE "pg_unicode_fast",'',flags || 'g'));
-    total := rest;
+    size := octet_length(value);
     literal := octet_length(regexp_replace(replacement,'\\([&1-9])|\\(\\)','\2','g'));
-    IF literal>0 THEN
-        total := total+literal*(octet_length(regexp_replace(value,regex COLLATE "pg_unicode_fast",'x',flags || 'g'))-rest);
+    SELECT count(*) INTO refs FROM regexp_matches(replacement,'\\([&1-9\\])','g') m WHERE m[1]<>E'\\';
+    IF size+literal*char_length(value)+refs*size>bytes THEN
+        rest := octet_length(regexp_replace(value,regex COLLATE "pg_unicode_fast",'',flags || 'g'));
+        total := rest;
+        IF literal>0 THEN
+            total := total+literal*(octet_length(regexp_replace(value,regex COLLATE "pg_unicode_fast",'x',flags || 'g'))-rest);
+        END IF;
+        FOR ref,times IN SELECT m[1],count(*) FROM regexp_matches(replacement,'\\([&1-9\\])','g') m
+                          WHERE m[1]<>E'\\' GROUP BY m[1] LOOP
+            total := total+times*(octet_length(regexp_replace(value,regex COLLATE "pg_unicode_fast",E'\\' || ref,flags || 'g'))-rest);
+        END LOOP;
+        PERFORM sparql.built(total,bytes);
     END IF;
-    FOR ref IN SELECT m[1] FROM regexp_matches(replacement,'\\([&1-9\\])','g') m WHERE m[1]<>E'\\' LOOP
-        total := total+octet_length(regexp_replace(value,regex COLLATE "pg_unicode_fast",E'\\' || ref,flags || 'g'))-rest;
-    END LOOP;
-    PERFORM sparql.built(total,bytes);
     result := regexp_replace(value,regex COLLATE "pg_unicode_fast",replacement,flags || 'g');
     RETURN sparql.tagged(result,term);
 EXCEPTION WHEN invalid_regular_expression THEN
