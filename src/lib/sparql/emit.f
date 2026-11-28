@@ -1481,7 +1481,7 @@ STRUCTURE pruning DERIVE addr
 
 : NEW-PRUNING ( ^plan -- ^pruning )
    {: plan :}
-   plan AL {: al:^ :}
+   plan WORK-AL {: al:^ :}
    al [type] pruning ALLOC:NEW {: w:^ :}
    plan w PRUNING-PLAN !
    al 0 [type] class VEC:NEW w PRUNING-CLASSES !
@@ -1501,7 +1501,8 @@ STRUCTURE pruning DERIVE addr
    k 0 ?do y t cs i VEC:AT OF-CLASS? if i unloop exit then loop
    cs VEC:PUSH {: c:^ :}
    y c CLASS-SHAPE ! t c CLASS-TERM !
-   w PRUNING-PLAN @ AL cs VEC:COUNT [type] n VEC:NEW c CLASS-ANSWERS ! k ;
+   w PRUNING-PLAN @ WORK-AL cs VEC:COUNT [type] n VEC:NEW
+      c CLASS-ANSWERS ! k ;
 
 \ The index of the variable's domain, new on its first use.
 : DOMAIN-OF ( ^pruning n -- n )
@@ -1519,7 +1520,7 @@ STRUCTURE pruning DERIVE addr
    w PRUNING-SITES @ {: sites:^ :}
    w var DOMAIN-OF {: d:n :}
    w d DOMAIN@ {: dom:^ :}
-   w PRUNING-PLAN @ dom DOMAIN-SITES @ sites VEC:COUNT +INDEX
+   w PRUNING-PLAN @ dom DOMAIN-SITES @ sites VEC:COUNT +WORK-INDEX
    dom DOMAIN-SITES !
    sites VEC:PUSH {: s:^ :}
    it s SITE-ITEM ! kind s SITE-KIND ! first s SITE-FIRST !
@@ -1547,13 +1548,13 @@ STRUCTURE pruning DERIVE addr
    it ITEM-CHOICES @ {: cs:^ :}
    cs VEC:COUNT 0 ?do
       w plan it cs i VEC:AT s SITE-KIND @ KIND@ CLASS-OF {: c:n :}
-      plan s SITE-CLASSES @ c +INDEX s SITE-CLASSES !
+      plan s SITE-CLASSES @ c +WORK-INDEX s SITE-CLASSES !
    loop ;
 
 : COUNT-LIVE ( ^pruning ^site -- )
    {: w:^ s:^ :}
-   w PRUNING-PLAN @ AL w PRUNING-CLASSES @ VEC:COUNT [type] n VEC:NEW
-      s SITE-LIVE !
+   w PRUNING-PLAN @ WORK-AL w PRUNING-CLASSES @ VEC:COUNT
+      [type] n VEC:NEW s SITE-LIVE !
    s SITE-ITEM @ ITEM-CHOICES @ {: cs:^ :}
    cs VEC:COUNT 0 ?do
       cs i VEC:AT CHOICE-ALIVE @ if
@@ -1572,7 +1573,8 @@ STRUCTURE pruning DERIVE addr
    w k DOMAIN@ {: d:^ :}
    d DOMAIN-QUEUED @ if exit then
    true d DOMAIN-QUEUED !
-   w PRUNING-PLAN @ w PRUNING-QUEUE @ k +INDEX w PRUNING-QUEUE ! ;
+   w PRUNING-PLAN @ w PRUNING-QUEUE @ k +WORK-INDEX
+   w PRUNING-QUEUE ! ;
 
 \ Whether classes x and y are compatible, x not before y.
 : ASK ( ^pruning n n -- bool )
@@ -1657,16 +1659,19 @@ STRUCTURE pruning DERIVE addr
       1 w PRUNING-HEAD +!
    repeat ;
 
-\ Kills each choice another item cannot support, until none changes.
+\ Kills each choice another item cannot support, until none changes; its
+\ scratch lives in the work arena until it returns.
 : PRUNE ( ^plan ^VEC:vector<item> -- )
    {: plan items:^ :}
    items VEC:COUNT 2 < if exit then
+   plan WORK-ARENA {: work:^ :}
+   work ARENA:MARK {: mark:n :}
    plan NEW-PRUNING {: w:^ :}
    items VEC:COUNT 0 ?do w items i VEC:AT +SITES loop
    w [: CLASSIFY ;] EACH-SHARED
    w [: COUNT-LIVE ;] EACH-SHARED
    w [: SITE-DOMAIN @ ENQUEUE ;] EACH-SHARED
-   w DRAIN ;
+   w DRAIN work mark ARENA:CUT ;
 
 \ The description source the choice's record was read from.
 : ORIGIN ( ^plan ^choice -- n ) CHOICE-SOURCE @ SOURCE@ SOURCE-ORIGIN @ ;
@@ -2232,9 +2237,9 @@ STRUCTURE pruning DERIVE addr
    {: plan pinned:^ subj:n :}
    pinned VEC:PUSH {: g:^ :}
    subj g PINNED-SUBJECT !
-   plan AL 0 [type] pin VEC:NEW g PINNED-PINS !
+   plan WORK-AL 0 [type] pin VEC:NEW g PINNED-PINS !
    plan PLAN-STORE @ STORE-SOURCES @ VEC:COUNT 3 * {: n:n :}
-   plan AL n [type] u8 VEC:NEW g PINNED-VERDICTS !
+   plan WORK-AL n [type] u8 VEC:NEW g PINNED-VERDICTS !
    g ;
 
 \ The subject node's `pinned`, made when none.
@@ -2280,7 +2285,7 @@ STRUCTURE pruning DERIVE addr
 \ The pins of the joined triples, one `pinned` per subject.
 : PINS ( ^plan ^VEC:vector<item> -- ^VEC:vector<pinned> )
    {: plan items:^ :}
-   plan AL 0 [type] pinned VEC:NEW {: pinned:^ :}
+   plan WORK-AL 0 [type] pinned VEC:NEW {: pinned:^ :}
    items VEC:COUNT 0 ?do
       items i VEC:AT {: a:^ :}
       a JOINED-TRIPLE? if plan pinned a +PINS then
@@ -2354,14 +2359,17 @@ STRUCTURE pruning DERIVE addr
       then
    loop ;
 
-\ Kills the choices an `only` leaves empty, by pins taken before any kill.
+\ Kills the choices an `only` leaves empty, by pins taken before any
+\ kill; the pins live in the work arena until it returns.
 : DROP-UNFILLED ( ^plan ^VEC:vector<item> -- )
    {: plan items:^ :}
+   plan WORK-ARENA {: work:^ :}
+   work ARENA:MARK {: mark:n :}
    plan items PINS {: pinned:^ :}
    items VEC:COUNT 0 ?do
       items i VEC:AT {: b:^ :}
       b JOINED-TRIPLE? if plan pinned b DROP-CHOICES then
-   loop ;
+   loop work mark ARENA:CUT ;
 
 \ The group's rows, made at the first kept.
 : ROWS ( ^plan ^relation -- ^VEC:vector<subject-row> )
