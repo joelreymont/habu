@@ -1,8 +1,7 @@
 \ store.f - the store description a host passes with each query, read
 \ into the records the compiler walks. The description is a JSON object:
-\ `bytes`, a whole number above 0, the limit on the answer and on each value
-\ the statement builds; `shapes`, an object naming each shape
-\ `{"in": f, "out": f, "holds": h, "type": t}`, f a SQL
+\ `bytes`, a whole number above 0, the byte limit; `shapes`, an object naming
+\ each shape `{"in": f, "out": f, "holds": h, "type": t}`, f a SQL
 \ function called as f(x), `in` from a term to the shape's native value,
 \ NULL for every term outside `holds`, and `out` back, h, optional, "uri"
 \ or an array of datatype IRIs (a plain literal's is xsd:string, a

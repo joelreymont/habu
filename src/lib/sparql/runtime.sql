@@ -118,6 +118,18 @@ BEGIN
     RETURN total;
 END $$;
 
+-- A built value's byte count, or SQLSTATE 54000 once it is past bytes, its
+-- building call's share of the byte limit.
+CREATE FUNCTION sparql.built(total bigint, bytes bigint) RETURNS bigint
+LANGUAGE plpgsql IMMUTABLE STRICT PARALLEL SAFE AS $$
+BEGIN
+    IF total>bytes THEN
+        RAISE EXCEPTION 'SPARQL value exceeds % bytes, its share of the byte limit; build a shorter value, or, in a query of more than 16 calls of CONCAT, REPLACE, UCASE, LCASE, ENCODE_FOR_URI, IRI, URI and GROUP_CONCAT, make fewer of them',
+            bytes USING ERRCODE='54000';
+    END IF;
+    RETURN total;
+END $$;
+
 -- The value of an xsd:float or xsd:double lexical form. One past its datatype's
 -- range is INF, -INF or a zero of its sign (XSD 1.1 part 2, floatingPointRound):
 -- the form is too large when its first nonzero digit, moved by the exponent,
@@ -493,7 +505,7 @@ END $$;
 -- RFC 3986 section 5.2, including dot segments, query and fragment merging.
 -- An existing IRI is unchanged; string arguments use the query's base. A
 -- resolved IRI has at most the reference's and the base's bytes and one; it is
--- built, then raises SQLSTATE 54000 once it passes the byte limit.
+-- built, then raises SQLSTATE 54000 once it passes its share of the byte limit.
 CREATE FUNCTION sparql.iri(bytes bigint,term jsonb,base text) RETURNS jsonb
 LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE AS $$
 DECLARE a jsonb:=sparql.normalize(term); value text:=a->>'value'; r text[]; b text[];
@@ -513,7 +525,7 @@ BEGIN
         authority:=b[3];
         IF path='' THEN
             result:=scheme || coalesce(authority,'') || b[5] || coalesce(query,b[6],'') || coalesce(r[8],'');
-            PERFORM sparql.within(octet_length(result),bytes);
+            PERFORM sparql.built(octet_length(result),bytes);
             RETURN sparql.term(result,'uri');
         END IF;
         IF left(path,1)<>'/' THEN path:=CASE WHEN authority IS NOT NULL AND b[5]='' THEN '/'
@@ -536,7 +548,7 @@ BEGIN
     END LOOP;
     path:=array_to_string(parts[1:depth],'');
     result:=scheme || coalesce(authority,'') || path || coalesce(query,'') || coalesce(r[8],'');
-    PERFORM sparql.within(octet_length(result),bytes);
+    PERFORM sparql.built(octet_length(result),bytes);
     RETURN sparql.term(result,'uri');
 END $$;
 
@@ -860,12 +872,12 @@ END $$;
 
 -- LCASE and UCASE: full case mapping makes at most three times a string's
 -- bytes (U+0390 to U+0399 U+0308 U+0301), so the value is built, then raises
--- SQLSTATE 54000 once it passes the byte limit.
+-- SQLSTATE 54000 once it passes its share of the byte limit.
 CREATE FUNCTION sparql.lcase(bytes bigint,term jsonb) RETURNS jsonb
 LANGUAGE plpgsql IMMUTABLE STRICT PARALLEL SAFE AS $$
 DECLARE value text := lower(sparql.string(term) COLLATE "pg_unicode_fast");
 BEGIN
-    PERFORM sparql.within(octet_length(value),bytes);
+    PERFORM sparql.built(octet_length(value),bytes);
     RETURN sparql.tagged(value,term);
 END $$;
 
@@ -873,25 +885,30 @@ CREATE FUNCTION sparql.ucase(bytes bigint,term jsonb) RETURNS jsonb
 LANGUAGE plpgsql IMMUTABLE STRICT PARALLEL SAFE AS $$
 DECLARE value text := upper(sparql.string(term) COLLATE "pg_unicode_fast");
 BEGIN
-    PERFORM sparql.within(octet_length(value),bytes);
+    PERFORM sparql.built(octet_length(value),bytes);
     RETURN sparql.tagged(value,term);
 END $$;
 
--- SQLSTATE 54000 before the join once the parts' bytes pass the byte limit.
-CREATE FUNCTION sparql.concat(bytes bigint,terms jsonb[]) RETURNS jsonb
+-- CONCAT's arguments are terms[places[1]], terms[places[2]] and so on, each
+-- term once however many places name it: SQLSTATE 54000 once its parts' bytes,
+-- each times its places, pass its share of the byte limit, before any is joined.
+CREATE FUNCTION sparql.concat(bytes bigint,terms jsonb[],places int[]) RETURNS jsonb
 LANGUAGE plpgsql IMMUTABLE STRICT PARALLEL SAFE AS $$
-DECLARE term jsonb; parts text[] := '{}'; result text; total bigint := 0;
-    tag text := lower((terms[1]->>'xml:lang') COLLATE "C");
+DECLARE parts text[] := '{}'; counts bigint[] := array_fill(0::bigint,ARRAY[cardinality(terms)]);
+    pieces text[] := '{}'; result text; total bigint := 0; k int;
+    tag text := lower((terms[places[1]]->>'xml:lang') COLLATE "C");
 BEGIN
-    FOREACH term IN ARRAY terms LOOP
-        parts := array_append(parts,sparql.string(term));
-        total := total+octet_length(parts[cardinality(parts)]);
-        IF lower((term->>'xml:lang') COLLATE "C") IS DISTINCT FROM tag THEN tag := NULL; END IF;
+    FOR k IN 1..cardinality(terms) LOOP
+        parts := array_append(parts,sparql.string(terms[k]));
+        IF parts[k] IS NULL THEN RETURN NULL; END IF;
+        IF lower((terms[k]->>'xml:lang') COLLATE "C") IS DISTINCT FROM tag THEN tag := NULL; END IF;
     END LOOP;
-    IF array_position(parts,NULL) IS NOT NULL THEN RETURN NULL; END IF;
-    PERFORM sparql.within(total,bytes);
-    result := array_to_string(parts,'');
-    RETURN CASE WHEN tag IS NULL THEN sparql.term(result) ELSE sparql.tagged(result,terms[1]) END;
+    FOREACH k IN ARRAY places LOOP counts[k] := counts[k]+1; END LOOP;
+    FOR k IN 1..cardinality(terms) LOOP total := total+octet_length(parts[k])*counts[k]; END LOOP;
+    PERFORM sparql.built(total,bytes);
+    FOREACH k IN ARRAY places LOOP pieces := array_append(pieces,parts[k]); END LOOP;
+    result := array_to_string(pieces,'');
+    RETURN CASE WHEN tag IS NULL THEN sparql.term(result) ELSE sparql.tagged(result,terms[places[1]]) END;
 END $$;
 
 -- The value of an xsd:integer or a type derived from it, else NULL.
@@ -1022,10 +1039,10 @@ BEGIN
     RETURN array_to_string(items,'');
 END $$;
 
--- SQLSTATE 54000 before the replacement once its value's bytes pass the byte
--- limit: the string's without its matches, plus the replacement's literal
--- bytes once per match and, for each \& or \1 to \9 in it, that group's bytes
--- in every match. Each count is the bytes of the string with every match
+-- SQLSTATE 54000 before the replacement once its value's bytes pass its share
+-- of the byte limit: the string's without its matches, plus the replacement's
+-- literal bytes once per match and, for each \& or \1 to \9 in it, that group's
+-- bytes in every match. Each count is the bytes of the string with every match
 -- replaced by '', by 'x' or by one group, none past twice its bytes and one.
 CREATE FUNCTION sparql.replaced(bytes bigint,term jsonb,regex text,replacement text,flags text) RETURNS jsonb
 LANGUAGE plpgsql IMMUTABLE STRICT PARALLEL SAFE AS $$
@@ -1041,7 +1058,7 @@ BEGIN
     FOR ref IN SELECT m[1] FROM regexp_matches(replacement,'\\([&1-9\\])','g') m WHERE m[1]<>E'\\' LOOP
         total := total+octet_length(regexp_replace(value,regex COLLATE "pg_unicode_fast",E'\\' || ref,flags || 'g'))-rest;
     END LOOP;
-    PERFORM sparql.within(total,bytes);
+    PERFORM sparql.built(total,bytes);
     result := regexp_replace(value,regex COLLATE "pg_unicode_fast",replacement,flags || 'g');
     RETURN sparql.tagged(result,term);
 EXCEPTION WHEN invalid_regular_expression THEN
@@ -1059,14 +1076,14 @@ LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
 $$;
 
 -- Each UTF-8 byte of the string but an unreserved character's becomes three,
--- so the value's bytes are known, and checked against the byte limit, before
--- it is built.
+-- so the value's bytes are known, and checked against its share of the byte
+-- limit, before it is built.
 CREATE FUNCTION sparql.encode_for_uri(bytes bigint,term jsonb) RETURNS jsonb
 LANGUAGE plpgsql IMMUTABLE STRICT PARALLEL SAFE AS $$
 DECLARE value text := sparql.string(term); octets bytea := convert_to(value,'UTF8'); result text;
 BEGIN
     IF octets IS NULL THEN RETURN NULL; END IF;
-    PERFORM sparql.within(length(octets)
+    PERFORM sparql.built(length(octets)
         +2*octet_length(convert_to(regexp_replace(value COLLATE "C",'[-.0-9A-Z_a-z~]','','g'),'UTF8')),bytes);
     SELECT string_agg(CASE WHEN byte BETWEEN 65 AND 90 OR byte BETWEEN 97 AND 122 OR byte BETWEEN 48 AND 57
                                 OR byte IN (45,46,95,126) THEN chr(byte)
@@ -1229,10 +1246,10 @@ CREATE AGGREGATE sparql.avg(jsonb) (SFUNC=sparql.total_step, STYPE=sparql.total,
     FINALFUNC=sparql.total_avg, INITCOND='(integer,0,f,,0,f)', PARALLEL=SAFE);
 
 -- GROUP_CONCAT's guard: over the rows string_agg reads, it counts the bytes
--- string_agg's text holds and raises 54000 once they pass the byte limit;
--- false once an unbound term or a blank node makes the text unbound. Its
--- state: bytes, NULL while no value is held, each value after the first
--- adding the separator's; bound, the result.
+-- string_agg's text holds and raises 54000 once they pass its share of the
+-- byte limit; false once an unbound term or a blank node makes the text
+-- unbound. Its state: bytes, NULL while no value is held, each value after
+-- the first adding the separator's; bound, the result.
 CREATE TYPE sparql.concat_count AS (bytes bigint, bound boolean);
 
 CREATE FUNCTION sparql.count_step(count sparql.concat_count, term jsonb, separator text, bytes bigint)
@@ -1242,7 +1259,7 @@ BEGIN
     IF piece IS NOT NULL THEN
         count.bytes := coalesce(count.bytes+octet_length(separator),0)+octet_length(piece);
         -- Called only to raise: a call on every row costs a fifth more.
-        IF count.bytes>bytes THEN PERFORM sparql.within(count.bytes,bytes); END IF;
+        IF count.bytes>bytes THEN PERFORM sparql.built(count.bytes,bytes); END IF;
     END IF;
     count.bound := count.bound AND term IS NOT NULL AND term->>'type' IS DISTINCT FROM 'bnode';
     RETURN count;

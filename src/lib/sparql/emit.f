@@ -177,11 +177,11 @@
 \ through its runtime aggregate, or any_value for SAMPLE, DISTINCT always,
 \ which holds one term or one running total per group, DISTINCT dropping
 \ duplicates of sparql.normalize of the operand. GROUP_CONCAT is
-\ string_agg beside sparql.concat_bound, which raises past the store's
-\ byte limit. A query with a GROUP_CONCAT groups a derived table of its
-\ solutions whose columns hold every GROUP_CONCAT's operand term, each of
-\ its ORDER BY keys and every group key's term, which the aggregates, the
-\ GROUP BY and the grouped SELECT read: each is evaluated once, so a
+\ string_agg beside sparql.concat_bound, which raises past its share of
+\ the byte limit. A query with a GROUP_CONCAT groups a derived table of
+\ its solutions whose columns hold every GROUP_CONCAT's operand term, each
+\ of its ORDER BY keys and every group key's term, which the aggregates,
+\ the GROUP BY and the grouped SELECT read: each is evaluated once, so a
 \ volatile key or operand gives one value to every reader. A
 \ GROUP_CONCAT DISTINCT reads a derived table above that one whose
 \ row_number over its group's keys and sparql.normalize of its value,
@@ -458,6 +458,7 @@ STRUCTURE walk DERIVE addr
 STRUCTURE plan DERIVE addr
    FIELD syntax ^syntax
    FIELD store ^store
+   FIELD share n  \ the bytes each value-building call's value may hold
    \ Parameter k's value: a term node, or the invert of its place in texted.
    FIELD arguments ^segs<n>
    FIELD texted ^segs<argument>  \ the parameters with a text
@@ -6122,11 +6123,11 @@ STRUCTURE pruning DERIVE addr
    v s"  FILTER (WHERE " +SQL v s" f" call +NODE-COLUMN
    v s" =1)" +SQL ;
 
-\ Appends GROUP_CONCAT's separator and the store's byte limit.
+\ Appends GROUP_CONCAT's separator and the plan's share of the byte limit.
 : +CONCAT-ARGS ( ^plan ^rel n -- )
    {: plan v:^ sep:n :}
    v s" ," +SQL plan v sep +SEPARATOR
-   v s" ," +SQL v plan PLAN-STORE @ STORE-LIMIT @ +INT ;
+   v s" ," +SQL v plan PLAN-SHARE @ +INT ;
 
 \ GROUP_CONCAT over CONCAT-ROWS's columns. sparql.concat_bound is
 \ written first: an aggregate that sorts its own input is fed in
@@ -6994,6 +6995,34 @@ STRUCTURE pruning DERIVE addr
    plan PLAN-CTES @ CTES-FIRST @ t0 CTE-NEXT !
    t0 t REL-WITH ! t ;
 
+\ The values one solution builds hold at most so many times the store's
+\ byte limit, shared among the query's value-building calls.
+16 constant BUILT-LIMITS
+
+\ Whether the node is a call whose value can be longer than any one of
+\ its arguments.
+: BUILDS? ( ^syntax n -- bool )
+   {: state node:n :}
+   state node NODE-K N-CALL <> if false exit then
+   state node
+   s" CONCAT REPLACE UCASE LCASE ENCODE_FOR_URI IRI URI GROUP_CONCAT"
+   CALL-IN? ;
+
+: BUILDING-CALLS ( ^syntax -- n )
+   {: state :}
+   0 state SYNTAX-NODES @ SEG-COUNT 1 ?do
+      state i BUILDS? if 1+ then
+   loop ;
+
+\ Each building call's share of the byte limit: the limit for up to
+\ BUILT-LIMITS calls, else that many limits over the calls, rounded
+\ down without overflowing a cell.
+: CALL-SHARE ( n n -- n )
+   {: bytes:n calls:n :}
+   calls BUILT-LIMITS <= if bytes exit then
+   bytes calls / BUILT-LIMITS *
+   bytes calls mod BUILT-LIMITS * calls / + ;
+
 \ Appends the query's statement to the vector, counted first so the arena
 \ holds no copy; each parameter's text is valid until the quotation returns.
 : EMIT ( ^syntax ^store ^VEC:vector<u8> [ str -- ] -- )
@@ -7001,6 +7030,8 @@ STRUCTURE pruning DERIVE addr
    state SYNTAX-ARENA @ ARENA:ALLOCATOR {: al:^ :}
    al [type] plan ALLOC:NEW {: plan:^ :}
    state plan PLAN-SYNTAX ! store plan PLAN-STORE !
+   store STORE-LIMIT @ state BUILDING-CALLS CALL-SHARE
+      plan PLAN-SHARE !
    al NEW-CTES plan PLAN-CTES ! al NEW-TEXTS plan PLAN-TEXTS !
    plan NEW-SQL plan PLAN-EMPTY !
    al [type] binding ALLOC:NEW plan PLAN-COLUMN !

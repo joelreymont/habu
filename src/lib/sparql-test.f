@@ -1170,6 +1170,25 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    EXPECT
    s" SELECT ?v WHERE { BIND(REPLACE('xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', 'x+', 'y') AS ?v) }" LIMITED ;
 
+\ An ASK of a 40-byte ?x whose FILTER sums n LCASEs of it.
+: LCASES ( n ^ARENA:arena -- ^VEC:vector<u8> )
+   {: n:n a:^ :}
+   a TEXT-VEC {: q:^ :}
+   s" ASK { BIND('xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' AS ?x) FILTER(0"
+   q VEC:APPEND
+   n 0 ?do s"  + STRLEN(LCASE(?x))" q VEC:APPEND loop
+   s"  > 0) }" q VEC:APPEND q ;
+
+\ Sixteen building calls each hold up to the byte limit; seventeen
+\ share sixteen limits, 37 bytes each of 40, so a 40-byte value fails.
+: SHARES-IN ( ^ARENA:arena -- )
+   {: a:^ :}
+   16 a LCASES $ 40 a GROWN-IN
+   17 a LCASES $ 40 a ANSWER-WITHIN $
+   s" 54000: SPARQL value exceeds 37 bytes, its share" STR:STARTS-WITH? TTRUE ;
+
+: SHARES ( -- ) [: SHARES-IN ;] ARENA:WITH ;
+
 : +N ( ^VEC:vector<u8> str n -- )
    {: q:^ t:str n:n :} t q VEC:APPEND n FMT:INT$ q VEC:APPEND ;
 
@@ -2248,8 +2267,8 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    ONLY-COLUMNS NESTED-ONLY
    TYPED-FILTERS BRANCH-GROUPING ORDERS DISTINCTS STAR-COUNTS
    SUBQUERIES
-   BINDS GROWTHS CHAINS LEVELS UUIDS VOLATILE-BINDS FENCES DATA-BLOCKS PATHS
-   NODE-READS CTE-COLUMNS ;
+   BINDS GROWTHS SHARES CHAINS LEVELS UUIDS VOLATILE-BINDS FENCES
+   DATA-BLOCKS PATHS NODE-READS CTE-COLUMNS ;
 
 T-RESET
 s" sparql-test" ' SESSION MAIN

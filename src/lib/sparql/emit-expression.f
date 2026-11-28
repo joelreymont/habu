@@ -8,7 +8,6 @@
 
 require src/lib/sparql/emit.f
 require src/lib/sparql/statement.f
-require src/lib/sparql/store.f
 require src/lib/sparql/write.f
 require src/lib/sparql/syntax.f
 require src/lib/sparql/iri.f
@@ -59,11 +58,11 @@ private
    plan s" coalesce(" SQL+
    plan plan TREE call NODE-A@ EXPRESSIONS+ plan s" )" SQL+ ;
 
-\ The store's byte limit and a comma: the first argument of a function
-\ whose value can be longer than any one of its arguments.
+\ The plan's share of the byte limit and a comma: the first argument of
+\ a function whose value can be longer than any one of its arguments.
 : LIMIT+ ( ^plan -- )
    {: plan :}
-   plan PLAN-OUT @ plan PLAN-STORE @ STORE-LIMIT @ +INT
+   plan PLAN-OUT @ plan PLAN-SHARE @ +INT
    plan s" ," SQL+ ;
 
 : IRI-FUNCTION+ ( ^plan n -- )
@@ -101,12 +100,49 @@ private
    plan state call NODE-A@ EXPRESSIONS+
    plan s" )" SQL+ ;
 
+\ The argument's place among CONCAT's terms, from 0, and whether it is
+\ new: vars holds each term's variable, -1 for any other argument.
+: CONCAT-PLACE ( ^plan ^VEC:vector<n> n -- n bool )
+   {: plan vars:^ arg:n :}
+   plan TREE arg VARIABLE? if plan arg VAR else -1 then {: id:n :}
+   id -1 <> if
+      vars VEC:COUNT 0 ?do
+         vars i VEC:AT @ id = if i false unloop exit then
+      loop
+   then
+   id vars VEC:PUSH ! vars VEC:COUNT 1- true ;
+
+\ Writes CONCAT's terms, each variable once, and pushes each argument's
+\ place among them.
+: TERMS+ ( ^plan n ^VEC:vector<n> -- )
+   {: plan call:n places:^ :} plan TREE {: state :}
+   plan AL 0 [type] n VEC:NEW {: vars:^ :}
+   state call NODE-A@ begin dup 0<> while
+      {: list:n :} state list NODE-A@ {: arg:n :}
+      plan vars arg CONCAT-PLACE {: k:n new:bool :}
+      k places VEC:PUSH !
+      new if
+         k 0<> if plan s" ," SQL+ then
+         plan arg SQL-EXPRESSION
+      then
+      state list NODE-B@
+   repeat drop ;
+
+\ The places, each from 1, comma separated.
+: PLACES+ ( ^plan ^VEC:vector<n> -- )
+   {: plan places:^ :}
+   places VEC:COUNT 0 ?do
+      i 0<> if plan s" ," SQL+ then
+      plan PLAN-OUT @ places i VEC:AT @ 1+ +INT
+   loop ;
+
 : CONCAT+ ( ^plan n -- )
    {: plan call:n :}
+   plan AL 0 [type] n VEC:NEW {: places:^ :}
    plan s" sparql.concat(" SQL+ plan LIMIT+
-   plan s" ARRAY[" SQL+
-   plan plan TREE call NODE-A@ EXPRESSIONS+
-   plan s" ]::jsonb[])" SQL+ ;
+   plan s" ARRAY[" SQL+ plan call places TERMS+
+   plan s" ]::jsonb[],ARRAY[" SQL+ plan places PLACES+
+   plan s" ]::int[])" SQL+ ;
 
 \ An IRI's call: sparql.cast is NULL for an IRI that is no xsd
 \ constructor, which takes one argument.
